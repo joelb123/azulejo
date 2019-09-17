@@ -55,6 +55,19 @@ EPSILON = 0.000001
 FILETYPE = 'pdf'
 MAX_BINS = 10
 
+class ElapsedTimeReport:
+    def __init__(self, name):
+        self.start_time = datetime.now()
+        self.name = name
+
+    def elapsed(self, next_name):
+        now = datetime.now()
+        seconds = (now - self.start_time).total_seconds()
+        report = '%s phase took %d seconds' %(self.name, seconds)
+        self.start_time = now
+        self.name = next_name
+        return report
+
 
 def read_synonyms(filepath):
     synonym_dict = {}
@@ -279,6 +292,7 @@ def usearch_cluster(seqfile,
     if dups is not None:
         logger.debug('using duplicates in %s', dirpath/dups)
         synonyms.update(read_synonyms(dirpath/dups))
+    timer = ElapsedTimeReport('usearch')
     if do_calc:
         #
         # Delete previous results, if any.
@@ -299,16 +313,12 @@ def usearch_cluster(seqfile,
                                 '-id', identity,
                                 '-clusters', outdir,
                                 '-log', logfile]
-            logger.debug('launching usearch')
-            starttime = datetime()
             calculate()
-            elapsed = (datetime() - starttime).total_seconds
-
+            logger.debug(timer.elapsed('parse'))
     run_stat_dict = OrderedDict([('divergence', 1.-identity)])
     parse_usearch_log(logfilepath,
                       run_stat_dict)
-    run_stats = pd.DataFrame(list(ru
-    n_stat_dict.items()),
+    run_stats = pd.DataFrame(list(run_stat_dict.items()),
                              columns=['stat', 'val'])
     run_stats.set_index('stat', inplace=True)
     run_stats.to_csv(statfilepath, sep='\t')
@@ -330,6 +340,7 @@ def usearch_cluster(seqfile,
     id_frame.drop(['index'], axis=1, inplace=True)
     id_frame.to_csv(idpath, sep='\t')
     del ids, clusters, id_frame
+    logger.debug(timer.elapsed('graph'))
     #
     # Write out degree distribution.
     #
@@ -368,5 +379,6 @@ def usearch_cluster(seqfile,
     #degree_hist.sort_values('degree', inplace=True)
     #degree_hist.to_csv(histfilepath, sep='\t')
     nx.write_gml(cluster_graph, gmlfilepath)
+    logger.debug(timer.elapsed('final'))
     return run_stat_dict, cluster_graph, cluster_hist, any_hist, all_hist
 
