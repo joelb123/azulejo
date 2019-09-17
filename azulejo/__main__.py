@@ -4,5 +4,5 @@
 # python3 -m azulejo
 # from the directory above this one.
 
-from .__init__ import test
-test()
+from .__init__ import cli
+cli()
