@@ -219,48 +219,6 @@ def make_histogram(dist, name, log10=False, bins=None):
     #plt.close('all')
 
 
-def cluster_in_steps(infile,
-                     steps,
-                     min_id_freq=0,
-                     substrings=None,
-                     duplicates=None):
-    inpath = Path(infile)
-    dirpath = inpath.parent
-    stat_path = dirpath / (inpath.stem + STATFILE_SUFFIX)
-    any_path = dirpath / (inpath.stem + ANYFILE_SUFFIX)
-    all_path = dirpath / (inpath.stem + ALLFILE_SUFFIX)
-    logsteps = [1.] + list(1. - np.logspace(IDENT_LOG_MIN, IDENT_LOG_MAX, num=steps))
-    print('clustering %s at %d levels from %f to %f sequence identity'
-          %(infile, steps, min(logsteps), max(logsteps)))
-    stat_list = []
-    all_frames = []
-    any_frames = []
-    for id_level in logsteps:
-        stats, graph, hist, any, all = usearch_cluster(infile,
-                                                       id_level,
-                                                       min_id_freq=min_id_freq,
-                                                       substrings=substrings,
-                                                       duplicates=duplicates)
-        stat_list.append(stats)
-        any_frames.append(any)
-        all_frames.append(all)
-    print('collating results')
-    #
-    # Concatenate and write stats
-    #
-    stats = pd.DataFrame(stat_list)
-    stats.to_csv(stat_path, sep='\t')
-    #
-    # Concatenate any/all data
-    #
-    any = pd.concat(any_frames, axis=1, join='inner',
-                    sort=True, ignore_index=False)
-    any.to_csv(any_path, sep='\t')
-    all = pd.concat(all_frames, axis=1, join='inner',
-                    sort=True, ignore_index=False)
-    all.to_csv(all_path, sep='\t')
-
-
 def tick_function(X):
     X = X*3.-3
     vals = [('%f'%v).rstrip('0').rstrip('.')
@@ -435,7 +393,7 @@ def compare_clusters(file1, file2):
     #print(notin2)
 
 # core logic imports here
-from .core import usearch_cluster
+from .core import usearch_cluster, cluster_in_steps
 
 def test():
     TESTDIR = '/home/localhost/joelb/preclust/'

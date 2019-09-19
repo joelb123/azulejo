@@ -5,8 +5,9 @@ Core azulejo logic
 #
 # standard library imports
 #
+import sys
 from collections import Counter, OrderedDict
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from itertools import chain, combinations
 #
@@ -23,6 +24,7 @@ from plumbum import local
 # package imports
 #
 from . import cli, logger
+from .common import *
 #
 # global constants
 #
@@ -54,6 +56,7 @@ IDENT_LOG_MAX = 0
 EPSILON = 0.000001
 FILETYPE = 'pdf'
 MAX_BINS = 10
+DEFAULT_STEPS = 16
 
 class ElapsedTimeReport:
     def __init__(self, name):
@@ -222,6 +225,9 @@ def parse_clusters(outdir,
         outdir.rmdir()
     return graph, cluster_list, id_list, degree_list, degree_counter, any_counter, all_counter
 
+def prettyprint_float(x, digits):
+    format_string = '%.'+ '%d'%digits + 'f'
+    return (format_string%x).rstrip('0').rstrip('.')
 
 @cli.command()
 @click.argument('seqfile')
@@ -245,12 +251,12 @@ def usearch_cluster(seqfile,
                     min_id_freq=0,
                     substrs=None,
                     dups=None):
-    """Cluster sequences above a fixed global sequence identity threshold, collecting stats"""
+    """Cluster above a global sequence identity threshold"""
     global logger
     if identity == 1.0:
-        digits = '1000'
+        digits = '10000'
     else:
-        digits = ('%.3f'%identity)[2:]
+        digits = ('%.4f'%identity)[2:]
     inpath = Path(seqfile)
     if not inpath.exists():
         logger.error('Input file "%s" does not exist!', inpath)
@@ -268,9 +274,9 @@ def usearch_cluster(seqfile,
     anyfilepath = dirpath / ('%s-anyhist.tsv' %outname)
     allfilepath = dirpath / ('%s-allhist.tsv' %outname)
     idpath = dirpath/ ('%s-ids.tsv' %outname)
-    logger.info('Clustering %s by usearch at %s%% sequence identity', seqfile,
-                ('%f'%(identity*100)).rstrip('0').rstrip('.'))
-    logger.info('Output files into %s*' %(dirpath/outname))
+    logger.info('%s%% sequence identity output to %s*',
+                prettyprint_float(identity*100, 2),
+                outname)
     if not delete:
         logger.debug('Cluster files will be kept in %s and %s', logfile, outdir)
     if write_ids:
@@ -381,4 +387,57 @@ def usearch_cluster(seqfile,
     nx.write_gml(cluster_graph, gmlfilepath)
     logger.debug(timer.elapsed('final'))
     return run_stat_dict, cluster_graph, cluster_hist, any_hist, all_hist
+
+
+@cli.command()
+@click.argument('seqfile')
+@click.option('--steps','-s', default=DEFAULT_STEPS, show_default=True,
+              help='# of steps from lowest to highest')
+@click.option('--min_id_freq', '-m', default=0, show_default=True,
+              help='Minimum frequency of ID components.')
+@click.option('--substrs', help='subpath to file of substrings. [default: none]')
+@click.option('--dups', help='subpath to file of duplicates. [default: none]')
+def cluster_in_steps(seqfile,
+                     steps,
+                     min_id_freq=0,
+                     substrs=None,
+                     dups=None):
+    """Cluster in steps from low to 100% sequence identity"""
+    inpath = Path(seqfile)
+    dirpath = inpath.parent
+    stat_path = dirpath / (inpath.stem + STATFILE_SUFFIX)
+    any_path = dirpath / (inpath.stem + ANYFILE_SUFFIX)
+    all_path = dirpath / (inpath.stem + ALLFILE_SUFFIX)
+    logsteps = [1.] + list(1. - np.logspace(IDENT_LOG_MIN, IDENT_LOG_MAX, num=steps))
+    logger.info('Clustering at %d levels from %s%% to %s%% global sequence identity',
+                steps,
+                prettyprint_float(min(logsteps)*100., 2),
+                prettyprint_float(max(logsteps)*100., 2))
+    stat_list = []
+    all_frames = []
+    any_frames = []
+    for id_level in logsteps:
+        stats, graph, hist, any, all = usearch_cluster.callback(seqfile,
+                                                       id_level,
+                                                       min_id_freq=min_id_freq,
+                                                       substrs=substrs,
+                                                       dups=dups)
+        stat_list.append(stats)
+        any_frames.append(any)
+        all_frames.append(all)
+    logger.info('Collating results on %s', seqfile)
+    #
+    # Concatenate and write stats
+    #
+    stats = pd.DataFrame(stat_list)
+    stats.to_csv(stat_path, sep='\t')
+    #
+    # Concatenate any/all data
+    #
+    any = pd.concat(any_frames, axis=1, join='inner',
+                    sort=True, ignore_index=False)
+    any.to_csv(any_path, sep='\t')
+    all = pd.concat(all_frames, axis=1, join='inner',
+                    sort=True, ignore_index=False)
+    all.to_csv(all_path, sep='\t')
 
