@@ -1,0 +1,30 @@
+[[source]]
+
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+
+[packages]
+
+click = "*"
+cloudpickle = "*"
+coverage = "*"
+Cycler = "*"
+dask = "*"
+decorator = "*"
+kiwisolver = "*"
+matplotlib = "*"
+networkx = "*"
+numpy = "*"
+pandas = "*"
+plumbum = "*"
+pyparsing = "*"
+python-dateutil = "*"
+pytz = "*"
+scipy = "*"
+seaborn = "*"
+
+
+[dev-packages]
+

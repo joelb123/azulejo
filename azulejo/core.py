@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Core azulejo logic
+Core logic for computing subtrees
 """
 #
 # standard library imports
@@ -14,11 +14,9 @@ from itertools import chain, combinations
 # third-party imports
 #
 import click
-import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 import numpy as np
-import seaborn as sns
 from plumbum import local
 #
 # package imports
@@ -225,9 +223,11 @@ def parse_clusters(outdir,
         outdir.rmdir()
     return graph, cluster_list, id_list, degree_list, degree_counter, any_counter, all_counter
 
+
 def prettyprint_float(x, digits):
     format_string = '%.'+ '%d'%digits + 'f'
     return (format_string%x).rstrip('0').rstrip('.')
+
 
 @cli.command()
 @click.argument('seqfile')
@@ -257,9 +257,10 @@ def usearch_cluster(seqfile,
         digits = '10000'
     else:
         digits = ('%.4f'%identity)[2:]
-    inpath = Path(seqfile)
-    if not inpath.exists():
-        logger.error('Input file "%s" does not exist!', inpath)
+    try:
+        inpath, dirpath = get_paths_from_file(seqfile)
+    except FileNotFoundError:
+        logger.error('Input file "%s" does not exist!', seqfile)
         sys.exit(1)
     stem = inpath.stem
     dirpath = inpath.parent
@@ -403,8 +404,11 @@ def cluster_in_steps(seqfile,
                      substrs=None,
                      dups=None):
     """Cluster in steps from low to 100% sequence identity"""
-    inpath = Path(seqfile)
-    dirpath = inpath.parent
+    try:
+        inpath, dirpath = get_paths_from_file(seqfile)
+    except FileNotFoundError:
+        logger.error('Input file "%s" does not exist!', seqfile)
+        sys.exit(1)
     stat_path = dirpath / (inpath.stem + STATFILE_SUFFIX)
     any_path = dirpath / (inpath.stem + ANYFILE_SUFFIX)
     all_path = dirpath / (inpath.stem + ALLFILE_SUFFIX)
@@ -440,4 +444,30 @@ def cluster_in_steps(seqfile,
     all = pd.concat(all_frames, axis=1, join='inner',
                     sort=True, ignore_index=False)
     all.to_csv(all_path, sep='\t')
+
+
+@cli.command()
+@click.argument('infile')
+def clusters_to_histograms(infile):
+    """Compute histograms from a tab-delimited cluster file"""
+    try:
+        inpath, dirpath = get_paths_from_file(infile)
+    except FileNotFoundError:
+        logger.error('Input file "%s" does not exist!', infile)
+        sys.exit(1)
+    histfilepath = dirpath/(inpath.stem + '-sizedist.tsv')
+    clusters = pd.read_csv(dirpath/infile, sep='\t', index_col=0)
+    cluster_counter = Counter()
+    for cluster_id, group in clusters.groupby(['cluster']):
+        #cluster_id = int(cluster_id.lstrip('cl'))
+        cluster_counter.update({len(group): 1})
+    logger.info('writing to %s', histfilepath)
+    cluster_hist = pd.DataFrame(list(cluster_counter.items()),
+                                columns=['size', 'clusts'])
+    total_clusters = cluster_hist['clusts'].sum()
+    cluster_hist['%clusts'] = cluster_hist['clusts'] * 100. / total_clusters
+    cluster_hist['%genes'] = cluster_hist['clusts']*cluster_hist['size'] * 100. / len(clusters)
+    cluster_hist.sort_values(['size'], inplace=True)
+    cluster_hist.set_index('size', inplace=True)
+    cluster_hist.to_csv(histfilepath, sep='\t', float_format='%06.3f')
 

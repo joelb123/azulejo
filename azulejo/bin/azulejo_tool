@@ -1,0 +1,561 @@
+#!/bin/bash
+#
+# Build, configure, run azulejo
+#
+set -e # stop on errors
+version="0.3"
+script_name="$(basename "${BASH_SOURCE}")"
+script_dir=''
+pushd "$(dirname "$(readlink -f "$BASH_SOURCE")")" >/dev/null && {
+  script_dir="$PWD"
+  popd >/dev/null
+}
+scriptstart=$(date +%s)
+pkg="${script_name%_tool}"
+PKG="$(echo ${pkg} | tr /a-z/ /A-Z/)"
+PKG_DIR="${PKG}_DIR"
+PKG_VAR_DIR="${PKG}_VAR_DIR"
+PKG_GIT_DIR="${PKG}_GIT_DIR"
+PKG_PLATFORM="${PKG}_PLATFORM"
+if [ -z "${!PKG_DIR}" ]; then
+  root_dir=~/.local/share/${pkg}
+else
+  root_dir="${!PKG_DIR}"
+fi
+if [ -z "${!PKG_VAR_DIR}" ]; then
+  var_dir="${root_dir}/var"
+else
+  var_dir="${!PKG_VAR_DIR}"
+fi
+if [ -z "${!PKG_GIT_DIR}" ]; then
+  git_dir="${root_dir}/${pkg}"
+else
+  git_dir="${!PKG_GIT_DIR}"
+fi
+if [ -z "${!PKG_PLATFORM}" ]; then
+  platform="$(uname)"
+else
+  platform="${!PKG_PLATFORM}"
+fi
+etc_dir="${root_dir}/etc"
+src_dir="${root_dir}/src"
+bin_dir="${root_dir}/bin"
+log_dir="${var_dir}/log"
+work_dir="${var_dir}/work"
+blast_db_dir="${work_dir}/blast_db"
+blast_out_dir="${work_dir}/blast_out"
+dag_dir="${work_dir}/dag"
+error_exit() {
+  echo >&2 "ERROR--unexpected exit from ${BASH_SOURCE} script at line:"
+  echo >&2 "   $BASH_COMMAND"
+}
+trap error_exit EXIT
+TOP_DOC="""gene families by synteny across sets of CDS and GFF files
+
+Usage:
+        ${pkg}_tool COMMAND [COMMAND_OPTIONS]
+
+Commands (in order they are usually run):
+           init - Initialize build parameters
+        install - Install one or all binary packages, '-h' to see
+  configure_pkg - Write default configuration parameters
+         config - Set/view configuration variables
+            run - Run one or all analysis steps, '-h' to see
+          clean - Delete work and log directories
+        version - Get installed package version
+
+Variables (accessed by \"config\" command):
+              blast - BLAST version string
+      blast_threads - threads to use in searches [default: 4]
+                 cc - C compiler for building
+       clear_config - clear all config variables
+         dagchainer - DAGchainer version string
+    dagchainer_args - Argument for DAGchainer command
+	           dbtype - Database type, either 'nucl' or 'prot'
+              e_val - Maximum BLAST score permitted in matches
+          fasta_ext - Extension of FASTA files
+	          gff_ext - Extension of GFF files
+           out_dir - output directory prefix [default: 'out_${pkg}']
+       pct_identity - Minimum percent sequence identity
+             python - Python version string
+            version - version of this script at config time
+
+Environmental variables (may be set externally):
+         ${PKG}_DIR - Location of the src/, etc/,
+                       and bin/ directories, currently
+                       \"${root_dir}\"
+     ${PKG}_VAR_DIR - Location of working files, currently
+                       \"${var_dir}\"
+     ${PKG}_GIT_DIR - Location of the ${pkg} git directory, currently
+                       \"${git_dir}\".
+    ${PKG}_PLATFORM - One of three values, \"Linux\", \"Darwin\",
+                       or \"*BSD\"; other values are not recognized.
+                       This platform is \"${platform}\".
+"""
+#
+# Helper functions begin here
+#
+set_value() {
+  if [ "$2" == "-d" ]; then
+    rm -f "${etc_dir}/${1}"
+  else
+    echo "$2" >"${etc_dir}/${1}"
+  fi
+}
+get_value() {
+  if [ -e ${etc_dir}/${1} ]; then
+    cat ${etc_dir}/${1}
+  else
+    trap - EXIT
+    echo >&2 "ERROR--value for $1 variable not found."
+    exit 1
+  fi
+}
+howmany() {
+  set -f
+  set -- $1
+  echo $#
+}
+histogram() {
+  if [ $# -lt 1 ]; then
+    echo "Usage: histogram  [field] [precision]"
+    return 0
+  fi
+
+  field=1
+  if [ $# -gt 1 ]; then
+    field=$2
+  fi
+
+  printf '#N\tSize\n'
+  cat $1 | sort -k $field -n -t ',' | cut -d ',' -f $field | uniq -c
+}
+#
+perl_defs() {
+  #
+  # Perl local::lib settings, where Bioperl::SeqIO is installed
+  #
+  perlbase=${SYN_BIN}/perl5
+  PATH="${perlbase}/bin${PATH:+:${PATH}}"; export PATH
+  PERL5LIB="${perlbase}/lib/perl5${PERL5LIB:+:${PERL5LIB}}"; export PERL5LIB
+  PERL_LOCAL_LIB_ROOT="${perlbase}${PERL_LOCAL_LIB_ROOT:+:${PERL_LOCAL_LIB_ROOT}}"
+  export PERL_LOCAL_LIB_ROOT
+  PERL_MB_OPT="--install_base \"${perlbase}\""; export PERL_MB_OPT
+  PERL_MM_OPT="INSTALL_BASE=${perlbase}"; export PERL_MM_OPT
+}
+#
+# Installation functions
+#
+install_python() {
+  echo >&1 "Installing Python $1 to ${2}."
+  curl -L -o Python-${1}.tar.gz https://www.python.org/ftp/python/${1}/Python-${1}.tar.xz
+  tar xf Python-${1}.tar.gz
+  rm Python-${1}.tar.gz
+  pushd Python-${1}
+  ./configure --prefix="${2}" CC="${3}"
+  ${4} install
+  popd
+  rm -r Python-${1}
+}
+#
+# run functions
+#
+run_prepare_gffs() {
+  gff_ext=$(get_value gff_ext)
+  gff_files="$(ls *.${gff_ext})"
+  echo "prepare_gffs--preparing $(howmany "$gff_files") input files"
+  for path in $gff_files; do
+    base=$(basename $path .${gff_ext})
+    base_no_ann=$(echo $base | perl -pe 's/\.ann\d+\.\w+//')
+    cat $path | awk -v OFS="\t" '$3=="mRNA" {print $1, $4, $5, $9}' |
+      perl -pe 's/ID=([^;]+);.+/$1/' >${work_dir}/${base_no_ann}.bed
+  done
+}
+#
+run_add_positions() {
+  echo "add_positions--adding positional information to FASTA ids"
+  fasta_ext=$(get_value fasta_ext)
+  for path in ${work_dir}/*.bed; do
+    base=$(basename $path .bed)
+    cat $path | awk '{print $4 "\t" $1 "__" $4 "__" $2 "__" $3 }' \
+      >${work_dir}/${base}.hsh
+    ${bin_dir}/hash_into_fasta_id.pl\
+      -fasta ${base}.${fasta_ext}\
+      -hash ${work_dir}/${base}.hsh \
+      -suff_regex \
+      >${work_dir}/${base}.${fasta_ext}
+  done
+  echo
+}
+#
+run_blast_dbs() {
+  echo "blast_dbs--creating BLAST databases"
+  start_time=$(date +%s)
+  fasta_ext=$(get_value fasta_ext)
+  for path in ${work_dir}/*.${fasta_ext}; do
+    base=$(basename $path .${fasta_ext})
+    ${bin_dir}/makeblastdb -in $path -dbtype $(get_value dbtype) \
+      -hash_index -parse_seqids -title \
+      $base -out ${blast_db_dir}/$base 1>/dev/null &
+  done
+  wait
+  end_time=$(date +%s)
+  set_value db_time_s $((end_time-start_time))
+}
+#
+run_blastall() {
+  echo "blastall--doing half-diagonal BLAST"
+  start_time=$(date +%s)
+  fasta_ext=$(get_value fasta_ext)
+  for qry_path in ${work_dir}/*.${fasta_ext}; do
+    qry_base=$(basename $qry_path .${fasta_ext})
+    for sbj_path in ${work_dir}/*.${fasta_ext}; do
+      sbj_base=$(basename $sbj_path .${fasta_ext})
+      if [[ "$qry_base" > "$sbj_base" ]]; then
+        ${bin_dir}/blastn -query $qry_path -db ${blast_db_dir}/$sbj_base \
+          -perc_identity $(get_value pct_identity) \
+          -evalue $(get_value e_val) \
+          -outfmt 6 \
+          -num_threads $(get_value blast_threads) \
+          -out ${blast_out_dir}/${qry_base}.x.${sbj_base}.bln #&
+      fi
+    done
+  done
+  #wait
+  end_time=$(date +%s)
+  set_value blast_time_s $((end_time-start_time))
+}
+#
+run_filter_hits() {
+  echo "filter_hits--filtering top hits in each direction and applying id entry threshold"
+  for path in ${blast_out_dir}/*; do
+    file=$(basename $path .bln)
+    cat $path |
+      awk -v OFS="\t" '$3>=95 {print $1, $2, $11}' |
+      ${bin_dir}/top_line.awk | perl -pe 's/__/\t/g' >${dag_dir}/${file}_matches.tsv
+  done
+}
+#
+run_dagchainer() {
+  echo "dagchainer--running DAGchainer "
+  start_time=$(date +%s)
+  for path in ${dag_dir}/*_matches.tsv; do
+    ${bin_dir}/run_DAG_chainer.pl $(get_value dagchainer_args) \
+      -i $path 2>/dev/null 1>/dev/null &
+  done
+  wait
+  end_time=$(date +%s)
+  set_value dag_time_s $((end_time-start_time))
+}
+#
+run_format_synteny() {
+  echo "format_synteny--reformatting synteny data"
+  out_dir="$(get_value out_dir)"
+  if [ ! -d "$out_dir" ]; then
+      echo "creating output directory \"${out_dir}/\""
+      mkdir -p $out_dir
+  fi
+  printf "#matches\tscore\trev\tid1\tid2\n" >${out_dir}/blocks.tsv
+  for path in ${dag_dir}/*.aligncoords; do
+    file1=${path%%.x.*}
+    file2=$(basename ${path##*.x.} _matches.tsv.aligncoords)
+    cat $path | awk '$1!~/^#/ {print $2 "\t" $6}' \
+      >>${out_dir}/pairs.tsv
+    cat $path | grep \#\# | grep -v reverse |
+      awk '{print "substr($14,0,length($14)-2) \t" $10 "\t" 1 "\t" $3 "\t" $5}' \
+        >>${out_dir}/blocks.tsv
+    cat $path | grep \#\# | grep reverse |
+      awk '{print substr($15,0,length($15)-2) "\t" $11 "\t" 1 "\t" $3 "\t" $5}' \
+        >>${out_dir}/blocks.tsv
+  done
+}
+#
+run_cluster() {
+  echo "cluster--generating single-linkage clusters"
+  out_dir="$(get_value out_dir)"
+  ${bin_dir}/blinkPerl_v1.1.pl -in ${out_dir}/pairs.tsv \
+    -sum ${work_dir}/cluster_sizes.txt \
+    -out ${out_dir}/clusters.tsv
+  echo
+}
+#
+run_summarize() {
+  echo "summarize--compute cluster stats"
+  out_dir="$(get_value out_dir)"  
+  awk 'NR>4 && $1!~/Number/ {print $2}' ${work_dir}/cluster_sizes.txt >${work_dir}/hist.txt
+  histogram ${work_dir}/hist.txt >${out_dir}/cluster_size_hist.txt
+  printf "#stat\tvalue\n" >${out_dir}/stats.tsv
+  head -2 ${work_dir}/cluster_sizes.txt |
+    sed -e 's/: /\t/' |
+    sed -e 's/\.//' |
+    sed -e 's/Total number of //' \
+      >>${out_dir}/stats.tsv
+  seqids=$(grep seqids ${work_dir}/cluster_sizes.txt | awk '{print $8}')
+  scriptend=$(date +%s)
+  printf "seqids_in_clusters\t$seqids\n" >>${out_dir}/stats.tsv
+  printf "db_time_s\t$(get_value db_time_s)\n" >>${out_dir}/stats.tsv
+  printf "blast_time_s\t$(get_value blast_time_s)\n" >>${out_dir}/stats.tsv
+  printf "dag_time_s\t$(get_value dag_time_s)\n" >>${out_dir}/stats.tsv
+  #
+  printf "#id\tn" >${out_dir}/cluster_sizes.tsv
+  tail -n +5 ${work_dir}/cluster_sizes.txt | head -n 1 >>${out_dir}/cluster_sizes.tsv
+  echo
+  cat ${out_dir}/stats.tsv
+}
+#
+# top-level command functions
+#
+config() {
+  CONFIG_DOC="""Sets/displays key/value pairs for the $pkg build system.
+
+Usage:
+   $scriptname set [-h] [KEY] [VALUE | -d]
+
+Options:
+   -h   Prints this help message and exits
+   -d   Deletes the setting of KEY
+
+
+Arguments:
+   If KEY is absent, all values will be displayed
+   If KEY is present but VALUE is absent, the value will be displayed
+   If KEY and VALUE are present, the value will be set
+"""
+  if [ "$#" -eq 0 ]; then
+    echo >&2 "$CONFIG_DOC"
+    param="all"
+  elif [ "$1" == "-h" ]; then
+    echo >&2 "$CONFIG_DOC"
+    param=all
+  else
+    param="$1"
+  fi
+  if [ "$param" == "all" ]; then
+      trap - EXIT
+      for key in $(ls ${etc_dir}); do
+        value="$(get_value ${key})"
+        printf '%-20s\t%s\n' ${key} ${value} >&1
+      done
+      exit 0
+  fi
+  if [ "$#" -eq 1 ]; then
+    if [ -e ${etc_dir}/${param} ]; then
+      echo "$(get_value $param)"
+    else
+      trap - EXIT
+      echo >&2 "ERROR--\"${1}\" has not been set"
+      exit 1
+    fi
+  elif [ "$#" -eq 2 ]; then # set
+    set_value $param $2
+  else
+    trap - EXIT
+    echo >&2 "$CONFIG_DOC"
+    echo >&2 "ERROR--too many arguments (${#})."
+    exit 1
+  fi
+}
+#
+init() {
+  echo "Initializing build parameters"
+  echo
+  set_value version ${version}
+  set_value python 3.7.5
+  set_value perl 5.30.0
+  if [[ "$platform" == "Linux" ]]; then
+    set_value platform linux
+    set_value make make
+    set_value cc gcc
+  elif [[ "$platform" == *"BSD" ]]; then
+    set_value platform bsd
+    set_value make gmake
+    set_value cc clang
+  elif [[ "$platform" == "Darwin" ]]; then
+    echo >&2 "WARNING--You must have XCODE installed to build $pkg"
+    set_value platform mac
+    set_value make make
+    set_value cc clang
+  else
+    echo >&2 "WARNING--Unknown platform ${platform}, pretending it is linux."
+    set_value platform linux
+    set_value make make
+    set_value cc gcc
+  fi
+  config all
+}
+#
+clear_config() {
+  echo "clearing configuration directory"
+  rm -f ${etc_dir}/*
+}
+#
+configure_pkg() {
+  echo "setting run configuration parameters"
+  echo
+  set_value e_val "1e-10"
+  set_value blast_threads 4
+  set_value pct_identity 95
+  set_value dagchainer_args ""
+  set_value fasta_ext "fna"
+  set_value gff_ext "gff3"
+  set_value dbtype "nucl"
+  set_value out_dir "out_azulejo"
+  config all
+}
+#
+install() {
+  INSTALL_DOC="""Installs a binary package
+
+Usage:
+   $scriptname install PACKAGE
+
+Packages:
+   If there is no argument, the following packages will be installed,
+   in order:
+        python - Python interpreter
+          perl - Perl interpreter
+"""
+  cc="$(get_value cc)"
+  make="$(get_value make)"
+  commandlist="python perl blast dagchainer"
+  if [ "$#" -eq 0 ]; then # install the whole list
+    for package in $commandlist; do
+      version="$(get_value $package)"
+      if [ "$version" == "system" ]; then
+        echo >&1 "System version of $package will be used, skipping build."
+      else
+        install_$package ${version} ${root_dir} ${cc} ${make}
+      fi
+    done
+  else
+    case $commandlist in
+    *"$1"*)
+      install_$1 $(get_value $1) ${root_dir} ${cc} ${make}
+      ;;
+    $commandlist)
+      trap - EXIT
+      echo >&2 "$INSTALL_DOC"
+      if [ "$1" == "-h" ]; then
+        exit 0
+      fi
+      echo >&2 "ERROR--unrecognized package $1"
+      exit 1
+      ;;
+    esac
+  fi
+}
+#
+run() {
+  RUN_DOC="""Run an analysis step
+
+Usage:
+   $scriptname run [STEP]
+
+Steps:
+   If STEP is not set, the following steps will be run in order,
+   otherwise the step is run by itself:
+        prepare_gffs - get gene positions from GFF files
+       add_positions - add position info to FASTA files
+           blast_dbs - create BLAST databases
+            blastall - do all-against-all blast
+         filter_hits - reduce to top bidirectional hits
+          dagchainer - compute Directed Acyclic Graphs
+      format_synteny - synteny info to .tsv files
+             cluster - single-linkage clusters
+           summarize - do stats on clusters
+"""
+  commandlist="prepare_gffs add_positions blast_dbs blastall filter_hits
+              dagchainer format_synteny cluster summarize"
+  if [ "$#" -eq 0 ]; then # install the whole list
+    for package in $commandlist; do
+      run_$package
+      echo
+    done
+  else
+    command="$1"
+    shift 1
+    case $commandlist in
+    *"$command"*)
+      run_$command $@
+      ;;
+    $commandlist)
+      trap - EXIT
+      echo >&2 "$RUN_DOC"
+      if [ "$command" == "-h" ]; then
+        exit 0
+      fi
+      echo >&2 "ERROR--unrecognized package \"$1\""
+      exit 1
+      ;;
+    esac
+  fi
+}
+#
+version() {
+  echo $version
+}
+#
+clean() {
+  echo "cleaning work/ log/ directories and tmpOut files"
+  rm -rf $work_dir $log_dir
+  rm -f .*.tmpOut
+}
+#
+# Command-line interpreter.
+#
+if [ "$#" -eq 0 ]; then
+  trap - EXIT
+  echo >&2 "$TOP_DOC"
+  exit 1
+fi
+# Create directories if needed
+dirlist="root_dir var_dir git_dir etc_dir bin_dir src_dir log_dir blast_db_dir blast_out_dir dag_dir"
+for dirvar in $dirlist; do
+    dirname="${!dirvar}"
+    if [ ! -d "$dirname" ]; then
+      echo "creating directory \"${dirname}\" as $dirvar"
+      mkdir -p $dirname
+    fi
+done
+#
+command="$1"
+shift 1
+case $command in
+"build")
+  build $@
+  ;;
+"config")
+  config $@
+  ;;
+"configure_pkg")
+  configure_pkg $@
+  ;;
+"clean")
+  clean $@
+  ;;
+"clear_config")
+  clear_config $@
+  ;;
+"create_scripts")
+  create_scripts $@
+  ;;
+"init")
+  init $@
+  ;;
+"install")
+  install $@
+  ;;
+"run")
+  run $@
+  ;;
+"version")
+  version $@
+  ;;
+*)
+  trap - EXIT
+  echo >&2 "ERROR--command \"$command\" not recognized."
+  exit 1
+  ;;
+esac
+trap - EXIT
+exit 0
