@@ -7,10 +7,11 @@ name = "pypi"
 
 [packages]
 
+biopython = "*"
 click = "*"
 cloudpickle = "*"
 coverage = "*"
-Cycler = "*"
+cycler = "*"
 dask = "*"
 decorator = "*"
 kiwisolver = "*"
@@ -28,3 +29,9 @@ seaborn = "*"
 
 [dev-packages]
 
+
+
+[packages.e1839a8]
+
+path = "."
+editable = true

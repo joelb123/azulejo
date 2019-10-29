@@ -80,8 +80,8 @@ def log_deriv(X,Y):
     logY = np.log10(Y)
     return np.gradient(logY) / np.gradient(logX)
 
-#@cli.command()
-#@click.argument('instemlist')
+@cli.command()
+@click.argument('instemlist')
 def analyze_clusters(dirname,
                      instemlist,
                      label,
@@ -200,26 +200,3 @@ def analyze_clusters(dirname,
     plt.show()
 
 
-def compare_clusters(file1, file2):
-    path1 = Path(file1)
-    path2 = Path(file2)
-    commondir = Path(os.path.commonpath([path1, path2]))
-    missing1 = commondir/'notin1.tsv'
-    missing2 = commondir/'notin2.tsv'
-    clusters1 = pd.read_csv(path1, sep='\t', index_col=0)
-    print('%d members in %s'%(len(clusters1), file1))
-    clusters2 = pd.read_csv(path2, sep='\t', index_col=0)
-    print('%d members in %s'%(len(clusters2), file2))
-    ids1 = set(clusters1['id'])
-    ids2 = set(clusters2['id'])
-    notin1 = pd.DataFrame(ids2.difference(ids1), columns=['id'])
-    notin1.sort_values('id', inplace=True)
-    notin1.to_csv(missing1, sep='\t')
-    notin2 = pd.DataFrame(ids1.difference(ids2), columns=['id'])
-    notin2.sort_values('id', inplace=True)
-    notin2.to_csv(missing2, sep='\t')
-
-    print('%d ids not in ids1' %len(notin1))
-    print('%d ids not in ids2' %len(notin2))
-    print('%d in %s after dropping'%(len(clusters1), file1))
-    #print(notin2)

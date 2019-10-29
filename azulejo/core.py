@@ -5,7 +5,7 @@ Core logic for computing subtrees
 #
 # standard library imports
 #
-import sys
+import os
 from collections import Counter, OrderedDict
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +17,8 @@ import click
 import networkx as nx
 import pandas as pd
 import numpy as np
+from Bio import SeqIO
+from Bio.Data import IUPACData
 from plumbum import local
 #
 # package imports
@@ -55,7 +57,10 @@ EPSILON = 0.000001
 FILETYPE = 'pdf'
 MAX_BINS = 10
 DEFAULT_STEPS = 16
-
+ALPHABET = IUPACData.protein_letters + 'X' + '-'
+#
+# Classes
+#
 class ElapsedTimeReport:
     def __init__(self, name):
         self.start_time = datetime.now()
@@ -68,6 +73,77 @@ class ElapsedTimeReport:
         self.start_time = now
         self.name = next_name
         return report
+
+
+class Sanitizer(object):
+    """clean up and count potential problems with sequence
+
+       potential problems are:
+          dashes:    (optional, removed if remove_dashes=True)
+          alphabet:  if not in IUPAC set, changed to 'X'
+    """
+
+    def __init__(self, remove_dashes=False):
+        self.remove_dashes = remove_dashes
+        self.seqs_sanitized = 0
+        self.chars_in = 0
+        self.chars_removed = 0
+        self.chars_fixed = 0
+        self.endchars_removed = 0
+
+    def char_remover(self, s, character):
+        """remove positions with a given character
+
+        :param s: mutable sequence
+        :return: sequence with characters removed
+        """
+        removals = [i for i, j in enumerate(s) if j == character]
+        self.chars_removed += len(removals)
+        [s.pop(pos - k) for k, pos in enumerate(removals)]
+        return s
+
+    def fix_alphabet(self, s):
+        """replace everything out of alphabet with 'X'
+
+        :param s: mutable sequence, upper-cased
+        :return: fixed sequence
+        """
+        fix_positions = [pos for pos, char in enumerate(s)
+                         if char not in ALPHABET]
+        self.chars_fixed = len(fix_positions)
+        [s.__setitem__(pos, 'X') for pos in fix_positions]
+        return s
+
+    def remove_char_on_ends(self, s, character):
+        """remove leading/trailing ambiguous residues
+
+        :param s: mutable sequence
+        :return: sequence with characterss removed from ends
+        """
+        in_len = len(s)
+        while s[-1] == character:
+            s.pop()
+        while s[0] == character:
+            s.pop(0)
+        self.endchars_removed += in_len - len(s)
+        return s
+
+    def sanitize(self, s):
+        """sanitize alphabet use while checking lengths
+
+        :param s: mutable sequence
+        :return: sanitized sequence
+        """
+        self.seqs_sanitized += 1
+        self.chars_in += len(s)
+        if len(s) and self.remove_dashes:
+            s = self.char_remover(s, '-')
+        if len(s):
+            s = self.fix_alphabet(s)
+        if len(s):
+            s = self.remove_char_on_ends(s, 'X')
+        return s
+
 
 
 def read_synonyms(filepath):
@@ -459,7 +535,6 @@ def clusters_to_histograms(infile):
     clusters = pd.read_csv(dirpath/infile, sep='\t', index_col=0)
     cluster_counter = Counter()
     for cluster_id, group in clusters.groupby(['cluster']):
-        #cluster_id = int(cluster_id.lstrip('cl'))
         cluster_counter.update({len(group): 1})
     logger.info('writing to %s', histfilepath)
     cluster_hist = pd.DataFrame(list(cluster_counter.items()),
@@ -470,4 +545,110 @@ def clusters_to_histograms(infile):
     cluster_hist.sort_values(['size'], inplace=True)
     cluster_hist.set_index('size', inplace=True)
     cluster_hist.to_csv(histfilepath, sep='\t', float_format='%06.3f')
+
+
+@cli.command()
+@click.argument('file1')
+@click.argument('file2')
+def compare_clusters(file1, file2):
+    """ compare one cluster file with another
+    """
+    path1 = Path(file1)
+    path2 = Path(file2)
+    commondir = Path(os.path.commonpath([path1, path2]))
+    missing1 = commondir/'notin1.tsv'
+    missing2 = commondir/'notin2.tsv'
+    clusters1 = pd.read_csv(path1, sep='\t', index_col=0)
+    print('%d members in %s'%(len(clusters1), file1))
+    clusters2 = pd.read_csv(path2, sep='\t', index_col=0)
+    print('%d members in %s'%(len(clusters2), file2))
+    ids1 = set(clusters1['id'])
+    ids2 = set(clusters2['id'])
+    notin1 = pd.DataFrame(ids2.difference(ids1), columns=['id'])
+    notin1.sort_values('id', inplace=True)
+    notin1.to_csv(missing1, sep='\t')
+    notin2 = pd.DataFrame(ids1.difference(ids2), columns=['id'])
+    notin2.sort_values('id', inplace=True)
+    notin2.to_csv(missing2, sep='\t')
+
+    print('%d ids not in ids1' %len(notin1))
+    print('%d ids not in ids2' %len(notin2))
+    print('%d in %s after dropping'%(len(clusters1), file1))
+    #print(notin2)
+
+@cli.command()
+@click.argument('setname')
+@click.argument('filelist', nargs=-1)
+def scanfiles(setname, filelist):
+    """scan a set of files, producing summary statistics"""
+    setpath = Path(setname)
+    if len(filelist)<1:
+        logger.error('Empty FILELIST, aborting')
+        sys.exit(1)
+    if setpath.exists() and setpath.is_file():
+        setpath.unlink()
+    elif setpath.exists() and setpath.is_dir():
+        logger.debug('set path %s exists', setname)
+    else:
+        logger.info('creating output directory "%s/"', setname)
+        setpath.mkdir()
+    outfile = setpath/'all.faa'
+    statfile = setpath/'records.tsv'
+    out_sequences = []
+    lengths = []
+    ids = []
+    files = []
+    positions = []
+    for file in filelist:
+        position = 0
+        logger.info('scanning %s', file)
+        sanitizer = Sanitizer(remove_dashes=True)
+        with open(file, 'rU') as handle:
+            for record in SeqIO.parse(handle, SEQ_FILE_TYPE):
+                seq = record.seq.upper().tomutable()
+                seq = sanitizer.sanitize(seq)
+                if not len(seq):
+                    # zero-length string after sanitizing
+                    continue
+                record.seq = seq.toseq()
+                ids.append(record.id)
+                lengths.append(len(record))
+                out_sequences.append(record)
+                files.append(file)
+                positions.append(position)
+                position += 1
+    logger.debug('writing output files')
+    with outfile.open('w') as output_handle:
+        SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
+    df = pd.DataFrame(list(zip(files, ids, positions, lengths)),
+                      columns=['file', 'id', 'pos', 'len'])
+    df.to_csv(statfile, sep='\t')
+
+@cli.command()
+@click.argument('infile')
+@click.argument('recordfile')
+def add_singletons(infile, recordfile):
+    """Add singleton clusters to cluster file"""
+    clusters = pd.read_csv(infile, header=None, names=['cluster', 'id'],
+                           sep='\t', index_col=0)
+    records = pd.read_csv(recordfile, sep='\t')
+    id_set = set(records['id'])
+    cluster_ids = []
+    sizes = []
+    lengths = []
+    cluster = 0
+    grouping = clusters.groupby('cluster').size().sort_values(ascending=False)
+    for idx in grouping.index:
+        size = grouping.loc[idx]
+        print(idx, size)
+        cluster = clusters.loc[clusters['cluster'] == idx]
+        print(cluster)
+        for ignore, gene_id in cluster:
+            print(ignore, gene_id)
+            id_set.remove(gene_id)
+            cluster_ids.append(cls_id)
+            sizes.append(size)
+            record =  records.loc[records['id'] == gene_id][0]
+            lengths.append(record['len'])
+    print('singletons=', len(id_set))
 

@@ -170,8 +170,9 @@ def cli(warnings_as_errors, verbose, quiet, log):
 
 
 # other cli components import here
-from .core import usearch_cluster, cluster_in_steps, clusters_to_histograms
-from .analysis import analyze_clusters, compare_clusters
+from .core import usearch_cluster, cluster_in_steps, clusters_to_histograms,\
+    compare_clusters, scanfiles, add_singletons
+from .analysis import analyze_clusters
 
 @cli.command()
 def test():
@@ -254,6 +255,3 @@ def test():
     elif operation == 'compare':
         compare_clusters(TESTDIR+'glyma+glyso/steven/steven_clusters.tsv',
                          TESTDIR+'glyma+glyso/all/glyma+glyso.all-nr-984-ids.tsv')
-
-if __name__ == '__main__':
-    cli()

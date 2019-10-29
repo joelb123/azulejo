@@ -274,7 +274,7 @@ run_cluster() {
   echo "cluster--generating single-linkage clusters"
   out_dir="$(get_value out_dir)"
   ${bin_dir}/blinkPerl_v1.1.pl -in ${out_dir}/pairs.tsv \
-    -sum ${work_dir}/cluster_sizes.txt \
+    -sum ${out_dir}/cluster_sizes.txt \
     -out ${out_dir}/clusters.tsv
   echo
 }
@@ -282,7 +282,7 @@ run_cluster() {
 run_summarize() {
   echo "summarize--compute cluster stats"
   out_dir="$(get_value out_dir)"  
-  awk 'NR>4 && $1!~/Number/ {print $2}' ${work_dir}/cluster_sizes.txt >${work_dir}/hist.txt
+  awk 'NR>4 && $1!~/Number/ {print $2}' ${out_dir}/cluster_sizes.txt >${work_dir}/hist.txt
   histogram ${work_dir}/hist.txt >${out_dir}/cluster_size_hist.txt
   printf "#stat\tvalue\n" >${out_dir}/stats.tsv
   head -2 ${work_dir}/cluster_sizes.txt |
@@ -290,7 +290,7 @@ run_summarize() {
     sed -e 's/\.//' |
     sed -e 's/Total number of //' \
       >>${out_dir}/stats.tsv
-  seqids=$(grep seqids ${work_dir}/cluster_sizes.txt | awk '{print $8}')
+  seqids=$(grep seqids ${out_dir}/cluster_sizes.txt | awk '{print $8}')
   scriptend=$(date +%s)
   printf "seqids_in_clusters\t$seqids\n" >>${out_dir}/stats.tsv
   printf "db_time_s\t$(get_value db_time_s)\n" >>${out_dir}/stats.tsv
@@ -298,7 +298,7 @@ run_summarize() {
   printf "dag_time_s\t$(get_value dag_time_s)\n" >>${out_dir}/stats.tsv
   #
   printf "#id\tn" >${out_dir}/cluster_sizes.tsv
-  tail -n +5 ${work_dir}/cluster_sizes.txt | head -n 1 >>${out_dir}/cluster_sizes.tsv
+  tail -n +5 ${out_dir}/cluster_sizes.txt | head -n 1 >>${out_dir}/cluster_sizes.tsv
   echo
   cat ${out_dir}/stats.tsv
 }
