@@ -171,7 +171,7 @@ def cli(warnings_as_errors, verbose, quiet, log):
 
 # other cli components import here
 from .core import usearch_cluster, cluster_in_steps, clusters_to_histograms,\
-    compare_clusters, scanfiles, add_singletons
+    compare_clusters, scanfiles, add_singletons, adjacency_to_graph, combine_graphs
 from .analysis import analyze_clusters
 
 @cli.command()

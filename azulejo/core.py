@@ -289,10 +289,10 @@ def parse_clusters(outdir,
         #
         # Do graph components
         #
+        graph.add_nodes_from(ids)
         if n_ids > 1:
-            graph.add_nodes_from(ids)
             edges = combinations(ids, 2)
-            graph.add_edges_from(edges, weight=identity)
+            graph.add_edges_from(edges, weight=n_ids)
         if delete:
             fasta.unlink()
     if delete:
@@ -630,25 +630,69 @@ def scanfiles(setname, filelist):
 def add_singletons(infile, recordfile):
     """Add singleton clusters to cluster file"""
     clusters = pd.read_csv(infile, header=None, names=['cluster', 'id'],
-                           sep='\t', index_col=0)
+                           sep='\t')
     records = pd.read_csv(recordfile, sep='\t')
     id_set = set(records['id'])
+    records.drop(['file', 'pos'], axis=1, inplace=True)
+    records.set_index('id', inplace=True)
+    records.drop(['Unnamed: 0'], axis=1, inplace=True)
+    len_dict = records.to_dict('id')
+    del records
+    outfile = 'clusters.tsv'
+    ids = []
     cluster_ids = []
     sizes = []
     lengths = []
-    cluster = 0
+    cluster_number = 0
     grouping = clusters.groupby('cluster').size().sort_values(ascending=False)
     for idx in grouping.index:
         size = grouping.loc[idx]
-        print(idx, size)
-        cluster = clusters.loc[clusters['cluster'] == idx]
-        print(cluster)
-        for ignore, gene_id in cluster:
-            print(ignore, gene_id)
+        cluster = clusters.loc[(clusters['cluster'] == idx)]
+        for gene_id in cluster['id']:
             id_set.remove(gene_id)
-            cluster_ids.append(cls_id)
+            ids.append(gene_id)
+            cluster_ids.append(cluster_number)
             sizes.append(size)
-            record =  records.loc[records['id'] == gene_id][0]
-            lengths.append(record['len'])
-    print('singletons=', len(id_set))
+            lengths.append(len_dict[gene_id]['len'])
+        cluster_number += 1
+    logger.info('%s singletons', len(id_set))
+    for singleton in id_set:
+        cluster_ids.append(cluster_number)
+        ids.append(singleton)
+        sizes.append(1)
+        lengths.append(len_dict[singleton]['len'])
+        cluster_number += 1
+    df = pd.DataFrame(list(zip(cluster_ids, ids, sizes, lengths)),
+                      columns=['cluster', 'id', 'size', 'len'])
+    df.to_csv(outfile, sep='\t')
 
+
+@cli.command()
+@click.argument('infile')
+def adjacency_to_graph(infile):
+    gmlfilepath='synteny.gml'
+    clusters = pd.read_csv(infile, sep='\t', index_col=0)
+    graph = nx.Graph()
+    grouping = clusters.groupby('cluster').size().sort_values(ascending=False)
+    for idx in grouping.index:
+        size = grouping.loc[idx]
+        cluster = clusters.loc[(clusters['cluster'] == idx)]
+        ids = list(cluster['id'])
+        #
+        # Do graph components
+        #
+        graph.add_nodes_from(ids)
+        if len(ids) > 1:
+            edges = combinations(ids, 2)
+            graph.add_edges_from(edges, weight=len(ids))
+    nx.write_gml(graph, gmlfilepath)
+
+@cli.command()
+@click.argument('syngml')
+@click.argument('homogml')
+def combine_graphs(syngml, homogml):
+    syngraph = nx.read_gml(syngml)
+    homograph = nx.read_gml(homogml)
+    for paths, cost in nx.algorithms.similarity.optimize_edit_paths(syngraph, homograph):
+        logging.info('edit distance: %d', cost)
+        logging.info(paths)
