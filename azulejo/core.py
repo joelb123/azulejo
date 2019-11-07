@@ -42,7 +42,7 @@ SEQ_IN_LINE = 6
 IDENT_STATS_LINE = 7
 FIRST_LOG_LINE = 14
 LAST_LOG_LINE = 23
-STAT_SUFFIXES = ['size', 'mem', 'time', 'memory']
+STAT_SUFFIXES = ['siz', 'mem', 'time', 'memory']
 RENAME_STATS = {'throughput':'throughput_seq_s',
                 'time': 'CPU_time',
                 'max_size': 'max_cluster_size',
@@ -257,6 +257,7 @@ def parse_clusters(outdir,
     cluster_list = []
     id_list = []
     degree_list = []
+    size_list = []
     degree_counter = Counter()
     any_counter = Counter()
     all_counter = Counter()
@@ -272,6 +273,7 @@ def parse_clusters(outdir,
         degree_counter.update({n_ids:1})
         id_list += ids
         cluster_list += [cluster_id] * n_ids
+        size_list += [n_ids] *n_ids
         #
         # Do 'any' and 'all' counters
         #
@@ -297,7 +299,8 @@ def parse_clusters(outdir,
             fasta.unlink()
     if delete:
         outdir.rmdir()
-    return graph, cluster_list, id_list, degree_list, degree_counter, any_counter, all_counter
+    return graph, cluster_list, id_list, size_list,\
+           degree_list, degree_counter, any_counter, all_counter
 
 
 def prettyprint_float(x, digits):
@@ -407,7 +410,7 @@ def usearch_cluster(seqfile,
     run_stats.to_csv(statfilepath, sep='\t')
     if delete:
         logfilepath.unlink()
-    cluster_graph, clusters, ids, degrees, degree_counts, any_counts, all_counts =\
+    cluster_graph, clusters, ids, sizes, degrees, degree_counts, any_counts, all_counts =\
         parse_clusters(outfilepath,
                        identity,
                        delete=delete,
@@ -416,13 +419,14 @@ def usearch_cluster(seqfile,
     # Write out list of clusters and ids.
     #
     id_frame = pd.DataFrame.from_dict({'id': ids,
-                            'cluster': clusters})
-    id_frame.sort_values('cluster', inplace=True)
-    id_frame = id_frame.reindex(['cluster', 'id'], axis=1)
+                                       'cluster': clusters,
+                                       'siz': sizes})
+    id_frame.sort_values('siz', ascending=False, inplace=True)
+    id_frame = id_frame.reindex(['cluster', 'siz', 'id',], axis=1)
     id_frame.reset_index(inplace=True)
     id_frame.drop(['index'], axis=1, inplace=True)
     id_frame.to_csv(idpath, sep='\t')
-    del ids, clusters, id_frame
+    del ids, clusters, sizes, id_frame
     logger.debug(timer.elapsed('graph'))
     #
     # Write out degree distribution.
@@ -538,12 +542,12 @@ def clusters_to_histograms(infile):
         cluster_counter.update({len(group): 1})
     logger.info('writing to %s', histfilepath)
     cluster_hist = pd.DataFrame(list(cluster_counter.items()),
-                                columns=['size', 'clusts'])
+                                columns=['siz', 'clusts'])
     total_clusters = cluster_hist['clusts'].sum()
     cluster_hist['%clusts'] = cluster_hist['clusts'] * 100. / total_clusters
-    cluster_hist['%genes'] = cluster_hist['clusts']*cluster_hist['size'] * 100. / len(clusters)
-    cluster_hist.sort_values(['size'], inplace=True)
-    cluster_hist.set_index('size', inplace=True)
+    cluster_hist['%genes'] = cluster_hist['clusts']*cluster_hist['siz'] * 100. / len(clusters)
+    cluster_hist.sort_values(['siz'], inplace=True)
+    cluster_hist.set_index('siz', inplace=True)
     cluster_hist.to_csv(histfilepath, sep='\t', float_format='%06.3f')
 
 
@@ -643,7 +647,7 @@ def add_singletons(infile, recordfile):
     cluster_ids = []
     sizes = []
     lengths = []
-    cluster_number = 0
+    n_clusters = 0
     grouping = clusters.groupby('cluster').size().sort_values(ascending=False)
     for idx in grouping.index:
         size = grouping.loc[idx]
@@ -651,19 +655,19 @@ def add_singletons(infile, recordfile):
         for gene_id in cluster['id']:
             id_set.remove(gene_id)
             ids.append(gene_id)
-            cluster_ids.append(cluster_number)
+            cluster_ids.append(n_clusters)
             sizes.append(size)
             lengths.append(len_dict[gene_id]['len'])
-        cluster_number += 1
+        n_clusters += 1
     logger.info('%s singletons', len(id_set))
     for singleton in id_set:
-        cluster_ids.append(cluster_number)
+        cluster_ids.append(n_clusters)
         ids.append(singleton)
         sizes.append(1)
         lengths.append(len_dict[singleton]['len'])
-        cluster_number += 1
+        n_clusters += 1
     df = pd.DataFrame(list(zip(cluster_ids, ids, sizes, lengths)),
-                      columns=['cluster', 'id', 'size', 'len'])
+                      columns=['cluster', 'id', 'siz', 'len'])
     df.to_csv(outfile, sep='\t')
 
 
@@ -688,11 +692,91 @@ def adjacency_to_graph(infile):
     nx.write_gml(graph, gmlfilepath)
 
 @cli.command()
-@click.argument('syngml')
-@click.argument('homogml')
-def combine_graphs(syngml, homogml):
-    syngraph = nx.read_gml(syngml)
-    homograph = nx.read_gml(homogml)
-    for paths, cost in nx.algorithms.similarity.optimize_edit_paths(syngraph, homograph):
-        logging.info('edit distance: %d', cost)
-        logging.info(paths)
+@click.argument('synfile')
+@click.argument('homofile')
+def combine_graphs(synfile, homofile):
+    syn = pd.read_csv(synfile, sep='\t', index_col=0)
+    #
+    # Add new columns with default values to syn frame
+    #
+    update_columns = ['sub', 'sub_siz', 'norm_len', 'link']
+    syn['sub'] = 0
+    syn['sub_siz'] = 0
+    syn['norm_len'] = 1.0
+    syn['link'] = 1.0
+    homo = pd.read_csv(homofile, sep='\t', index_col=0)
+    homo_id_dict = dict(zip(homo.id, homo.cluster))
+    cluster_size_dict = dict(zip(homo.cluster, homo.siz))
+    n_clusters = 0
+    congruent_clusters = set()
+    contained_clusters = set()
+    n_fully_contained = 0
+    contained_subclst_count = Counter()
+    out_frame = None
+    for cluster_id, group in syn.groupby(['cluster']):
+        group_size = group['siz'].iloc[0]
+        group_frame = group.copy() # copy, so mutable
+        group_frame['link'] = [homo_id_dict[id] for id in group['id']]
+        homo_cluster_count = Counter()
+        homo_cluster_count.update(group_frame['link'])
+        subcluster_frame = pd.DataFrame(homo_cluster_count.keys(),columns=['homo_id'])
+        subcluster_frame['mean_len'] = 0.0
+        subcluster_frame['siz'] = 0
+        for homo_cluster_id in subcluster_frame['homo_id']:
+            homo_cluster_idx = (group_frame['link'] == homo_cluster_id)
+            subcluster_idx = (subcluster_frame['homo_id'] == homo_cluster_id)
+            subcluster_frame.loc[subcluster_idx, 'mean_len'] =\
+                group[homo_cluster_idx]['len'].mean()
+            subcluster_frame.loc[subcluster_idx, 'siz'] = homo_cluster_idx.sum()
+        subcluster_frame.sort_values(['siz', 'mean_len'],
+                                     ascending=False, inplace=True)
+        subcluster_frame.index = list(range(len(subcluster_frame)))
+        contained = []
+        subcluster_sizes = []
+        homo_cluster_sizes = []
+        mean_len = subcluster_frame['mean_len'][0]
+        for i in range(len(subcluster_frame)):
+            subcluster = subcluster_frame.iloc[i]
+            homo_cluster_idx = (group_frame['link'] == subcluster['homo_id'])
+            group_frame.loc[homo_cluster_idx, 'norm_len'] =\
+                subcluster['mean_len']/mean_len
+            subcluster_size = subcluster['siz']
+            group_frame.loc[homo_cluster_idx, 'sub_siz'] = int(subcluster_size)
+            homo_cluster_size = cluster_size_dict[homo_cluster_id]
+            subcluster_sizes.append(subcluster_size)
+            homo_cluster_sizes.append(homo_cluster_size)
+            group_frame.loc[homo_cluster_idx, 'sub'] = i
+            if subcluster_size == homo_cluster_size:
+                contained.append(subcluster_size)
+                contained_clusters.add(homo_cluster_id)
+                group_frame.loc[homo_cluster_idx, 'link'] = None
+        if sum(contained) == group_size:
+            n_fully_contained += 1
+            congruent_clusters.add(cluster_id)
+            contained_subclst_count.update({len(contained):1})
+        #if n_clusters > 100:
+        #    break
+        n_clusters += 1
+        if out_frame is None:
+            out_frame = group_frame.copy()
+        else:
+            out_frame = pd.concat([out_frame, group_frame])
+    out_frame.sort_values(['cluster', 'sub'], inplace=True)
+    out_frame.index = list(range(len(out_frame)))
+    out_frame.to_csv('combined.tsv', sep='\t',
+                     columns=['cluster', 'siz', 'sub', 'sub_siz',
+                              'norm_len', 'len', 'link', 'id'],
+                     float_format='%.2f')
+    print('%d of %d clusters are fully contained (%.1f%%)'
+          % (n_fully_contained, n_clusters,
+             n_fully_contained * 100 / n_clusters))
+    print('subclusters\tN\t%clusts')
+    for count in sorted(contained_subclst_count.keys()):
+        print('%d\t%d\t%.1f'%(count, contained_subclst_count[count],
+                             contained_subclst_count[count]*100/n_clusters))
+    uncontained = n_clusters - n_fully_contained
+    print('%d of %d clusters are unontained (%.1f%%)'
+          % (uncontained, n_clusters,
+             uncontained * 100 / n_clusters))
+
+
