@@ -2,10 +2,7 @@
 """
 data analysis and plotting
 """
-import os
 import sys
-from collections import Counter
-from pathlib import Path
 #
 # third-party imports
 #
@@ -200,3 +197,107 @@ def analyze_clusters(dirname,
     plt.show()
 
 
+@cli.command()
+@click.option('--cutoff', '-s', default=0.0, show_default=True,
+              help='Disregard above this value.')
+@click.argument('cluster_size')
+@click.argument('combinedfile')
+def outlier_length_dist(cutoff, cluster_size, combinedfile):
+    """Plot the normalized length distribution of singletons in clusters"""
+    cluster_size = int(cluster_size)
+    if not cluster_size > 0:
+        logger.error('Positive cluster size must be specified')
+        sys.exit(1)
+    clusters = pd.read_csv(combinedfile, sep='\t', index_col=0)
+    norm_lengths = []
+    for cluster_id, cluster in clusters.groupby('cluster'):
+        if cluster['siz'].iloc[0] != cluster_size:
+            # not the right size
+            continue
+        if len(set(cluster['sub'])) != 2:
+            # not just two subclusters
+            continue
+        if 1 not in set(cluster['sub_siz']):
+            # no singleton cluster
+            continue
+        singleton = cluster[cluster['sub_siz'] == 1]
+        length = singleton['norm'].iloc[0]
+        if cutoff > 0.0 and (length > cutoff):
+            logger.debug('LONG\t%.2f\t%s', length, singleton['id'])
+        if (length < 0.5):
+            logger.debug('SHORT\t%.2f\t%s', length, singleton['id'])
+        norm_lengths.append(length)
+    n_obs = len(norm_lengths)
+    norm_lengths = np.array(norm_lengths)
+    logger.info('%d singleton outliers in clusters of size %d', n_obs, cluster_size)
+    logger.info('min is %.2f, max is %.2f', min(norm_lengths), max(norm_lengths))
+    if cutoff > 0.0:
+        cut = norm_lengths[norm_lengths > cutoff]
+        norm_lengths = norm_lengths[norm_lengths <= cutoff]
+        logger.info('%d observations dropped by cutoff of %.2f',
+                    len(cut), cutoff)
+        logger.info('%s', cut)
+    else:
+        cut = []
+    logger.info('mean is %.3f', norm_lengths.mean())
+    ax = sns.distplot(norm_lengths, bins=100,
+                      kde_kws={'label':'KDE'})
+    ax.set_xlabel('Normalized Length of Singleton')
+    plt.title('Length distribution of %d singleton subclusters (%d outliers removed)'
+              % (len(norm_lengths), len(cut)))
+    outfilename = 'norm_len_dist.%s'%FILETYPE
+    logger.info('saving plot to %s', outfilename)
+    plt.savefig(outfilename, dpi=200)
+    plt.show()
+
+@cli.command()
+@click.option('--cutoff', '-s', default=0.0, show_default=True,
+              help='Disregard above this value.')
+@click.argument('cluster_size')
+@click.argument('combinedfile')
+def length_std_dist(cluster_size, cutoff, combinedfile):
+    """Plot the normalized length distribution of singletons in clusters"""
+    cluster_size = int(cluster_size)
+    if not cluster_size > 0:
+        logger.error('Positive cluster size must be specified')
+        sys.exit(1)
+    clusters = pd.read_csv(combinedfile, sep='\t', index_col=0)
+    stds = []
+    for cluster_id, cluster in clusters.groupby('cluster'):
+        if cluster['siz'].iloc[0] != cluster_size:
+            # not the right size
+            continue
+        if len(set(cluster['sub'])) != 1:
+            # Only one subcluster
+            continue
+        val = cluster['std'].iloc[0]
+        if cutoff > 0.0 and (val > cutoff):
+            logger.debug('%.2f\t%s', val, cluster['id'].iloc[0])
+        stds.append(val)
+    n_obs = len(stds)
+    stds = np.array(stds)
+    pct_zeros = len(stds[stds == 0.0])*100/n_obs
+    logger.info('%d single-subgroup clusters of size %d', n_obs, cluster_size)
+    logger.info('%.1f %% zeroes, max is %.2f', pct_zeros, max(stds))
+    if cutoff > 0.0:
+        cut = stds[stds > cutoff]
+        stds = stds[stds <= cutoff]
+        logger.info('%d observations dropped by cutoff of %.2f',
+                    len(cut), cutoff)
+        logger.info('%s', cut)
+    else:
+        cut = []
+    logger.info('mean is %.3f', stds.mean())
+    logbins = np.logspace(0.7, 3, 100)
+    ax = sns.distplot(stds, bins=logbins, kde=False)
+    ax.set_xlabel('Standard Deviation of Single-Subgroup Clusters')
+    title = 'Length Standard Deviation distribution of %d clusters' %len(stds)
+    if cutoff > 0.0:
+        title += ' <%d' %cutoff
+    plt.title(title)
+    outfilename = 'std_dist.%s'%FILETYPE
+    logger.info('saving plot to %s', outfilename)
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.savefig(outfilename, dpi=200)
+    plt.show()

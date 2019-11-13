@@ -8,15 +8,16 @@ Core logic for computing subtrees
 import os
 from collections import Counter, OrderedDict
 from datetime import datetime
-from pathlib import Path
 from itertools import chain, combinations
 #
 # third-party imports
 #
 import click
+import dask.bag as db
+from dask.diagnostics import ProgressBar
 import networkx as nx
-import pandas as pd
 import numpy as np
+import pandas as pd
 from Bio import SeqIO
 from Bio.Data import IUPACData
 from plumbum import local
@@ -209,8 +210,6 @@ def parse_usearch_log(filepath, rundict):
                     except:
                         pass
                 rundict[stat] = val
-            #print(lineno, split)
-
 
 
 def get_fasta_ids(fasta):
@@ -691,92 +690,108 @@ def adjacency_to_graph(infile):
             graph.add_edges_from(edges, weight=len(ids))
     nx.write_gml(graph, gmlfilepath)
 
+def compute_subclusters(cluster, cluster_size_dict=None):
+    #
+    # compute a dictionary of per-subcluster stats first
+    #
+    subcl_frame = pd.DataFrame([{'homo_id': i,
+                                 'mean_len': g['len'].mean(),
+                                 'std': g['len'].std(),
+                                 'sub_siz': len(g)}
+                                for i, g in cluster.groupby('link')])
+    subcl_frame['link'] = subcl_frame['homo_id']
+    subcl_frame['cont'] = (subcl_frame['sub_siz'] ==
+                           [cluster_size_dict[id] for id in subcl_frame['homo_id']])
+    subcl_frame.loc[subcl_frame['cont'], 'link'] = \
+        np.nan
+    subcl_frame.sort_values(['sub_siz', 'mean_len'],
+                            ascending=False, inplace=True)
+    subcl_frame['sub'] = list(range(len(subcl_frame)))
+    # normalized length is NaN for first element
+    subcl_frame['norm'] = [np.nan] + list(subcl_frame['mean_len'][1:] / \
+                                          subcl_frame['mean_len'][0])
+    subcl_dict = subcl_frame.set_index('homo_id').to_dict('index')
+    #
+    #
+    for attr in ['norm', 'std', 'sub_siz', 'sub', 'link']:
+        cluster[attr] = [subcl_dict[id][attr] for id in cluster['link']]
+    if subcl_frame['cont'].all():
+        cluster['cont'] = 1
+    else:
+        cluster['cont'] = 0
+    return cluster
+
 @cli.command()
+@click.option('--first_n', default=0, show_default=True,
+              help='Only process this many clusters.')
+@click.option('--clust_size', default=0, show_default=True,
+              help='Process only clusters of this size.')
+@click.option('--parallel/--no-parallel', is_flag=True, default=True, show_default=True,
+              help='Process in parallel.')
+@click.option('-q', '--quiet', is_flag=True, show_default=True,
+              default=False, help='Suppress logging to stderr.')
 @click.argument('synfile')
 @click.argument('homofile')
-def combine_graphs(synfile, homofile):
+def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
+    """combine synteny and homology clusters"""
+    timer = ElapsedTimeReport('reading/preparing')
     syn = pd.read_csv(synfile, sep='\t', index_col=0)
-    #
-    # Add new columns with default values to syn frame
-    #
-    update_columns = ['sub', 'sub_siz', 'norm_len', 'link']
-    syn['sub'] = 0
-    syn['sub_siz'] = 0
-    syn['norm_len'] = 1.0
-    syn['link'] = 1.0
     homo = pd.read_csv(homofile, sep='\t', index_col=0)
     homo_id_dict = dict(zip(homo.id, homo.cluster))
     cluster_size_dict = dict(zip(homo.cluster, homo.siz))
-    n_clusters = 0
-    congruent_clusters = set()
-    contained_clusters = set()
-    n_fully_contained = 0
-    contained_subclst_count = Counter()
-    out_frame = None
-    for cluster_id, group in syn.groupby(['cluster']):
-        group_size = group['siz'].iloc[0]
-        group_frame = group.copy() # copy, so mutable
-        group_frame['link'] = [homo_id_dict[id] for id in group['id']]
-        homo_cluster_count = Counter()
-        homo_cluster_count.update(group_frame['link'])
-        subcluster_frame = pd.DataFrame(homo_cluster_count.keys(),columns=['homo_id'])
-        subcluster_frame['mean_len'] = 0.0
-        subcluster_frame['siz'] = 0
-        for homo_cluster_id in subcluster_frame['homo_id']:
-            homo_cluster_idx = (group_frame['link'] == homo_cluster_id)
-            subcluster_idx = (subcluster_frame['homo_id'] == homo_cluster_id)
-            subcluster_frame.loc[subcluster_idx, 'mean_len'] =\
-                group[homo_cluster_idx]['len'].mean()
-            subcluster_frame.loc[subcluster_idx, 'siz'] = homo_cluster_idx.sum()
-        subcluster_frame.sort_values(['siz', 'mean_len'],
-                                     ascending=False, inplace=True)
-        subcluster_frame.index = list(range(len(subcluster_frame)))
-        contained = []
-        subcluster_sizes = []
-        homo_cluster_sizes = []
-        mean_len = subcluster_frame['mean_len'][0]
-        for i in range(len(subcluster_frame)):
-            subcluster = subcluster_frame.iloc[i]
-            homo_cluster_idx = (group_frame['link'] == subcluster['homo_id'])
-            group_frame.loc[homo_cluster_idx, 'norm_len'] =\
-                subcluster['mean_len']/mean_len
-            subcluster_size = subcluster['siz']
-            group_frame.loc[homo_cluster_idx, 'sub_siz'] = int(subcluster_size)
-            homo_cluster_size = cluster_size_dict[homo_cluster_id]
-            subcluster_sizes.append(subcluster_size)
-            homo_cluster_sizes.append(homo_cluster_size)
-            group_frame.loc[homo_cluster_idx, 'sub'] = i
-            if subcluster_size == homo_cluster_size:
-                contained.append(subcluster_size)
-                contained_clusters.add(homo_cluster_id)
-                group_frame.loc[homo_cluster_idx, 'link'] = None
-        if sum(contained) == group_size:
-            n_fully_contained += 1
-            congruent_clusters.add(cluster_id)
-            contained_subclst_count.update({len(contained):1})
-        #if n_clusters > 100:
-        #    break
-        n_clusters += 1
-        if out_frame is None:
-            out_frame = group_frame.copy()
-        else:
-            out_frame = pd.concat([out_frame, group_frame])
+    cluster_count = 0
+    arg_list = []
+    if first_n:
+        logger.debug('processing only first %d clusters' %first_n)
+    if not quiet and clust_size:
+        logger.info('only clusters of size %d will be used', clust_size)
+    syn['link'] = [homo_id_dict[id] for id in syn['id']]
+    for cluster_id, gr in syn.groupby(['cluster']):
+        cl = gr.copy() # copy, so mutable
+        clsize = cl['siz'].iloc[0]
+        if clust_size and (clsize != clust_size):
+            continue
+        if first_n and cluster_count == first_n:
+           break
+        arg_list.append(cl)
+        cluster_count +=1
+    del syn
+    if parallel:
+        bag = db.from_sequence(arg_list)
+    else:
+        cluster_list = []
+    if not quiet:
+        logger.info('Combining %d synteny/homology clusters:', cluster_count)
+        ProgressBar().register()
+    if parallel:
+        cluster_list = bag.map(compute_subclusters,
+                               cluster_size_dict=cluster_size_dict)
+    else:
+        for clust in arg_list:
+            cluster_list.append(compute_subclusters(clust, cluster_size_dict))
+    logger.debug(timer.elapsed('concatenating/writing clusters'))
+    out_frame = pd.concat(cluster_list)
     out_frame.sort_values(['cluster', 'sub'], inplace=True)
     out_frame.index = list(range(len(out_frame)))
+    for column in ['sub', 'sub_siz']:
+        out_frame[column] = out_frame[column].astype(int)
+    out_frame['link'] = out_frame['link'].map(lambda x: '' if pd.isnull(x) else '{:.0f}'.format(x))
     out_frame.to_csv('combined.tsv', sep='\t',
                      columns=['cluster', 'siz', 'sub', 'sub_siz',
-                              'norm_len', 'len', 'link', 'id'],
-                     float_format='%.2f')
-    print('%d of %d clusters are fully contained (%.1f%%)'
-          % (n_fully_contained, n_clusters,
-             n_fully_contained * 100 / n_clusters))
-    print('subclusters\tN\t%clusts')
-    for count in sorted(contained_subclst_count.keys()):
-        print('%d\t%d\t%.1f'%(count, contained_subclst_count[count],
-                             contained_subclst_count[count]*100/n_clusters))
-    uncontained = n_clusters - n_fully_contained
-    print('%d of %d clusters are unontained (%.1f%%)'
-          % (uncontained, n_clusters,
-             uncontained * 100 / n_clusters))
+                              'cont', 'norm', 'std', 'len', 'link', 'id'],
+                     float_format='%.3f')
+    logger.debug(timer.elapsed('computing stats'))
+    n_fully_contained = len(set(out_frame[out_frame['cont'] == 1]['cluster']))
+    logger.info('%d of %d clusters are fully contained (%.1f%%)',
+                n_fully_contained, cluster_count,
+                n_fully_contained * 100 / cluster_count)
+    #print('subclusters\tN\t%clusts')
+    #for count in sorted(contained_subclst_count.keys()):
+    #    print('%d\t%d\t%.1f'%(count, contained_subclst_count[count],
+    #                         contained_subclst_count[count]*100/cluster_count))
+    #uncontained = cluster_count - n_fully_contained
+    #print('%d of %d clusters are unontained (%.1f%%)'
+    #      % (uncontained, cluster_count,
+    #         uncontained * 100 / cluster_count))
 
 

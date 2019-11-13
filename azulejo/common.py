@@ -2,7 +2,6 @@
 """
 Constants and functions in common across modules
 """
-import sys
 from pathlib import Path
 
 __NAME__ = 'azulejo'
