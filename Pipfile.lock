@@ -134,6 +134,13 @@
             "editable": true,
             "path": "."
         },
+        "fsspec": {
+            "hashes": [
+                "sha256:3f32b291ba9f531c2c5952730782a4eb61930ac8b8ab765e53a1fbaf9e1f1d8d",
+                "sha256:5108f9192b7b2c6a03e69d5084d5fc88c05d4312724a38efce37c9f3a6d360fa"
+            ],
+            "version": "==0.6.0"
+        },
         "jinja2": {
             "hashes": [
                 "sha256:74320bb91f31270f9551d46522e33af46a80c3d619f4a4bf42b3164d30b5911f",
@@ -182,6 +189,12 @@
                 "sha256:53eaed412477c836e1b9522c19858a8557d6e595077830146182225613b11a75"
             ],
             "version": "==1.1.0"
+        },
+        "locket": {
+            "hashes": [
+                "sha256:1fee63c1153db602b50154684f5725564e63a0f6d09366a1cb13dffcec179fb4"
+            ],
+            "version": "==0.2.0"
         },
         "markupsafe": {
             "hashes": [
@@ -287,6 +300,13 @@
             ],
             "version": "==0.25.3"
         },
+        "partd": {
+            "hashes": [
+                "sha256:f278ded3a62560db4a0d1529664fedc440585c520407a53b071fdbfb043187b9",
+                "sha256:54fd91bc3b9c38159c790cd16950dbca6b019a2ead4c51dee4f9efc884f8ce0e"
+            ],
+            "version": "==1.0.0"
+        },
         "plumbum": {
             "hashes": [
                 "sha256:600f99e1736f314b52d823aa5d3b73db9a7a6d5b5dc22303410c1a7d6f3e569c",
@@ -354,6 +374,12 @@
                 "sha256:30f610279e8b2578cab6db20741130331735c781b56053c59c4076da27f06b66"
             ],
             "version": "==1.13.0"
+        },
+        "toolz": {
+            "hashes": [
+                "sha256:08fdd5ef7c96480ad11c12d472de21acd32359996f69a5259299b540feba4560"
+            ],
+            "version": "==0.10.0"
         }
     },
     "develop": {}

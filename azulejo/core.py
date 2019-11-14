@@ -692,7 +692,8 @@ def adjacency_to_graph(infile):
 
 def compute_subclusters(cluster, cluster_size_dict=None):
     #
-    # compute a dictionary of per-subcluster stats first
+    # compute a dictionary of per-subcluster stats first,
+    # so subclusters can be ordered by length
     #
     subcl_frame = pd.DataFrame([{'homo_id': i,
                                  'mean_len': g['len'].mean(),
@@ -704,14 +705,16 @@ def compute_subclusters(cluster, cluster_size_dict=None):
                            [cluster_size_dict[id] for id in subcl_frame['homo_id']])
     subcl_frame.loc[subcl_frame['cont'], 'link'] = \
         np.nan
-    subcl_frame.sort_values(['sub_siz', 'mean_len'],
-                            ascending=False, inplace=True)
+    subcl_frame.sort_values(['sub_siz', 'std', 'mean_len'],
+                            ascending=[False, True, False], inplace=True)
     subcl_frame['sub'] = list(range(len(subcl_frame)))
+    subcl_frame.index = list(range(len(subcl_frame)))
     # normalized length is NaN for first element
     subcl_frame['norm'] = [np.nan] + list(subcl_frame['mean_len'][1:] / \
                                           subcl_frame['mean_len'][0])
     subcl_dict = subcl_frame.set_index('homo_id').to_dict('index')
     #
+    # subcluster attributes are done, now copy them into the cluster frame
     #
     for attr in ['norm', 'std', 'sub_siz', 'sub', 'link']:
         cluster[attr] = [subcl_dict[id][attr] for id in cluster['link']]
