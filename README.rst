@@ -19,15 +19,11 @@ azulejo tiles phylogenetic space with subtrees
 +-------------------+------------+            +
 | Coverage          | |coverage| |            |
 +-------------------+------------+            +
-| Pythonicity       | |landscape||            |
-+-------------------+------------+            +
 | Code Grade        | |codacy|   |            |
 +-------------------+------------+            +
 | Dependencies      | |pyup|     |            |
 +-------------------+------------+            +
 | Issues            | |issues|   |            |
-+-------------------+------------+            +
-| Kanban            | |ZenHub|   |            |
 +-------------------+------------+------------+
 
 
@@ -55,10 +51,6 @@ azulejo tiles phylogenetic space with subtrees
     :target:  https://travis-ci.org/ncgr/azulejo
     :alt: Travis CI
 
-.. |landscape| image:: https://landscape.io/github/ncgr/azulejo/master/landscape.svg?style=flat
-    :target: https://landscape.io/github/ncgr/azulejo
-    :alt: landscape.io status
-
 .. |codacy| image:: https://api.codacy.com/project/badge/Grade/2ebc65ca90f74dc7a9238c202f327981
     :target: https://www.codacy.com/app/joelb123/azulejo?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=incgr/azulejo&amp;utm_campaign=Badge_Grade
     :alt: Codacy.io grade
@@ -78,9 +70,5 @@ azulejo tiles phylogenetic space with subtrees
 .. |pyup| image:: https://pyup.io/repos/github/ncgr/azulejo/shield.svg
      :target: https://pyup.io/repos/github/ncgr/azulejo/
      :alt: pyup.io dependencies
-
-.. |ZenHub| image:: https://raw.githubusercontent.com/ZenHubIO/support/master/zenhub-badge.png
-    :target: https://zenhub.com
-    :alt: Powered by ZenHub
 
 
