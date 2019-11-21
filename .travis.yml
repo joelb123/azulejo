@@ -1,0 +1,19 @@
+sudo: false
+language: python
+python:
+   - "3.6"
+install:
+   - pip install -U setuptools
+   - pip install -U setuptools-scm
+   - pip install -U packaging
+   - pip install -r requirements.txt
+   - pip install -e .
+before_script:
+   - coverage run -m azulejo
+   - export COVERAGE_PROCESS_START="${PWD}/.coveragerc"
+script:
+   - azulejo --help
+after_success:
+   - coverage combine
+   - cp /tmp/.coverage .
+   - bash <(curl -s https://codecov.io/bash) -X gcov

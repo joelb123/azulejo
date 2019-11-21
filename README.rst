@@ -51,8 +51,8 @@ azulejo tiles phylogenetic space with subtrees
     :target:  https://travis-ci.org/ncgr/azulejo
     :alt: Travis CI
 
-.. |codacy| image:: https://api.codacy.com/project/badge/Grade/2ebc65ca90f74dc7a9238c202f327981
-    :target: https://www.codacy.com/app/joelb123/azulejo?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=incgr/azulejo&amp;utm_campaign=Badge_Grade
+.. |codacy| image:: https://api.codacy.com/project/badge/Grade/99549f0ed4e6409e9f5e80a2c4bd806b
+    :target: https://www.codacy.com/app/joelb123/azulejo?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=ncgr/azulejo&amp;utm_campaign=Badge_Grade
     :alt: Codacy.io grade
 
 .. |coverage| image:: https://codecov.io/gh/ncgr/azulejo/branch/master/graph/badge.svg
