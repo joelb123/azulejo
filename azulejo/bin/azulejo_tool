@@ -285,7 +285,7 @@ run_summarize() {
   awk 'NR>4 && $1!~/Number/ {print $2}' ${out_dir}/cluster_sizes.txt >${work_dir}/hist.txt
   histogram ${work_dir}/hist.txt >${out_dir}/cluster_size_hist.txt
   printf "#stat\tvalue\n" >${out_dir}/stats.tsv
-  head -2 ${work_dir}/cluster_sizes.txt |
+  head -2 ${out_dir}/cluster_sizes.txt |
     sed -e 's/: /\t/' |
     sed -e 's/\.//' |
     sed -e 's/Total number of //' \

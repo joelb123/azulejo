@@ -782,7 +782,8 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     out_frame.to_csv('combined.tsv', sep='\t',
                      columns=['cluster', 'siz', 'sub', 'sub_siz',
                               'cont', 'norm', 'std', 'len', 'link', 'id'],
-                     float_format='%.3f')
+                     float_format='%.3f',
+                     index=False)
     logger.debug(timer.elapsed('computing stats'))
     n_fully_contained = len(set(out_frame[out_frame['cont'] == 1]['cluster']))
     logger.info('%d of %d clusters are fully contained (%.1f%%)',
