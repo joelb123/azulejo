@@ -63,16 +63,6 @@ build/
 env/
 tmp/
 
-# version #
-###########
-version.py
-
-# files with secrets #
-######################
-crashmail_email.txt
-secret_key.txt
-sentry_dsn.txt
-
 
 # docutils #
 ############
