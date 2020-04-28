@@ -56,14 +56,10 @@ pydocstyle = "^5.0.2"
 isort = {version = "^4.3.21", extras = ["pyproject"]}
 pytest-datadir-mgr = "flynt"
 sh = "^1.13.0"
+flynt = "^0.46"
 
 [tool.poetry.scripts]
 aakbar = "aakbar:cli"
-
-[build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
-
 
 [tool.black]
 line-length = 120
@@ -100,3 +96,8 @@ import_heading_thirdparty = "third-party imports"
 import_heading_firstparty = "first-party imports"
 import_heading_localfolder = "module imports"
 known_standard_library = "pkg_resources"
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
+
+
