@@ -21,12 +21,15 @@ import numpy as np
 import pandas as pd
 from Bio import SeqIO
 from Bio.Data import IUPACData
+from loguru import logger
+
 from plumbum import local
 
 #
 # package imports
 #
-from . import cli, logger
+from . import cli
+from . import click_loguru
 from .common import *
 
 #
@@ -298,6 +301,7 @@ def prettyprint_float(x, digits):
 
 
 @cli.command()
+@click_loguru.init_logger()
 @click.argument("seqfile")
 @click.option("--identity", "-i", default=0.0, help="Minimum sequence identity (float, 0-1). [default: lowest]")
 @click.option("--min_id_freq", "-m", default=0, show_default=True, help="Minimum frequency of ID components.")
@@ -455,6 +459,7 @@ def usearch_cluster(
 
 
 @cli.command()
+@click_loguru.init_logger()
 @click.argument("seqfile")
 @click.option("--steps", "-s", default=DEFAULT_STEPS, show_default=True, help="# of steps from lowest to highest")
 @click.option("--min_id_freq", "-m", default=0, show_default=True, help="Minimum frequency of ID components.")
@@ -503,6 +508,7 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
 
 
 @cli.command()
+@click_loguru.init_logger(logfile=False)
 @click.argument("infile")
 def clusters_to_histograms(infile):
     """Compute histograms from a tab-delimited cluster file"""
@@ -527,6 +533,7 @@ def clusters_to_histograms(infile):
 
 
 @cli.command()
+@click_loguru.init_logger(logfile=False)
 @click.argument("file1")
 @click.argument("file2")
 def compare_clusters(file1, file2):
@@ -557,6 +564,7 @@ def compare_clusters(file1, file2):
 
 
 @cli.command()
+@click_loguru.init_logger(logfile=False)
 @click.argument("setname")
 @click.argument("filelist", nargs=-1)
 def scanfiles(setname, filelist):
@@ -605,6 +613,7 @@ def scanfiles(setname, filelist):
 
 
 @cli.command()
+@click_loguru.init_logger(logfile=False)
 @click.argument("infile")
 @click.argument("recordfile")
 def add_singletons(infile, recordfile):
@@ -646,6 +655,7 @@ def add_singletons(infile, recordfile):
 
 
 @cli.command()
+@click_loguru.init_logger(logfile=False)
 @click.argument("infile")
 def adjacency_to_graph(infile):
     gmlfilepath = "synteny.gml"
@@ -699,6 +709,7 @@ def compute_subclusters(cluster, cluster_size_dict=None):
 
 
 @cli.command()
+@click_loguru.init_logger(logfile=False)
 @click.option("--first_n", default=0, show_default=True, help="Only process this many clusters.")
 @click.option("--clust_size", default=0, show_default=True, help="Process only clusters of this size.")
 @click.option("--parallel/--no-parallel", is_flag=True, default=True, show_default=True, help="Process in parallel.")

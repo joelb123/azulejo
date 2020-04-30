@@ -4,7 +4,6 @@ data analysis and plotting
 """
 # standard library imports
 import sys
-from collections import OrderedDict
 
 # third-party imports
 import click
@@ -12,12 +11,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from loguru import logger
 
 # package imports
 from . import cli
-from . import logger
-from .common import *
-
+from . import click_loguru
+from .common import ANYFILE_SUFFIX
+from .common import ALLFILE_SUFFIX
+from .common import STATFILE_SUFFIX
 # Global constants
 IDENT_LOG_MIN = -3
 IDENT_LOG_MAX = 0
@@ -79,6 +80,7 @@ def log_deriv(X, Y):
 
 
 @cli.command()
+@click_loguru.init_logger()
 @click.argument("instemlist")
 def analyze_clusters(dirname, instemlist, label, reference=None, on_id=None, match_type=None):
     if match_type is None:
@@ -207,6 +209,7 @@ def do_cuts(obs, high, low, label):
 
 
 @cli.command()
+@click_loguru.init_logger()
 @click.option("--hi_cutoff", default=2.0, show_default=True, help="Disregard above this value.")
 @click.option("--lo_cutoff", default=0.0, show_default=True, help="Disregard below this value.")
 @click.argument("cluster_size")
@@ -249,6 +252,7 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
 
 
 @cli.command()
+@click_loguru.init_logger()
 @click.option("--hi_cutoff", default=0.0, show_default=True, help="Disregard above this value.")
 @click.option("--lo_cutoff", default=0.0, show_default=True, help="Disregard below this value.")
 @click.argument("cluster_size")
