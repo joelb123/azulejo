@@ -5,7 +5,9 @@ Core logic for computing subtrees
 #
 # standard library imports
 #
+import contextlib
 import os
+import sys
 from collections import Counter, OrderedDict
 from datetime import datetime
 from itertools import chain, combinations
@@ -22,8 +24,6 @@ import pandas as pd
 from Bio import SeqIO
 from Bio.Data import IUPACData
 from loguru import logger
-
-from plumbum import local
 
 #
 # package imports
@@ -155,9 +155,11 @@ def read_synonyms(filepath):
     try:
         df = pd.read_csv(filepath, sep="\t")
     except FileNotFoundError:
-        print('Synonym tsv file "%s" does not exist' % substrpath)
+        logger.error(f'Synonym tsv file "{substrpath}" does not exist')
+        sys.exit(1)
     except pd.errors.EmptyDataError:
-        print('Synonym tsv "%s" is empty' % substrpath)
+        logger.error(f'Synonym tsv "{substrpath}" is empty')
+        sys.exit(1)
     if len(df):
         if "#file" in df:
             df.drop("#file", axis=1, inplace=True)
@@ -213,6 +215,16 @@ def parse_usearch_log(filepath, rundict):
                         pass
                 rundict[stat] = val
 
+
+@contextlib.contextmanager
+def in_working_directory(path):
+    """Changes working directory and returns to previous on exit."""
+    original_cwd = Path.cwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(original_cwd)
 
 def get_fasta_ids(fasta):
     idset = set()
@@ -332,7 +344,7 @@ def usearch_cluster(
     seqfile, identity, delete=True, write_ids=False, do_calc=True, min_id_freq=0, substrs=None, dups=None
 ):
     """Cluster above a global sequence identity threshold"""
-    global logger
+    from sh import usearch
     if identity == 1.0:
         digits = "10000"
     else:
@@ -340,7 +352,7 @@ def usearch_cluster(
     try:
         inpath, dirpath = get_paths_from_file(seqfile)
     except FileNotFoundError:
-        logger.error('Input file "%s" does not exist!', seqfile)
+        logger.error(f'Input file "{seqfile}" does not exist!')
         sys.exit(1)
     stem = inpath.stem
     dirpath = inpath.parent
@@ -355,25 +367,24 @@ def usearch_cluster(
     anyfilepath = dirpath / ("%s-anyhist.tsv" % outname)
     allfilepath = dirpath / ("%s-allhist.tsv" % outname)
     idpath = dirpath / ("%s-ids.tsv" % outname)
-    logger.info("%s%% sequence identity output to %s*", prettyprint_float(identity * 100, 2), outname)
+    logger.info(f"%{prettyprint_float(identity * 100, 2)}% sequence identity output to {outname}*")
     if not delete:
-        logger.debug("Cluster files will be kept in %s and %s", logfile, outdir)
+        logger.debug(f"Cluster files will be kept in {logfile} and {outdir}")
     if write_ids:
-        logger.debug("File of cluster ID usage will be written to %s and %s", anyfilepath, allfilepath)
+        logger.debug(f"File of cluster ID usage will be written to {anyfilepath} and {allfilepath}")
     if not do_calc:
         if not logfilepath.exists():
             logger.error("Previous results must exists, rerun with --do_calc")
             sys.exit(1)
         logger.debug("Using previous results for calculation")
     if min_id_freq:
-        logger.debug("Minimum number of times ID's must occur to be counted: %d", min_id_freq)
-    usearch = local["usearch"]
+        logger.debug(f"Minimum number of times ID's must occur to be counted: {min_id_freq}")
     synonyms = {}
     if substrs is not None:
-        logger.debug("using duplicates in %s", dirpath / dups)
+        logger.debug(f"using duplicates in {dirpath / dups}")
         synonyms.update(read_synonyms(dirpath / substrs))
     if dups is not None:
-        logger.debug("using duplicates in %s", dirpath / dups)
+        logger.debug(f"using duplicates in {dirpath/dups}")
         synonyms.update(read_synonyms(dirpath / dups))
     timer = ElapsedTimeReport("usearch")
     if do_calc:
@@ -391,9 +402,9 @@ def usearch_cluster(
         #
         # Do the calculation.
         #
-        with local.cwd(dirpath):
-            calculate = usearch["-cluster_fast", seqfile, "-id", identity, "-clusters", outdir, "-log", logfile]
-            calculate()
+        with in_working_directory(dirpath):
+            output = usearch(["-cluster_fast", seqfile, "-id", identity, "-clusters", outdir, "-log", logfile])
+            logger.debug(output)
             logger.debug(timer.elapsed("parse"))
     run_stat_dict = OrderedDict([("divergence", 1.0 - identity)])
     parse_usearch_log(logfilepath, run_stat_dict)
@@ -560,7 +571,6 @@ def compare_clusters(file1, file2):
     print("%d ids not in ids1" % len(notin1))
     print("%d ids not in ids2" % len(notin2))
     print("%d in %s after dropping" % (len(clusters1), file1))
-    # print(notin2)
 
 
 @cli.command()

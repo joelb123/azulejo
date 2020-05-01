@@ -35,7 +35,7 @@ marker = "sys_platform == \"win32\""
 name = "atomicwrites"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
-version = "1.3.0"
+version = "1.4.0"
 
 [[package]]
 category = "dev"
@@ -147,7 +147,7 @@ description = "Extended pickling support for Python objects"
 name = "cloudpickle"
 optional = false
 python-versions = ">=3.5"
-version = "1.4.0"
+version = "1.4.1"
 
 [[package]]
 category = "main"
@@ -260,6 +260,14 @@ name = "fsspec"
 optional = false
 python-versions = ">3.5"
 version = "0.7.3"
+
+[[package]]
+category = "main"
+description = "GFF annotations in panda data frames"
+name = "gffpandas"
+optional = false
+python-versions = "*"
+version = "1.2.0"
 
 [[package]]
 category = "dev"
@@ -488,14 +496,6 @@ dev = ["pre-commit", "tox"]
 
 [[package]]
 category = "main"
-description = "Plumbum: shell combinators library"
-name = "plumbum"
-optional = false
-python-versions = ">=2.6,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*"
-version = "1.6.9"
-
-[[package]]
-category = "main"
 description = "Python library for extracting version from poetry pyproject.toml file"
 name = "poetry-version"
 optional = false
@@ -535,7 +535,7 @@ description = "A Python Progressbar library to provide visual (yet text based) p
 name = "progressbar2"
 optional = false
 python-versions = "*"
-version = "3.51.0"
+version = "3.51.1"
 
 [package.dependencies]
 python-utils = ">=2.3.0"
@@ -654,7 +654,7 @@ description = "World timezone definitions, modern and historical"
 name = "pytz"
 optional = false
 python-versions = "*"
-version = "2019.3"
+version = "2020.1"
 
 [[package]]
 category = "dev"
@@ -727,12 +727,12 @@ pandas = ">=0.22.0"
 scipy = ">=1.0.1"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Python subprocess replacement"
 name = "sh"
 optional = false
 python-versions = "*"
-version = "1.13.0"
+version = "1.13.1"
 
 [[package]]
 category = "main"
@@ -855,7 +855,7 @@ docs = ["sphinx", "jaraco.packaging (>=3.2)", "rst.linker (>=1.9)"]
 testing = ["jaraco.itertools", "func-timeout"]
 
 [metadata]
-content-hash = "da849b1fb7d4fa53ec7b9d9b2752787635815ebe01245e401c537793eb826707"
+content-hash = "2fd6b812a516eeda85b5123eb56b540a87aefe706aced236c74b7ce69fdfa831"
 python-versions = "^3.6.1"
 
 [metadata.files]
@@ -872,8 +872,8 @@ astor = [
     {file = "astor-0.8.1.tar.gz", hash = "sha256:6a6effda93f4e1ce9f618779b2dd1d9d84f1e32812c23a29b3fff6fd7f63fa5e"},
 ]
 atomicwrites = [
-    {file = "atomicwrites-1.3.0-py2.py3-none-any.whl", hash = "sha256:03472c30eb2c5d1ba9227e4c2ca66ab8287fbfbbda3888aa93dc2e28fc6811b4"},
-    {file = "atomicwrites-1.3.0.tar.gz", hash = "sha256:75a9445bac02d8d058d5e1fe689654ba5a6556a1dfd8ce6ec55a0ed79866cfa6"},
+    {file = "atomicwrites-1.4.0-py2.py3-none-any.whl", hash = "sha256:6d1784dea7c0c8d4a5172b6c620f40b6e4cbfdf96d783691f2e1302a7b88e197"},
+    {file = "atomicwrites-1.4.0.tar.gz", hash = "sha256:ae70396ad1a434f9c7046fd2dd196fc04b12f9e91ffb859164193be8b6168a7a"},
 ]
 attrs = [
     {file = "attrs-19.3.0-py2.py3-none-any.whl", hash = "sha256:08a96c641c3a74e44eb59afb61a24f2cb9f4d7188748e76ba4bb5edfa3cb7d1c"},
@@ -935,8 +935,8 @@ click-plugins = [
     {file = "click_plugins-1.1.1-py2.py3-none-any.whl", hash = "sha256:5d262006d3222f5057fd81e1623d4443e41dcda5dc815c06b442aa3c02889fc8"},
 ]
 cloudpickle = [
-    {file = "cloudpickle-1.4.0-py3-none-any.whl", hash = "sha256:f734a2cb6c7570841a9af63b3894b2998a03022c81d4885807315bd8c620eb8b"},
-    {file = "cloudpickle-1.4.0.tar.gz", hash = "sha256:1fb85ae78fa2882c172668adc73199d2478580d1faeb9224197105ae481fc175"},
+    {file = "cloudpickle-1.4.1-py3-none-any.whl", hash = "sha256:ff31298eca781315e097bc1f222d8045208c14063a0102cc89bd5899adb4abef"},
+    {file = "cloudpickle-1.4.1.tar.gz", hash = "sha256:0b6258a20a143603d53b037a20983016d4e978f554ec4f36b3d0895b947099ae"},
 ]
 colorama = [
     {file = "colorama-0.4.3-py2.py3-none-any.whl", hash = "sha256:7d73d2a99753107a36ac6b455ee49046802e59d9d076ef8e47b61499fa29afff"},
@@ -1000,6 +1000,9 @@ flynt = [
 fsspec = [
     {file = "fsspec-0.7.3-py3-none-any.whl", hash = "sha256:9f0e3f4915b463b94c5788afa37b89d2c29c696f0d4da7d05f9cb5b17c8c84f7"},
     {file = "fsspec-0.7.3.tar.gz", hash = "sha256:1b540552c93b47e83c568e87507d6e02993e6d1b30bc7285f2336c81c5014103"},
+]
+gffpandas = [
+    {file = "gffpandas-1.2.0.tar.gz", hash = "sha256:1a1e1c5c5120bf46ec57517222ebb42ffaab3f768c972fec54c4ac1b07b7f0c6"},
 ]
 identify = [
     {file = "identify-1.4.15-py2.py3-none-any.whl", hash = "sha256:88ed90632023e52a6495749c6732e61e08ec9f4f04e95484a5c37b9caf40283c"},
@@ -1140,10 +1143,6 @@ pluggy = [
     {file = "pluggy-0.13.1-py2.py3-none-any.whl", hash = "sha256:966c145cd83c96502c3c3868f50408687b38434af77734af1e9ca461a4081d2d"},
     {file = "pluggy-0.13.1.tar.gz", hash = "sha256:15b2acde666561e1298d71b523007ed7364de07029219b604cf808bfa1c765b0"},
 ]
-plumbum = [
-    {file = "plumbum-1.6.9-py2.py3-none-any.whl", hash = "sha256:91418dcc66b58ab9d2e3b04b3d1e0d787dc45923154fb8b4a826bd9316dba0d6"},
-    {file = "plumbum-1.6.9.tar.gz", hash = "sha256:16b9e19d96c80f2e9d051ef5f04927b834a6ac0ce5d2768eb8662b5cd53e43df"},
-]
 poetry-version = [
     {file = "poetry-version-0.1.5.tar.gz", hash = "sha256:f7d77b5c4f0761c5a5b9031f199c79c7f81d125676248053ea84e69ad79faa89"},
     {file = "poetry_version-0.1.5-py2.py3-none-any.whl", hash = "sha256:ba259257640cd36c76375563a001b9e85c6f54d764cc56b3eed0f3b5cefb0317"},
@@ -1153,8 +1152,8 @@ pre-commit = [
     {file = "pre_commit-2.3.0.tar.gz", hash = "sha256:f3e85e68c6d1cbe7828d3471896f1b192cfcf1c4d83bf26e26beeb5941855257"},
 ]
 progressbar2 = [
-    {file = "progressbar2-3.51.0-py2.py3-none-any.whl", hash = "sha256:f2892f08628aa9b488b08d5caa1dbe84b45978054a305f6d1924495d76a2e721"},
-    {file = "progressbar2-3.51.0.tar.gz", hash = "sha256:fb71a37a8430f9a52a7ab8dc3d20f63afa3449da533043395f60d0c80c66dab1"},
+    {file = "progressbar2-3.51.1-py2.py3-none-any.whl", hash = "sha256:5c587d042109b0674b24f5afa5a13f9bb8e19bdaffbedd74ccb00174ec1efaa5"},
+    {file = "progressbar2-3.51.1.tar.gz", hash = "sha256:053ef266d7ee1cf060578ff89339ff722e6281664fb27780c1544c4cb382e587"},
 ]
 py = [
     {file = "py-1.8.1-py2.py3-none-any.whl", hash = "sha256:c20fdd83a5dbc0af9efd622bee9a5564e278f6380fffcacc43ba6f43db2813b0"},
@@ -1189,8 +1188,8 @@ python-utils = [
     {file = "python_utils-2.4.0-py2.py3-none-any.whl", hash = "sha256:ebaadab29d0cb9dca0a82eab9c405f5be5125dbbff35b8f32cc433fa498dbaa7"},
 ]
 pytz = [
-    {file = "pytz-2019.3-py2.py3-none-any.whl", hash = "sha256:1c557d7d0e871de1f5ccd5833f60fb2550652da6be2693c1e02300743d21500d"},
-    {file = "pytz-2019.3.tar.gz", hash = "sha256:b02c06db6cf09c12dd25137e563b31700d3b80fcc4ad23abb7a315f2789819be"},
+    {file = "pytz-2020.1-py2.py3-none-any.whl", hash = "sha256:a494d53b6d39c3c6e44c3bec237336e14305e4f29bbf800b599253057fbb79ed"},
+    {file = "pytz-2020.1.tar.gz", hash = "sha256:c35965d010ce31b23eeb663ed3cc8c906275d6be1a34393a1d73a41febf4a048"},
 ]
 pyyaml = [
     {file = "PyYAML-5.3.1-cp27-cp27m-win32.whl", hash = "sha256:74809a57b329d6cc0fdccee6318f44b9b8649961fa73144a98735b0aaf029f1f"},
@@ -1264,8 +1263,8 @@ seaborn = [
     {file = "seaborn-0.10.1.tar.gz", hash = "sha256:2d1a0c9d6bd1bc3cadb0364b8f06540f51322a670cf8438d0fde1c1c7317adc0"},
 ]
 sh = [
-    {file = "sh-1.13.0-py2.py3-none-any.whl", hash = "sha256:ee445c1ab771a095a31302789ef086d0b7fdc07591fd29385d445fa5165dbd74"},
-    {file = "sh-1.13.0.tar.gz", hash = "sha256:f00dfb38579ab661786daec7a7b9436facf77682f62160db5b66d58c8b2f270a"},
+    {file = "sh-1.13.1-py2.py3-none-any.whl", hash = "sha256:6f792e45b45d039b423081558904981e8ab49572b0c38009fcc65feaab06bcda"},
+    {file = "sh-1.13.1.tar.gz", hash = "sha256:97a3d2205e3c6a842d87ebbc9ae93acae5a352b1bc4609b428d0fd5bb9e286a3"},
 ]
 six = [
     {file = "six-1.14.0-py2.py3-none-any.whl", hash = "sha256:8f3cd2e254d8f793e7f3d6d9df77b92252b52637291d0f0da013c76ea2724b6c"},

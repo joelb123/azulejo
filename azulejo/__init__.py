@@ -64,3 +64,4 @@ from .core import combine_clusters #  isort:skip
 from .core import compare_clusters #  isort:skip
 from .core import scanfiles #  isort:skip
 from .core import usearch_cluster #  isort:skip
+from .synteny import synteny # isort:skip

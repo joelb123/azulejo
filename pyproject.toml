@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.5.5"
+version = "0.5.6"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -44,10 +44,12 @@ numpy = "^1.18.3"
 pandas = "^1.0.3"
 seaborn = "^0.10.1"
 coverage = "^5.1"
-plumbum = "^1.6.9"
-click_loguru = "^0.1.0"
 click_plugins = "^1.1.1"
 poetry_version = "^0.1.5"
+sh = "^1.13.1"
+loguru = "^0.4.1"
+click_loguru = "^0.1.0"
+gffpandas = "^1.2.0"
 
 
 [tool.poetry.dev-dependencies]
