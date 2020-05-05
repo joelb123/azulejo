@@ -312,6 +312,14 @@ def prettyprint_float(x, digits):
     return (format_string % x).rstrip("0").rstrip(".")
 
 
+def cluster_set_name(stem, identity):
+    """Get a setname that identity."""
+    if identity == 1.0:
+        digits = "10000"
+    else:
+        digits = ("%.4f" % identity)[2:]
+    return f"{stem}-nr-{digits}"
+
 @cli.command()
 @click_loguru.init_logger()
 @click.argument("seqfile")
@@ -345,10 +353,6 @@ def usearch_cluster(
 ):
     """Cluster above a global sequence identity threshold"""
     from sh import usearch
-    if identity == 1.0:
-        digits = "10000"
-    else:
-        digits = ("%.4f" % identity)[2:]
     try:
         inpath, dirpath = get_paths_from_file(seqfile)
     except FileNotFoundError:
@@ -356,7 +360,7 @@ def usearch_cluster(
         sys.exit(1)
     stem = inpath.stem
     dirpath = inpath.parent
-    outname = stem + "-nr-%s" % digits
+    outname = cluster_set_name(stem, identity)
     outdir = "%s/" % outname
     logfile = "%s.log" % outname
     outfilepath = dirpath / outdir
@@ -374,7 +378,7 @@ def usearch_cluster(
         logger.debug(f"File of cluster ID usage will be written to {anyfilepath} and {allfilepath}")
     if not do_calc:
         if not logfilepath.exists():
-            logger.error("Previous results must exists, rerun with --do_calc")
+            logger.error("Previous results must exist, rerun with --do_calc")
             sys.exit(1)
         logger.debug("Using previous results for calculation")
     if min_id_freq:

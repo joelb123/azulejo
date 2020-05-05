@@ -75,3 +75,7 @@ venv
 # src directory (git installs)#
 ###############################
 src
+
+# coverage stats#
+#################
+.coverage

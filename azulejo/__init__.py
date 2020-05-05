@@ -64,4 +64,7 @@ from .core import combine_clusters #  isort:skip
 from .core import compare_clusters #  isort:skip
 from .core import scanfiles #  isort:skip
 from .core import usearch_cluster #  isort:skip
-from .synteny import synteny # isort:skip
+from .synteny import annotate_homology # isort:skip
+from .synteny import kmer_synteny # isort:skip
+from .synteny import dagchainer_synteny # isort:skip
+from .synteny import proxy_genes # isort:skip
