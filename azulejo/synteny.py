@@ -29,14 +29,6 @@ from .core import cluster_set_name
 # global constants
 GFF_EXT = "gff3"
 FASTA_EXT = "faa"
-SEQ_ID_POS = 0
-START_POS = 1
-STRAND_POS = 2
-PROTEIN_LEN_POS = 3
-CLUSTER_POS = 4
-FOOTPRINT_POS = 5
-HASHDIR_POS = 6
-SYNTENY_POS = 7
 HOMOLOGY_ENDING = "-homology.tsv"
 FILES_ENDING = "-files.tsv"
 SYNTENY_ENDING = "-synteny.tsv"
@@ -51,12 +43,12 @@ def kmer_synteny_block_func(k, frame):
         """Mappable function from index to (footprint, direction, hash) tuple."""
         first_index = next(frame_iter)
         cluster_list = []
-        initial_seq_id = frame.iloc[first_index, SEQ_ID_POS]
+        initial_seq_id = frame.loc[first_index, "seq_id"]
         for idx in range(first_index, first_index+k):
             if idx+1 > frame_len:
                 return null_return
-            cluster =  frame.iloc[idx, CLUSTER_POS]
-            if frame.iloc[idx, SEQ_ID_POS] != initial_seq_id or cluster == -1:
+            cluster_size =  frame.loc[idx, "cluster_size"]
+            if frame.loc[idx, "seq_id"] != initial_seq_id or cluster_size == 1:
                 return null_return
             cluster_list.append(cluster)
         fwd_hash = hash(tuple(cluster_list))
@@ -199,19 +191,20 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
         del stats, graph, hist, any, all
     del fasta_records
     cluster_frame = pd.read_csv(set_path/ (cluster_set_name(setname, identity) + "-ids.tsv"), sep="\t")
-    cluster_dict = {}
-    logger.debug("Getting ID-to-cluster info.")
-    for index, row in cluster_frame.iterrows():
-        if row['siz'] > 1:
-            cluster_dict[row['id']] = row['cluster']
-        else:
-            cluster_dict[row['id']] = -1
-    logger.debug("Mapping FASTA IDs to cluster.")
+    cluster_frame = cluster_frame.set_index("id")
+    logger.debug("Mapping FASTA IDs to cluster properties.")
+    def id_to_cluster_property(id, column):
+        try:
+            return int(cluster_frame.loc[id, column])
+        except KeyError:
+            raise KeyError(f"ID {id} not found in clusters")
     for stem in set_keys:
-        frame_dict[stem]["cluster"] = frame_dict[stem].index.map(cluster_dict)
-    logger.debug(f"Writing homology frames.")
-    for stem in set_keys:
-        frame_dict[stem].to_csv(set_path / f"{stem}{HOMOLOGY_ENDING}", sep="\t")
+        frame = frame_dict[stem]
+        frame["cluster_id"] = frame.index.map(lambda id: id_to_cluster_property(id, "cluster"))
+        frame["cluster_size"] = frame.index.map(lambda id: id_to_cluster_property(id, "siz"))
+        homology_filename = f"{stem}{HOMOLOGY_ENDING}"
+        logger.debug(f"Writing homology file {homology_filename}")
+        frame.to_csv(set_path / homology_filename, sep="\t")
 
 
 @cli.command()
@@ -310,7 +303,7 @@ def dagchainer_synteny(setname):
     set_keys = list(files_frame["stem"])
     def id_to_synteny_property(id, column):
         try:
-            return synteny_frame.loc[id, column]
+            return int(synteny_frame.loc[id, column])
         except KeyError:
             return 0
     for stem in set_keys:
@@ -320,6 +313,46 @@ def dagchainer_synteny(setname):
         synteny_name =  f"{stem}-{synteny_func_name}{SYNTENY_ENDING}"
         logger.debug(f"Writing {synteny_func_name} synteny frame {synteny_name}.")
         homology_frame.to_csv(set_path / synteny_name, sep="\t")
+
+
+class ProxySelector(object):
+
+    """Provide methods for downselection of proxy genes."""
+
+    def __init__(self, frame, prefs):
+        """Calculate any joint statistics from frame."""
+        self.prefs = prefs
+        self.reasons = []
+        self.drop_ids = []
+
+    def group_selector(self, cluster_id, group):
+        "Calculate which gene in a group should be left and why."
+        if len(group) == 1:
+            reason = "singleton"
+            save_id = group.index[0]
+            self.reasons.append((save_id, reason))
+        if len(group) == 2:
+            lengths = group["protein_len"]
+            longest = max(lengths)
+            save_id = None
+            for idx, row in group.iterrows():
+                if group.loc[idx, "protein_len"] == longest:
+                    if save_id == None:
+                        save_id = idx
+                        reason = "longest"
+                    else:
+                        self.drop_ids.append(idx)
+                        reason = "first"
+                else:
+                    self.drop_ids.append(idx)
+            self.reasons.append((save_id, reason))
+
+
+    def provide_reasons(self):
+        return self.reasons
+
+    def drop_list(self):
+        return self.drop_ids
 
 
 @cli.command()
@@ -345,14 +378,29 @@ def proxy_genes(setname, synteny_type, prefs):
         logger.debug("No preference list was set.")
     proxy_frame = None
     for stem in set_keys:
+        print(f"Doing {stem}")
         frame_dict[stem]["stem"] = stem
         if proxy_frame is None:
             proxy_frame = frame_dict[stem]
         else:
-            proxy_frame.append(frame_dict[stem])
+            proxy_frame = proxy_frame.append(frame_dict[stem])
     del files_frame
-    proxy_frame = proxy_frame.sort_values(by=["cluster", "synteny_count", "synteny_id"])
+    proxy_frame = proxy_frame.sort_values(by=["cluster_size", "cluster_id", "synteny_count", "synteny_id"])
     proxy_filename = f"{setname}-{synteny_type}{PROXY_ENDING}"
-    logger.debug(f"Writing proxy file {proxy_filename}.")
+    logger.debug(f"Writing initial proxy file {proxy_filename}.")
     proxy_frame.to_csv(set_path/proxy_filename, sep="\t")
-
+    downselector = ProxySelector(proxy_frame, prefs)
+    downselected = proxy_frame
+    downselected_filename = f"{setname}-{synteny_type}-downselected{PROXY_ENDING}"
+    logger.debug(f"Downselecting homology clusters.")
+    for cluster_id, group in downselected.groupby(by=['cluster_id']):
+        downselector.group_selector(cluster_id, group)
+    downselected["reason"] = ""
+    for ID, reason in downselector.provide_reasons():
+        downselected.loc[ID, "reason"] = reason
+    drop_ids = downselector.drop_list()
+    if len(drop_ids):
+        print(f"Dropping {len(drop_ids)} genes.")
+        downselected = downselected.drop(drop_ids)
+    logger.debug(f"Writing downselected proxy file {downselected_filename}.")
+    downselected.to_csv(set_path/downselected_filename, sep="\t")
