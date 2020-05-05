@@ -278,6 +278,14 @@ def kmer_synteny(k, rmer, setname):
         logger.debug(f"Writing {synteny_func_name} synteny frame {synteny_name}.")
         frame_dict[stem].to_csv(set_path / synteny_name, sep="\t")
 
+def dagchainer_id_to_int(id):
+    """Accepts DAGchainer ids such as "cl1" and returns an integer."""
+    if not id.startswith("cl"):
+        raise ValueError(f"Invalid ID {id}.")
+    id_val = id[2:]
+    if not id_val.isnumeric():
+        raise ValueError(f"Non-numeric ID value in {id}.")
+    return int(id_val)
 
 @cli.command()
 @click_loguru.init_logger()
@@ -288,15 +296,30 @@ def dagchainer_synteny(setname):
     IDs must correspond between DAGchainer files and homology blocks.
     Currently does not calculate DAGchainer synteny.
     """
+    synteny_func_name = "dagchainer"
     set_path = Path(setname)
+    logger.debug(f"Reading {synteny_func_name} synteny file.")
+    synteny_frame = pd.read_csv(set_path/ synteny_func_name / "clusters.tsv", sep="\t")
+    synteny_frame["synteny_id"] = synteny_frame["cluster"].map(lambda id: dagchainer_id_to_int(id))
+    synteny_frame = synteny_frame.drop(["cluster"], axis=1)
+    cluster_counts = synteny_frame["synteny_id"].value_counts()
+    synteny_frame["synteny_count"] = synteny_frame["synteny_id"].map(cluster_counts)
+    synteny_frame = synteny_frame.sort_values(by=["synteny_count", "synteny_id"])
+    synteny_frame = synteny_frame.set_index(["id"])
     files_frame, frame_dict = read_files(setname)
     set_keys = list(files_frame["stem"])
-    synteny_func_name = "dagchainer"
-    pass
+    def id_to_synteny_property(id, column):
+        try:
+            return synteny_frame.loc[id, column]
+        except KeyError:
+            return 0
     for stem in set_keys:
+        homology_frame = frame_dict[stem]
+        homology_frame["synteny_id"] = homology_frame.index.map(lambda x: id_to_synteny_property(x, "synteny_id"))
+        homology_frame["synteny_count"] = homology_frame.index.map(lambda x: id_to_synteny_property(x, "synteny_count"))
         synteny_name =  f"{stem}-{synteny_func_name}{SYNTENY_ENDING}"
         logger.debug(f"Writing {synteny_func_name} synteny frame {synteny_name}.")
-        frame_dict[stem].to_csv(set_path / synteny_name, sep="\t")
+        homology_frame.to_csv(set_path / synteny_name, sep="\t")
 
 
 @cli.command()
@@ -328,7 +351,7 @@ def proxy_genes(setname, synteny_type, prefs):
         else:
             proxy_frame.append(frame_dict[stem])
     del files_frame
-    proxy_frame = proxy_frame.sort_values(by=["cluster"])
+    proxy_frame = proxy_frame.sort_values(by=["cluster", "synteny_count", "synteny_id"])
     proxy_filename = f"{setname}-{synteny_type}{PROXY_ENDING}"
     logger.debug(f"Writing proxy file {proxy_filename}.")
     proxy_frame.to_csv(set_path/proxy_filename, sep="\t")
