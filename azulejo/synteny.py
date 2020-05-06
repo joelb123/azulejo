@@ -3,6 +3,7 @@
 # standard library imports
 #
 import os
+import statistics
 import sys
 
 #
@@ -131,7 +132,7 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
         prefix_len = max([len(os.path.commonprefix([fasta, gff])) for gff in gff_stems])
         match_gff_idx = [i for i, gff in enumerate(gff_stems)
                      if len(os.path.commonprefix([fasta, gff])) == prefix_len][0]
-        match_gff = gff_stems.pop(match_gff_idx)
+        match_gff = gff_stems.remove(match_gff_idx)
         fasta_path = [Path(p) for p in gff_faa_path_list if p.endswith(fasta + "." + FASTA_EXT)][0]
         gff_path = [Path(p) for p in gff_faa_path_list if p.endswith(match_gff + "." +GFF_EXT)][0]
         stem = os.path.commonprefix([fasta, match_gff])
@@ -321,38 +322,78 @@ class ProxySelector(object):
 
     def __init__(self, frame, prefs):
         """Calculate any joint statistics from frame."""
+        self.frame = frame
         self.prefs = prefs
         self.reasons = []
         self.drop_ids = []
+        self.first_choice = prefs[0]
+        self.first_choice_hits = 0
+        self.first_choice_unavailable = 0
+        self.cluster_count = 0
 
-    def group_selector(self, cluster_id, group):
-        "Calculate which gene in a group should be left and why."
-        if len(group) == 1:
-            reason = "singleton"
-            save_id = group.index[0]
-            self.reasons.append((save_id, reason))
-        if len(group) == 2:
-            lengths = group["protein_len"]
-            longest = max(lengths)
-            save_id = None
-            for idx, row in group.iterrows():
-                if group.loc[idx, "protein_len"] == longest:
-                    if save_id == None:
-                        save_id = idx
-                        reason = "longest"
-                    else:
-                        self.drop_ids.append(idx)
-                        reason = "first"
+    def choose(self, chosen_one, cluster, reason, drop_non_chosen=True):
+        """Make the choice, recording stats."""
+        self.frame.loc[chosen_one, "reason"] = reason
+        self.first_choice_unavailable += int(self.first_choice not in set(cluster["stem"]))
+        self.first_choice_hits += int(cluster.loc[chosen_one, "stem"] == self.first_choice)
+        non_chosen_ones = list(cluster.index)
+        non_chosen_ones.remove(chosen_one)
+        if drop_non_chosen:
+            self.drop_ids += non_chosen_ones
+        else:
+            self.cluster_count += len(non_chosen_ones)
+
+    def choose_by_preference(self, subcluster, cluster, reason, drop_non_chosen=True):
+        """Choose in order of preference."""
+        stems = subcluster["stem"]
+        pref_idxs = [subcluster[stems == pref].index for pref in self.prefs]
+        pref_lens = np.array([int(len(idx) > 0) for idx in pref_idxs])
+        best_choice = np.argmax(pref_lens) # first occurrance
+        if pref_lens[best_choice] > 1:
+            raise ValueError(f"subcluster {subcluster} is not unique w.r.t. genome {list(stems)[best_choice]}.")
+        self.choose(pref_idxs[best_choice][0], cluster, reason, drop_non_chosen)
+
+    def choose_by_length(self, subcluster, cluster, drop_non_chosen=True):
+        """Return an index corresponding to the selected modal/median length."""
+        counts = subcluster["protein_len"].value_counts()
+        max_count = max(counts)
+        if max_count > 1: # repeated values exist
+            max_vals = list(counts[counts == max(counts)].index)
+            modal_cluster = subcluster[subcluster["protein_len"].isin(max_vals)]
+            self.choose_by_preference(modal_cluster, cluster, f"mode{len(modal_cluster)}",
+                                      drop_non_chosen=drop_non_chosen)
+        else:
+            lengths = list(subcluster["protein_len"])
+            median_vals = [statistics.median_low(lengths),
+                           statistics.median_high(lengths)]
+            median_pair = subcluster[subcluster["protein_len"].isin(median_vals)]
+            self.choose_by_preference(median_pair, cluster, "median",
+                                      drop_non_chosen=drop_non_chosen)
+
+    def cluster_selector(self, cluster):
+        "Calculate which gene in a homology cluster should be left and why."
+        self.cluster_count += 1
+        if len(cluster) == 1:
+            self.choose(cluster.index[0], cluster, "singleton")
+        else:
+            for synteny_id, subcluster in cluster.groupby(by=["synteny_id"]):
+                if len(subcluster) > 1:
+                    self.choose_by_length(subcluster, cluster, drop_non_chosen=(not synteny_id))
                 else:
-                    self.drop_ids.append(idx)
-            self.reasons.append((save_id, reason))
+                    if subcluster["synteny_id"][0] != 0:
+                        self.choose(subcluster.index[0], cluster, "bad_synteny", drop_non_chosen=(not synteny_id))
+                    else:
+                        self.choose(subcluster.index[0], cluster, "single", drop_non_chosen=(not synteny_id))
 
+    def downselect_frame(self):
+        """Return a frame with reasons for keeping and non-chosen-ones dropped."""
+        drop_pct = len(self.drop_ids)*100./len(self.frame)
+        logger.info(f"Dropping {len(self.drop_ids)} ({drop_pct:0.1f}%) of {len(self.frame)} genes.")
+        return self.frame.drop(self.drop_ids)
 
-    def provide_reasons(self):
-        return self.reasons
-
-    def drop_list(self):
-        return self.drop_ids
+    def selection_stats(self):
+        """Return selection stats."""
+        return self.cluster_count, self.first_choice_unavailable, self.first_choice_hits
 
 
 @cli.command()
@@ -368,17 +409,24 @@ def proxy_genes(setname, synteny_type, prefs):
     set_path = Path(setname)
     files_frame, frame_dict = read_files(setname, synteny=synteny_type)
     set_keys = list(files_frame["stem"])
+    default_prefs = set_keys.copy()
+    default_prefs.reverse()
     if prefs != ():
         for stem in prefs:
-            if stem not in set_keys:
-                logger.error(f'Preference {stem} not in {set_keys}')
+            if stem not in default_prefs:
+                logger.error(f'Preference {stem} not in {default_prefs}')
                 sys.exit(1)
-        logger.debug(f"Genome preference order in proxy selection is {prefs}")
+            else:
+                default_prefs.remove(stem)
+        prefs = list(prefs) + default_prefs
+        order = "non-default"
     else:
-        logger.debug("No preference list was set.")
+        prefs = default_prefs
+        order = "default"
+    logger.debug(f"Genome preference for proxy selection in {order} order: {prefs}")
     proxy_frame = None
     for stem in set_keys:
-        print(f"Doing {stem}")
+        logger.debug(f"Reading {stem}")
         frame_dict[stem]["stem"] = stem
         if proxy_frame is None:
             proxy_frame = frame_dict[stem]
@@ -389,18 +437,19 @@ def proxy_genes(setname, synteny_type, prefs):
     proxy_filename = f"{setname}-{synteny_type}{PROXY_ENDING}"
     logger.debug(f"Writing initial proxy file {proxy_filename}.")
     proxy_frame.to_csv(set_path/proxy_filename, sep="\t")
-    downselector = ProxySelector(proxy_frame, prefs)
-    downselected = proxy_frame
-    downselected_filename = f"{setname}-{synteny_type}-downselected{PROXY_ENDING}"
+    proxy_frame["reason"] = ""
     logger.debug(f"Downselecting homology clusters.")
-    for cluster_id, group in downselected.groupby(by=['cluster_id']):
-        downselector.group_selector(cluster_id, group)
-    downselected["reason"] = ""
-    for ID, reason in downselector.provide_reasons():
-        downselected.loc[ID, "reason"] = reason
-    drop_ids = downselector.drop_list()
-    if len(drop_ids):
-        print(f"Dropping {len(drop_ids)} genes.")
-        downselected = downselected.drop(drop_ids)
+    downselector = ProxySelector(proxy_frame, prefs)
+    for cluster_id, homology_cluster in proxy_frame.groupby(by=['cluster_id']):
+        downselector.cluster_selector(homology_cluster)
+    downselected = downselector.downselect_frame()
+    downselected_filename = f"{setname}-{synteny_type}-downselected{PROXY_ENDING}"
     logger.debug(f"Writing downselected proxy file {downselected_filename}.")
     downselected.to_csv(set_path/downselected_filename, sep="\t")
+    # print out stats
+    cluster_count, first_choice_unavailable, first_choice_hits = downselector.selection_stats()
+    first_choice_percent = first_choice_hits*100./(cluster_count-first_choice_unavailable)
+    first_choice_unavailable_percent = first_choice_unavailable*100./cluster_count
+    logger.info(f"First-choice ({prefs[0]}) selections from {cluster_count} homology clusters:")
+    logger.info(f"   not in cluster: {first_choice_unavailable} ({first_choice_unavailable_percent:.1f}%)")
+    logger.info(f"   chosen as proxy: {first_choice_hits} ({first_choice_percent:.1f}%)")
