@@ -50,6 +50,7 @@ sh = "^1.13.1"
 loguru = "^0.4.1"
 click_loguru = "^0.1.0"
 gffpandas = "^1.2.0"
+networkx = "^2.4"
 
 
 [tool.poetry.dev-dependencies]
