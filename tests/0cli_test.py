@@ -27,7 +27,7 @@ def test_cli(tmp_path):
             output = sh.azulejo()
         except sh.ErrorReturnCode as e:
             print(e)
-            pytest.fail(e)
+            pytest.fail("Basic cli test failed")
         print(output)
         assert "Usage:" in output
         assert "Options:" in output

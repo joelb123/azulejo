@@ -11,6 +11,7 @@ before_install:
 install:
    - poetry install -v
 script:
+   - poetry run azulejo
    - poetry run pytest -s
 after_success:
   - bash <(curl -s https://codecov.io/bash) -X gcov
