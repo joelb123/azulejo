@@ -7,12 +7,10 @@ import sys
 
 # third-party imports
 import click
-import dask.bag as db
 import gffpandas.gffpandas as gffpd
 import numpy as np
 import pandas as pd
 from Bio import SeqIO
-from dask.diagnostics import ProgressBar
 
 # first-party imports
 from loguru import logger
@@ -74,7 +72,7 @@ def read_files(setname, synteny=None):
     files_frame_path = set_path / f"{setname}{FILES_ENDING}"
     try:
         file_frame = pd.read_csv(files_frame_path, index_col=0, sep="\t")
-    except:
+    except FileNotFoundError:
         logger.error(f"Unable to read files frome from {files_frame_path}")
         sys.exit(1)
     if synteny is None:
@@ -128,9 +126,9 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
     # find matching pairs of gff files
     file_dict = {}
     gff_stems = [str(Path(n).stem) for n in gff_faa_path_list if n.find(GFF_EXT) > -1]
-    gff_stems.sort(key=lambda x: len(x))
+    gff_stems.sort(key=len)
     fasta_stems = [str(Path(n).stem) for n in gff_faa_path_list if n.find(FASTA_EXT) > -1]
-    fasta_stems.sort(key=lambda x: len(x))
+    fasta_stems.sort(key=len)
     if len(gff_stems) != len(fasta_stems):
         logger.error(f"Differing number of {FASTA_EXT} ({len(fasta_stems)}) and {GFF_EXT} files ({len(gff_stems)}).")
         sys.exit(1)
@@ -196,26 +194,26 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
         logger.debug("Doing cluster calculation.")
         cwd = Path.cwd()
         os.chdir(set_path)
-        stats, graph, hist, any, all = usearch_cluster.callback(
+        stats, graph, hist, any_, all_ = usearch_cluster.callback(
             concatenated_fasta_name, identity, write_ids=True, delete=False
         )
         os.chdir(cwd)
-        del stats, graph, hist, any, all
+        del stats, graph, hist, any_, all_
     del fasta_records
     cluster_frame = pd.read_csv(set_path / (cluster_set_name(setname, identity) + "-ids.tsv"), sep="\t")
     cluster_frame = cluster_frame.set_index("id")
     logger.debug("Mapping FASTA IDs to cluster properties.")
 
-    def id_to_cluster_property(id, column):
+    def id_to_cluster_property(ident, column):
         try:
-            return int(cluster_frame.loc[id, column])
+            return int(cluster_frame.loc[ident, column])
         except KeyError:
             raise KeyError(f"ID {id} not found in clusters")
 
     for stem in set_keys:
         frame = frame_dict[stem]
-        frame["cluster_id"] = frame.index.map(lambda id: id_to_cluster_property(id, "cluster"))
-        frame["cluster_size"] = frame.index.map(lambda id: id_to_cluster_property(id, "siz"))
+        frame["cluster_id"] = frame.index.map(lambda i: id_to_cluster_property(i, "cluster"))
+        frame["cluster_size"] = frame.index.map(lambda i: id_to_cluster_property(i, "siz"))
         homology_filename = f"{stem}{HOMOLOGY_ENDING}"
         logger.debug(f"Writing homology file {homology_filename}")
         frame.to_csv(set_path / homology_filename, sep="\t")
@@ -286,13 +284,13 @@ def kmer_synteny(k, rmer, setname):
         frame_dict[stem].to_csv(set_path / synteny_name, sep="\t")
 
 
-def dagchainer_id_to_int(id):
+def dagchainer_id_to_int(ident):
     """Accepts DAGchainer ids such as "cl1" and returns an integer."""
-    if not id.startswith("cl"):
-        raise ValueError(f"Invalid ID {id}.")
-    id_val = id[2:]
+    if not ident.startswith("cl"):
+        raise ValueError(f"Invalid ID {ident}.")
+    id_val = ident[2:]
     if not id_val.isnumeric():
-        raise ValueError(f"Non-numeric ID value in {id}.")
+        raise ValueError(f"Non-numeric ID value in {ident}.")
     return int(id_val)
 
 
@@ -309,7 +307,7 @@ def dagchainer_synteny(setname):
     set_path = Path(setname)
     logger.debug(f"Reading {synteny_func_name} synteny file.")
     synteny_frame = pd.read_csv(set_path / synteny_func_name / "clusters.tsv", sep="\t")
-    synteny_frame["synteny_id"] = synteny_frame["cluster"].map(lambda id: dagchainer_id_to_int(id))
+    synteny_frame["synteny_id"] = synteny_frame["cluster"].map(dagchainer_id_to_int)
     synteny_frame = synteny_frame.drop(["cluster"], axis=1)
     cluster_counts = synteny_frame["synteny_id"].value_counts()
     synteny_frame["synteny_count"] = synteny_frame["synteny_id"].map(cluster_counts)
@@ -318,9 +316,9 @@ def dagchainer_synteny(setname):
     files_frame, frame_dict = read_files(setname)
     set_keys = list(files_frame["stem"])
 
-    def id_to_synteny_property(id, column):
+    def id_to_synteny_property(ident, column):
         try:
-            return int(synteny_frame.loc[id, column])
+            return int(synteny_frame.loc[ident, column])
         except KeyError:
             return 0
 
@@ -456,7 +454,9 @@ def proxy_genes(setname, synteny_type, prefs):
     proxy_frame["reason"] = ""
     logger.debug(f"Downselecting homology clusters.")
     downselector = ProxySelector(proxy_frame, prefs)
-    for cluster_id, homology_cluster in proxy_frame.groupby(by=["cluster_id"]):
+    for unused_cluster_id, homology_cluster in proxy_frame.groupby(
+        by=["cluster_id"]
+    ):  # pylint: disable=unused-variable
         downselector.cluster_selector(homology_cluster)
     downselected = downselector.downselect_frame()
     downselected_filename = f"{setname}-{synteny_type}-downselected{PROXY_ENDING}"

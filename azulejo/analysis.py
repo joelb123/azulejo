@@ -268,7 +268,7 @@ def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
         sys.exit(1)
     clusters = pd.read_csv(combinedfile, sep="\t", index_col=0)
     stds = []
-    for cluster_id, cluster in clusters.groupby("cluster"):
+    for unused_cluster_id, cluster in clusters.groupby("cluster"):  # pylint: disable=unused-variable
         if cluster["siz"].iloc[0] != cluster_size:
             # not the right size
             continue

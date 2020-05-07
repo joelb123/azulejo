@@ -33,7 +33,7 @@ azulejo tiles phylogenetic space with subtrees
     :target: https://pypi.python.org/pypi/azulejo
     :alt: Python package
 
-.. |repo| image:: https://img.shields.io/github/commits-since/legumeinfo/azulejo/0.11.svg
+.. |repo| image:: https://img.shields.io/github/commits-since/legumeinfo/azulejo/0.3.svg
     :target: https://github.com/legumeinfo/azulejo
     :alt: GitHub repository
 

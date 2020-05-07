@@ -104,7 +104,7 @@ class Sanitizer(object):
         """
         removals = [i for i, j in enumerate(s) if j == character]
         self.chars_removed += len(removals)
-        [s.pop(pos - k) for k, pos in enumerate(removals)]
+        [s.pop(pos - k) for k, pos in enumerate(removals)]  # pylint: disable=expression-not-assigned
         return s
 
     def fix_alphabet(self, s):
@@ -115,7 +115,7 @@ class Sanitizer(object):
         """
         fix_positions = [pos for pos, char in enumerate(s) if char not in ALPHABET]
         self.chars_fixed = len(fix_positions)
-        [s.__setitem__(pos, "X") for pos in fix_positions]
+        [s.__setitem__(pos, "X") for pos in fix_positions]  # pylint: disable=expression-not-assigned
         return s
 
     def remove_char_on_ends(self, s, character):
@@ -206,11 +206,11 @@ def parse_usearch_log(filepath, rundict):
                 try:
                     val = int(val)
                     val *= conversion_factor
-                except:
+                except ValueError:
                     try:
                         val = float(val)
                         val *= conversion_factor
-                    except:
+                    except ValueError:
                         pass
                 rundict[stat] = val
 
@@ -235,33 +235,35 @@ def get_fasta_ids(fasta):
     return list(idset)
 
 
-def parse_chromosome(id):
+def parse_chromosome(ident):
     #
-    # If id contains an underscore, work on the
+    # If ident contains an underscore, work on the
     # last part only (e.g., MtrunA17_Chr4g0009691)
     #
-    undersplit = id.split("_")
+    undersplit = ident.split("_")
     if len(undersplit) > 1:
-        id = undersplit[-1].upper()
-        if id.startswith("CHR"):
-            id = id[3:]
+        ident = undersplit[-1].upper()
+        if ident.startswith("CHR"):
+            ident = ident[3:]
     #
     # Chromosome numbers are integers suffixed by 'G'
     #
     try:
-        chr = "Chr" + str(int(id[: id.index("G")]))
+        chromosome = "Chr" + str(int(ident[: ident.index("G")]))
     except:
-        chr = None
-    return chr
+        chromosome = None
+    return chromosome
 
 
-def parse_subids(id):
-    subids = id.split(ID_SEPARATOR)
-    subids += [chr for chr in [parse_chromosome(id) for id in subids] if chr is not None]
+def parse_subids(ident):
+    subids = ident.split(ID_SEPARATOR)
+    subids += [chromosome for chromosome in [parse_chromosome(ident) for ident in subids] if chromosome is not None]
     return subids
 
 
-def parse_clusters(outdir, identity, delete=True, count_clusters=True, synonyms={}):
+def parse_clusters(outdir, identity, delete=True, count_clusters=True, synonyms=None):
+    if synonyms is None:
+        synonyms = {}
     cluster_list = []
     id_list = []
     degree_list = []
@@ -275,7 +277,7 @@ def parse_clusters(outdir, identity, delete=True, count_clusters=True, synonyms=
         ids = get_fasta_ids(fasta)
         if len(synonyms):
             syn_ids = set(ids).intersection(synonyms.keys())
-            [ids.extend(synonyms[i]) for i in syn_ids]
+            [ids.extend(synonyms[i]) for i in syn_ids]  # pylint: disable=expression-not-assigned
         n_ids = len(ids)
         degree_list.append(n_ids)
         degree_counter.update({n_ids: 1})
@@ -402,7 +404,6 @@ def usearch_cluster(
         elif outfilepath.exists() and outfilepath.is_dir():
             for file in outfilepath.glob("*"):
                 file.unlink()
-                pass
         else:
             outfilepath.mkdir()
         #
@@ -419,7 +420,16 @@ def usearch_cluster(
     run_stats.to_csv(statfilepath, sep="\t")
     if delete:
         logfilepath.unlink()
-    cluster_graph, clusters, ids, sizes, degrees, degree_counts, any_counts, all_counts = parse_clusters(
+    (
+        cluster_graph,
+        clusters,
+        ids,
+        sizes,
+        degrees,
+        degree_counts,
+        any_counts,
+        all_counts,
+    ) = parse_clusters(  # pylint: disable=unused-variable
         outfilepath, identity, delete=delete, synonyms=synonyms
     )
     #
@@ -503,12 +513,12 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     all_frames = []
     any_frames = []
     for id_level in logsteps:
-        stats, graph, hist, any, all = usearch_cluster.callback(
+        stats, graph, unused_hist, any_, all_ = usearch_cluster.callback(  # pylint: disable=unused-variable
             seqfile, id_level, min_id_freq=min_id_freq, substrs=substrs, dups=dups
         )
         stat_list.append(stats)
-        any_frames.append(any)
-        all_frames.append(all)
+        any_frames.append(any_)
+        all_frames.append(all_)
     logger.info("Collating results on %s", seqfile)
     #
     # Concatenate and write stats
@@ -518,10 +528,10 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     #
     # Concatenate any/all data
     #
-    any = pd.concat(any_frames, axis=1, join="inner", sort=True, ignore_index=False)
-    any.to_csv(any_path, sep="\t")
-    all = pd.concat(all_frames, axis=1, join="inner", sort=True, ignore_index=False)
-    all.to_csv(all_path, sep="\t")
+    any_ = pd.concat(any_frames, axis=1, join="inner", sort=True, ignore_index=False)
+    any_.to_csv(any_path, sep="\t")
+    all_ = pd.concat(all_frames, axis=1, join="inner", sort=True, ignore_index=False)
+    all_.to_csv(all_path, sep="\t")
 
 
 @cli.command()
@@ -537,7 +547,7 @@ def clusters_to_histograms(infile):
     histfilepath = dirpath / (inpath.stem + "-sizedist.tsv")
     clusters = pd.read_csv(dirpath / infile, sep="\t", index_col=0)
     cluster_counter = Counter()
-    for cluster_id, group in clusters.groupby(["cluster"]):
+    for unused_cluster_id, group in clusters.groupby(["cluster"]):  # pylint: disable=unused-variable
         cluster_counter.update({len(group): 1})
     logger.info("writing to %s", histfilepath)
     cluster_hist = pd.DataFrame(list(cluster_counter.items()), columns=["siz", "clusts"])
@@ -679,7 +689,7 @@ def adjacency_to_graph(infile):
     graph = nx.Graph()
     grouping = clusters.groupby("cluster").size().sort_values(ascending=False)
     for idx in grouping.index:
-        size = grouping.loc[idx]
+        # size = grouping.loc[idx]
         cluster = clusters.loc[(clusters["cluster"] == idx)]
         ids = list(cluster["id"])
         #
@@ -746,7 +756,7 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     if not quiet and clust_size:
         logger.info("only clusters of size %d will be used", clust_size)
     syn["link"] = [homo_id_dict[id] for id in syn["id"]]
-    for cluster_id, gr in syn.groupby(["cluster"]):
+    for unused_cluster_id, gr in syn.groupby(["cluster"]):  # pylint: disable=unused-variable
         cl = gr.copy()  # copy, so mutable
         clsize = cl["siz"].iloc[0]
         if clust_size and (clsize != clust_size):
