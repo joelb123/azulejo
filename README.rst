@@ -40,7 +40,7 @@ azulejo tiles phylogenetic space with subtrees
     :alt: GitHub repository
 
 .. |license| image:: https://img.shields.io/badge/License-BSD%203--Clause-blue.svg
-    :target: https://github.com/ncgr/azulejo/blob/master/LICENSE.txt
+    :target: https://github.com/ncgr/azulejo/blob/master/LICENSE
     :alt: License terms
 
 .. |rtd| image:: https://readthedocs.org/projects/azulejo/badge/?version=latest
