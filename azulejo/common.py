@@ -5,7 +5,7 @@ Constants and functions in common across modules
 # standard library imports
 from pathlib import Path
 
-# third-party imports
+# first-party imports
 import poetry_version
 
 NAME = "azulejo"

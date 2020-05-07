@@ -11,14 +11,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+
+# first-party imports
 from loguru import logger
 
-# package imports
+# module imports
 from . import cli
 from . import click_loguru
-from .common import ANYFILE_SUFFIX
 from .common import ALLFILE_SUFFIX
+from .common import ANYFILE_SUFFIX
 from .common import STATFILE_SUFFIX
+
 # Global constants
 IDENT_LOG_MIN = -3
 IDENT_LOG_MAX = 0

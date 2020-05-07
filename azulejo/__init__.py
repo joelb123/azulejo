@@ -7,11 +7,12 @@ import locale
 import warnings
 from pkg_resources import iter_entry_points
 
-
 # third-party imports
 import click
-from click_loguru import ClickLoguru
 from click_plugins import with_plugins
+
+# first-party imports
+from click_loguru import ClickLoguru
 from loguru import logger
 
 # module imports
@@ -53,18 +54,19 @@ def cli(warnings_as_errors, **kwargs):
         logger.warn("Runtime warnings (e.g., from pandas) will cause exceptions")
         warnings.filterwarnings("error")
 
-from .analysis import analyze_clusters # isort:skip
-from .analysis import length_std_dist # isort:skip
-from .analysis import outlier_length_dist # isort:skip
-from .core import add_singletons #  isort:skip
-from .core import adjacency_to_graph #  isort:skip
-from .core import cluster_in_steps #  isort:skip
-from .core import clusters_to_histograms #  isort:skip
-from .core import combine_clusters #  isort:skip
-from .core import compare_clusters #  isort:skip
-from .core import scanfiles #  isort:skip
-from .core import usearch_cluster #  isort:skip
-from .synteny import annotate_homology # isort:skip
-from .synteny import kmer_synteny # isort:skip
-from .synteny import dagchainer_synteny # isort:skip
-from .synteny import proxy_genes # isort:skip
+
+from .analysis import analyze_clusters  # isort:skip
+from .analysis import length_std_dist  # isort:skip
+from .analysis import outlier_length_dist  # isort:skip
+from .core import add_singletons  #  isort:skip
+from .core import adjacency_to_graph  #  isort:skip
+from .core import cluster_in_steps  #  isort:skip
+from .core import clusters_to_histograms  #  isort:skip
+from .core import combine_clusters  #  isort:skip
+from .core import compare_clusters  #  isort:skip
+from .core import scanfiles  #  isort:skip
+from .core import usearch_cluster  #  isort:skip
+from .synteny import annotate_homology  # isort:skip
+from .synteny import kmer_synteny  # isort:skip
+from .synteny import dagchainer_synteny  # isort:skip
+from .synteny import proxy_genes  # isort:skip

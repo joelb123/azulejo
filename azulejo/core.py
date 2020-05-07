@@ -2,32 +2,31 @@
 """
 Core logic for computing subtrees
 """
-#
+
 # standard library imports
-#
 import contextlib
 import os
 import sys
-from collections import Counter, OrderedDict
+from collections import Counter
+from collections import OrderedDict
 from datetime import datetime
-from itertools import chain, combinations
+from itertools import chain
+from itertools import combinations
 
-#
 # third-party imports
-#
 import click
 import dask.bag as db
-from dask.diagnostics import ProgressBar
 import networkx as nx
 import numpy as np
 import pandas as pd
 from Bio import SeqIO
 from Bio.Data import IUPACData
+from dask.diagnostics import ProgressBar
+
+# first-party imports
 from loguru import logger
 
-#
-# package imports
-#
+# module imports
 from . import cli
 from . import click_loguru
 from .common import *
@@ -75,7 +74,7 @@ class ElapsedTimeReport:
     def elapsed(self, next_name):
         now = datetime.now()
         seconds = (now - self.start_time).total_seconds()
-        report = "%s phase took %d seconds" % (self.name, seconds)
+        report = f"{self.name} phase took {seconds:d} seconds"
         self.start_time = now
         self.name = next_name
         return report
@@ -226,6 +225,7 @@ def in_working_directory(path):
     finally:
         os.chdir(original_cwd)
 
+
 def get_fasta_ids(fasta):
     idset = set()
     with fasta.open() as f:
@@ -308,7 +308,7 @@ def parse_clusters(outdir, identity, delete=True, count_clusters=True, synonyms=
 
 
 def prettyprint_float(x, digits):
-    format_string = "%." + "%d" % digits + "f"
+    format_string = "%." + f"{digits:d}" + "f"
     return (format_string % x).rstrip("0").rstrip(".")
 
 
@@ -317,8 +317,9 @@ def cluster_set_name(stem, identity):
     if identity == 1.0:
         digits = "10000"
     else:
-        digits = ("%.4f" % identity)[2:]
+        digits = (f"{identity:.4f}")[2:]
     return f"{stem}-nr-{digits}"
+
 
 @cli.command()
 @click_loguru.init_logger()
@@ -353,6 +354,7 @@ def usearch_cluster(
 ):
     """Cluster above a global sequence identity threshold"""
     from sh import usearch
+
     try:
         inpath, dirpath = get_paths_from_file(seqfile)
     except FileNotFoundError:
@@ -361,16 +363,16 @@ def usearch_cluster(
     stem = inpath.stem
     dirpath = inpath.parent
     outname = cluster_set_name(stem, identity)
-    outdir = "%s/" % outname
-    logfile = "%s.log" % outname
+    outdir = f"{outname}/"
+    logfile = f"{outname}.log"
     outfilepath = dirpath / outdir
     logfilepath = dirpath / logfile
-    histfilepath = dirpath / ("%s-degreedist.tsv" % outname)
-    gmlfilepath = dirpath / ("%s.gml" % outname)
-    statfilepath = dirpath / ("%s-stats.tsv" % outname)
-    anyfilepath = dirpath / ("%s-anyhist.tsv" % outname)
-    allfilepath = dirpath / ("%s-allhist.tsv" % outname)
-    idpath = dirpath / ("%s-ids.tsv" % outname)
+    histfilepath = dirpath / (f"{outname}-degreedist.tsv")
+    gmlfilepath = dirpath / (f"{outname}.gml")
+    statfilepath = dirpath / (f"{outname}-stats.tsv")
+    anyfilepath = dirpath / (f"{outname}-anyhist.tsv")
+    allfilepath = dirpath / (f"{outname}-allhist.tsv")
+    idpath = dirpath / (f"{outname}-ids.tsv")
     logger.info(f"%{prettyprint_float(identity * 100, 2)}% sequence identity output to {outname}*")
     if not delete:
         logger.debug(f"Cluster files will be kept in {logfile} and {outdir}")
@@ -445,7 +447,7 @@ def usearch_cluster(
     #
     # Do histograms of "any" and "all" id usage in cluster
     #
-    hist_value = "%f" % identity
+    hist_value = f"{identity:f}"
     any_hist = pd.DataFrame(list(any_counts.items()), columns=["id", hist_value])
     any_hist.set_index("id", inplace=True)
     any_hist.sort_values(hist_value, inplace=True, ascending=False)
@@ -560,9 +562,9 @@ def compare_clusters(file1, file2):
     missing1 = commondir / "notin1.tsv"
     missing2 = commondir / "notin2.tsv"
     clusters1 = pd.read_csv(path1, sep="\t", index_col=0)
-    print("%d members in %s" % (len(clusters1), file1))
+    print(f"{len(clusters1):d} members in {file1}")
     clusters2 = pd.read_csv(path2, sep="\t", index_col=0)
-    print("%d members in %s" % (len(clusters2), file2))
+    print(f"{len(clusters2):d} members in {file2}")
     ids1 = set(clusters1["id"])
     ids2 = set(clusters2["id"])
     notin1 = pd.DataFrame(ids2.difference(ids1), columns=["id"])
@@ -574,7 +576,7 @@ def compare_clusters(file1, file2):
 
     print("%d ids not in ids1" % len(notin1))
     print("%d ids not in ids2" % len(notin2))
-    print("%d in %s after dropping" % (len(clusters1), file1))
+    print(f"{len(clusters1):d} in {file1} after dropping")
 
 
 @cli.command()
@@ -740,7 +742,7 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     cluster_count = 0
     arg_list = []
     if first_n:
-        logger.debug("processing only first %d clusters" % first_n)
+        logger.debug(f"processing only first {first_n:d} clusters")
     if not quiet and clust_size:
         logger.info("only clusters of size %d will be used", clust_size)
     syn["link"] = [homo_id_dict[id] for id in syn["id"]]
@@ -772,7 +774,7 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     out_frame.index = list(range(len(out_frame)))
     for column in ["sub", "sub_siz"]:
         out_frame[column] = out_frame[column].astype(int)
-    out_frame["link"] = out_frame["link"].map(lambda x: "" if pd.isnull(x) else "{:.0f}".format(x))
+    out_frame["link"] = out_frame["link"].map(lambda x: "" if pd.isnull(x) else f"{x:.0f}")
     out_frame.to_csv(
         "combined.tsv",
         sep="\t",
