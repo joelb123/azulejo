@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.6.0"
+version = "0.6.2"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -51,6 +51,8 @@ loguru = "^0.4.1"
 click_loguru = "^0.1.0"
 gffpandas = "^1.2.0"
 networkx = "^2.4"
+pytest-datadir-mgr = "^1.0.1"
+flynt = "^0.46.1"
 
 
 [tool.poetry.dev-dependencies]
@@ -60,7 +62,6 @@ black = "^19.10b0"
 pre-commit = "^2.3.0"
 pydocstyle = "^5.0.2"
 isort = {version = "^4.3.21", extras = ["pyproject"]}
-pytest-datadir-mgr = "flynt"
 sh = "^1.13.0"
 flynt = "^0.46"
 
@@ -105,5 +106,3 @@ known_standard_library = "pkg_resources"
 [build-system]
 requires = ["poetry>=0.12"]
 build-backend = "poetry.masonry.api"
-
-

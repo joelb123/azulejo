@@ -27,13 +27,13 @@ azulejo tiles phylogenetic space with subtrees
 
 .. |azulejo| image:: docs/azulejo.jpg
      :target: https://en.wikipedia.org/wiki/Azulejo
-     :alt: Azulej Definition
+     :alt: azulejo Definition
 
 .. |pypi| image:: https://img.shields.io/pypi/v/azulejo.svg
     :target: https://pypi.python.org/pypi/azulejo
     :alt: Python package
 
-.. |repo| image:: https://img.shields.io/github/commits-since/legumeinfo/azulejo/0.01.svg
+.. |repo| image:: https://img.shields.io/github/commits-since/legumeinfo/azulejo/0.11.svg
     :target: https://github.com/legumeinfo/azulejo
     :alt: GitHub repository
 
@@ -66,5 +66,5 @@ azulejo tiles phylogenetic space with subtrees
      :alt: Requirements Status
 
 .. |depend| image:: https://api.dependabot.com/badges/status?host=github&repo=legumeinfo/azulejo
-     :target: https://app.dependabot.com/accounts/legumeinfo/repos/236847525
+     :target: https://app.dependabot.com/accounts/legumeinfo/repos/203668510
      :alt: dependabot dependencies

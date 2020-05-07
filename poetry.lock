@@ -29,7 +29,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,>=2.7"
 version = "0.8.1"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Atomic file writes."
 marker = "sys_platform == \"win32\""
 name = "atomicwrites"
@@ -38,7 +38,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "1.4.0"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Classes Without Boilerplate"
 name = "attrs"
 optional = false
@@ -83,7 +83,7 @@ typed-ast = ">=1.4.0"
 d = ["aiohttp (>=3.3.2)", "aiohttp-cors"]
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Python package for providing Mozilla's CA Bundle."
 name = "certifi"
 optional = false
@@ -99,7 +99,7 @@ python-versions = ">=3.6.1"
 version = "3.1.0"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Universal encoding detector for Python 2 and 3"
 name = "chardet"
 optional = false
@@ -289,7 +289,7 @@ version = "1.4.15"
 license = ["editdistance"]
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Internationalized Domain Names in Applications (IDNA)"
 name = "idna"
 optional = false
@@ -306,7 +306,7 @@ python-versions = "*"
 version = "0.12"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Read metadata from Python packages"
 marker = "python_version < \"3.8\""
 name = "importlib-metadata"
@@ -412,7 +412,7 @@ pyparsing = ">=2.0.1,<2.0.4 || >2.0.4,<2.1.2 || >2.1.2,<2.1.6 || >2.1.6"
 python-dateutil = ">=2.1"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "More routines for operating on iterables, beyond itertools"
 name = "more-itertools"
 optional = false
@@ -460,7 +460,7 @@ python-versions = ">=3.5"
 version = "1.18.4"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Core utilities for Python packages"
 name = "packaging"
 optional = false
@@ -511,7 +511,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 version = "0.8.0"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "plugin and hook calling mechanisms for python"
 name = "pluggy"
 optional = false
@@ -562,7 +562,7 @@ python = "<3.7"
 version = "*"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "A Python Progressbar library to provide visual (yet text based) progress to long running operations."
 name = "progressbar2"
 optional = false
@@ -578,7 +578,7 @@ docs = ["sphinx (>=1.7.4)"]
 tests = ["flake8 (>=3.7.7)", "pytest (>=4.3.1)", "pytest-cov (>=2.6.1)", "pytest-flakes (>=4.0.0)", "pytest-pep8 (>=1.0.6)", "freezegun (>=0.3.11)", "sphinx (>=1.8.5)"]
 
 [[package]]
-category = "dev"
+category = "main"
 description = "library with cross-python path, ini-parsing, io, code, log facilities"
 name = "py"
 optional = false
@@ -605,7 +605,7 @@ python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 version = "2.4.7"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "pytest: simple powerful testing with Python"
 name = "pytest"
 optional = false
@@ -646,7 +646,7 @@ pytest = ">=3.6"
 testing = ["fields", "hunter", "process-tests (2.0.2)", "six", "virtualenv"]
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Manager for test data providing downloads, caching of generated files, and a context for temp directories."
 name = "pytest-datadir-mgr"
 optional = false
@@ -670,7 +670,7 @@ version = "2.8.1"
 six = ">=1.5"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Python Utils is a module with some convenient utilities not included with the standard Python install"
 name = "python-utils"
 optional = false
@@ -705,7 +705,7 @@ python-versions = "*"
 version = "2020.4.4"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Python HTTP for Humans."
 name = "requests"
 optional = false
@@ -723,7 +723,7 @@ security = ["pyOpenSSL (>=0.14)", "cryptography (>=1.3.4)"]
 socks = ["PySocks (>=1.5.6,<1.5.7 || >1.5.7)", "win-inet-pton"]
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Download files using requests and save them to a target path"
 name = "requests-download"
 optional = false
@@ -815,7 +815,7 @@ python-versions = "*"
 version = "1.4.1"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "HTTP library with thread-safe connection pooling, file post, and more."
 name = "urllib3"
 optional = false
@@ -854,7 +854,7 @@ docs = ["sphinx (>=3)", "sphinx-argparse (>=0.2.5)", "sphinx-rtd-theme (>=0.4.3)
 testing = ["pytest (>=4)", "coverage (>=5)", "coverage-enable-subprocess (>=1)", "pytest-xdist (>=1.31.0)", "pytest-mock (>=2)", "pytest-env (>=0.6.2)", "pytest-randomly (>=1)", "pytest-timeout", "packaging (>=20.0)", "xonsh (>=0.9.16)"]
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Measures number of Terminal column cells of wide-character codes"
 name = "wcwidth"
 optional = false
@@ -874,7 +874,7 @@ version = "1.0.1"
 dev = ["pytest (>=4.6.2)", "black (>=19.3b0)"]
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Backport of pathlib-compatible object wrapper for zip files"
 marker = "python_version < \"3.8\""
 name = "zipp"
@@ -887,7 +887,7 @@ docs = ["sphinx", "jaraco.packaging (>=3.2)", "rst.linker (>=1.9)"]
 testing = ["jaraco.itertools", "func-timeout"]
 
 [metadata]
-content-hash = "6c13f83591406f5e9edbc6031d258004616243c2d05438e371433c55a6270fec"
+content-hash = "b7d69db5b3e11b96e98804450c92faf5e0bfad194d2a65632380bf95524ce801"
 python-versions = "^3.6.1"
 
 [metadata.files]
