@@ -4,6 +4,7 @@
 import os
 import statistics
 import sys
+from os.path import commonprefix as prefix
 
 # third-party imports
 import click
@@ -24,46 +25,74 @@ from .core import usearch_cluster
 
 # global constants
 GFF_EXT = "gff3"
-FASTA_EXT = "faa"
+FAA_EXT = "faa"
+FNA_EXT = "fna"
+
 HOMOLOGY_ENDING = "-homology.tsv"
 FILES_ENDING = "-files.tsv"
 SYNTENY_ENDING = "-synteny.tsv"
 PROXY_ENDING = "-proxy.tsv"
 
 
-def kmer_synteny_block_func(k, frame):
+def synteny_block_func(k, rmer, frame, name_only=False):
     """Return a synteny block closure and its name."""
+    if name_only:
+        if rmer:
+            return f"rmer{k}"
+        else:
+            return f"kmer{k}"
     frame_len = len(frame)
-    frame_iter = iter(range(frame_len))
-    null_return = (
-        0,
-        0,
-        0,
-    )
+    cluster_size_col = frame.columns.get_loc("cluster_size")
+    cluster_col = frame.columns.get_loc("cluster_id")
 
-    def kmer_synteny():
-        """Mappable function from index to (footprint, direction, hash) tuple."""
-        first_index = next(frame_iter)
+    def kmer_block(first_index):
+        """Calculate a reversible hash of cluster values.."""
         cluster_list = []
-        initial_seq_id = frame.loc[first_index, "seq_id"]
         for idx in range(first_index, first_index + k):
-            if idx + 1 > frame_len:
-                return null_return
-            cluster_size = frame.loc[idx, "cluster_size"]
-            if frame.loc[idx, "seq_id"] != initial_seq_id or cluster_size == 1:
-                return null_return
-            cluster_list.append(cluster)
+            if idx + 1 > frame_len or frame.iloc[idx, cluster_size_col] == 1:
+                return (
+                    0,
+                    0,
+                    0,
+                )
+            cluster_list.append(frame.iloc[idx, cluster_col])
         fwd_hash = hash(tuple(cluster_list))
         rev_hash = hash(tuple(reversed(cluster_list)))
         if fwd_hash > rev_hash:
-            hashval = fwd_hash
-            direction = 1
+            return k, 1, fwd_hash
         else:
-            hashval = rev_hash
-            direction = -1
-        return k, direction, hashval
+            return k, -1, rev_hash
 
-    return kmer_synteny, f"kmer{k}synteny"
+    def rmer_block(first_index):
+        """Calculate a reversible cluster hash, ignoring repeats."""
+        cluster_list = []
+        idx = first_index
+        last_cluster = None
+        while len(cluster_list) < k:
+            if idx + 1 > frame_len or frame.iloc[idx, cluster_size_col] == 1:
+                return (
+                    0,
+                    0,
+                    0,
+                )
+            current_cluster = frame.iloc[idx, cluster_col]
+            if current_cluster == last_cluster:
+                idx += 1
+            else:
+                last_cluster = current_cluster
+                cluster_list.append(current_cluster)
+                idx += 1
+        fwd_hash = hash(tuple(cluster_list))
+        rev_hash = hash(tuple(reversed(cluster_list)))
+        if fwd_hash > rev_hash:
+            return idx - first_index, 1, fwd_hash
+        else:
+            return idx - first_index, -1, rev_hash
+
+    if rmer:
+        return rmer_block
+    else:
+        return kmer_block
 
 
 def read_files(setname, synteny=None):
@@ -95,6 +124,28 @@ def read_files(setname, synteny=None):
     return file_frame, frame_dict
 
 
+def pair_matching_file_types(mixedlist, extA, extB):
+    """Matches pairs of file types with differing extensions."""
+    file_dict = {}
+    typeA_stems = [str(Path(n).stem) for n in mixedlist if n.find(extA) > -1]
+
+    typeA_stems.sort(key=len)
+    typeB_stems = [str(Path(n).stem) for n in mixedlist if n.find(extB) > -1]
+    typeB_stems.sort(key=len)
+    if len(typeA_stems) != len(typeB_stems):
+        logger.error(f"Differing number of {extA} ({len(typeB_stems)}) and {extB} files ({len(typeA_stems)}).")
+        sys.exit(1)
+    for typeB in typeB_stems:
+        prefix_len = max([len(prefix([typeB, typeA])) for typeA in typeA_stems])
+        match_typeA_idx = [i for i, typeA in enumerate(typeA_stems) if len(prefix([typeB, typeA])) == prefix_len][0]
+        match_typeA = typeA_stems.pop(match_typeA_idx)
+        typeB_path = [Path(p) for p in mixedlist if p.endswith(typeB + "." + extB)][0]
+        typeA_path = [Path(p) for p in mixedlist if p.endswith(match_typeA + "." + extA)][0]
+        stem = prefix([typeB, match_typeA])
+        file_dict[stem] = {extA: typeA_path, extB: typeB_path}
+    return file_dict
+
+
 @cli.command()
 @click_loguru.init_logger()
 @click.option("--identity", "-i", default=0.0, help="Minimum sequence ID (0-1). [default: lowest]")
@@ -123,25 +174,7 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
     if not len(gff_faa_path_list):
         logger.error("No files in list, exiting.")
         sys.exit(0)
-    # find matching pairs of gff files
-    file_dict = {}
-    gff_stems = [str(Path(n).stem) for n in gff_faa_path_list if n.find(GFF_EXT) > -1]
-    gff_stems.sort(key=len)
-    fasta_stems = [str(Path(n).stem) for n in gff_faa_path_list if n.find(FASTA_EXT) > -1]
-    fasta_stems.sort(key=len)
-    if len(gff_stems) != len(fasta_stems):
-        logger.error(f"Differing number of {FASTA_EXT} ({len(fasta_stems)}) and {GFF_EXT} files ({len(gff_stems)}).")
-        sys.exit(1)
-    for fasta in fasta_stems:
-        prefix_len = max([len(os.path.commonprefix([fasta, gff])) for gff in gff_stems])
-        match_gff_idx = [i for i, gff in enumerate(gff_stems) if len(os.path.commonprefix([fasta, gff])) == prefix_len][
-            0
-        ]
-        match_gff = gff_stems.remove(match_gff_idx)
-        fasta_path = [Path(p) for p in gff_faa_path_list if p.endswith(fasta + "." + FASTA_EXT)][0]
-        gff_path = [Path(p) for p in gff_faa_path_list if p.endswith(match_gff + "." + GFF_EXT)][0]
-        stem = os.path.commonprefix([fasta, match_gff])
-        file_dict[stem] = {GFF_EXT: gff_path, FASTA_EXT: fasta_path}
+    file_dict = pair_matching_file_types(gff_faa_path_list, GFF_EXT, FAA_EXT)
     frame_dict = {}
     set_path = Path(setname)
     set_path.mkdir(parents=True, exist_ok=True)
@@ -166,8 +199,8 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
         # TODO-sort GFFs in order of longest fragments
         # TODO-add gene order
         file_dict[stem]["fragments"] = len(set(mRNAs["seq_id"]))
-        logger.debug(f"Reading FASTA file {file_dict[stem][FASTA_EXT]}.")
-        fasta_dict = SeqIO.to_dict(SeqIO.parse(file_dict[stem][FASTA_EXT], "fasta"))
+        logger.debug(f"Reading FASTA file {file_dict[stem][FAA_EXT]}.")
+        fasta_dict = SeqIO.to_dict(SeqIO.parse(file_dict[stem][FAA_EXT], "fasta"))
         # TODO-filter out crap and calculate ambiguous
         file_dict[stem]["n_seqs"] = len(fasta_dict)
         file_dict[stem]["residues"] = sum([len(fasta_dict[k].seq) for k in fasta_dict.keys()])
@@ -224,9 +257,14 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
 @click.option("-k", default=6, help="Synteny block length.", show_default=True)
 @click.option("-r", "--rmer", default=False, is_flag=True, show_default=True, help="Allow repeats in block.")
 @click.argument("setname")
-def kmer_synteny(k, rmer, setname):
+@click.argument("gff_fna_path_list", nargs=-1)
+def kmer_synteny(k, rmer, setname, gff_fna_path_list):
     """Calculate k-mer syntenic blocks among sets of GFF/FASTA files.
     """
+    if not len(gff_fna_path_list):
+        logger.error("No files in list, exiting.")
+        sys.exit(0)
+    file_dict = pair_matching_file_types(gff_fna_path_list, GFF_EXT, FAA_EXT)
     set_path = Path(setname)
     files_frame, frame_dict = read_files(setname)
     set_keys = list(files_frame["stem"])
@@ -235,22 +273,19 @@ def kmer_synteny(k, rmer, setname):
     merge_frame = pd.DataFrame(columns=merge_frame_columns)
     for stem in set_keys:
         frame = frame_dict[stem]
-        if rmer:
-            map_func = None
-            synteny_func_name = "None"
-        else:
-            map_func, synteny_func_name = kmer_synteny_block_func(k, frame)
-        frame["footprint"] = 0
-        frame["hashdir"] = 0
-        frame[synteny_func_name] = 0
+        synteny_func_name = synteny_block_func(k, rmer, None, name_only=True)
         frame_len = frame.shape[0]
-        for idx in range(frame_len):
-            footprint, hashdir, block = map_func()
-            frame.iloc[idx, FOOTPRINT_POS] = footprint
-            frame.iloc[idx, HASHDIR_POS] = hashdir
-            frame.iloc[idx, SYNTENY_POS] = block
+        map_results = []
+        for seq_id, subframe in frame.groupby(by=["seq_id"]):
+            hash_closure = synteny_block_func(k, rmer, subframe)
+            for i in range(len(subframe)):
+                map_results.append(hash_closure(i))
+        frame["footprint"] = [map_results[i][0] for i in range(len(frame))]
+        frame["hashdir"] = [map_results[i][1] for i in range(len(frame))]
+        frame[synteny_func_name] = [map_results[i][2] for i in range(len(frame))]
+        del map_results
         # TODO:E values
-        hash_series = frame.loc[:, synteny_func_name]
+        hash_series = frame[synteny_func_name]
         assigned_hashes = hash_series[hash_series != 0]
         del hash_series
         n_assigned = len(assigned_hashes)
@@ -261,7 +296,7 @@ def kmer_synteny(k, rmer, setname):
         assigned_hash_frame["source"] = stem
         n_non_unique = n_assigned - len(assigned_hash_frame)
         percent_non_unique = n_non_unique / n_assigned * 100.0
-        logger.info(f"  of which {n_non_unique} ({percent_non_unique})% are non-unique.")
+        logger.info(f"  of which {n_non_unique} ({percent_non_unique:0.1f})% are non-unique.")
         merge_frame.append(assigned_hash_frame)
         del assigned_hash_frame
         # create self_count column in frame

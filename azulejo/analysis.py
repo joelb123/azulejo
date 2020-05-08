@@ -225,7 +225,7 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
         sys.exit(1)
     clusters = pd.read_csv(combinedfile, sep="\t", index_col=0)
     norm_lengths = []
-    for cluster_id, cluster in clusters.groupby("cluster"):
+    for unused_cluster_id, cluster in clusters.groupby("cluster"):  # pylint: disable=unused-variable
         if cluster["siz"].iloc[0] != cluster_size:
             # not the right size
             continue
