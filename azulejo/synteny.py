@@ -24,9 +24,7 @@ from .core import cluster_set_name
 from .core import usearch_cluster
 
 # global constants
-GFF_EXT = "gff3"
-FAA_EXT = "faa"
-FNA_EXT = "fna"
+
 
 HOMOLOGY_ENDING = "-homology.tsv"
 FILES_ENDING = "-files.tsv"

@@ -64,7 +64,7 @@ from .core import cluster_in_steps  #  isort:skip
 from .core import clusters_to_histograms  #  isort:skip
 from .core import combine_clusters  #  isort:skip
 from .core import compare_clusters  #  isort:skip
-from .core import combine_protein_files  #  isort:skip
+from .core import prepare_protein_files  #  isort:skip
 from .core import usearch_cluster  #  isort:skip
 from .synteny import annotate_homology  # isort:skip
 from .synteny import kmer_synteny  # isort:skip

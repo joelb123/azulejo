@@ -7,7 +7,6 @@ Core logic for computing subtrees
 import contextlib
 import os
 import sys
-import zlib
 from collections import Counter
 from collections import OrderedDict
 from datetime import datetime
@@ -21,7 +20,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from Bio import SeqIO
-from Bio.Data import IUPACData
+
 from dask.diagnostics import ProgressBar
 
 # first-party imports
@@ -31,6 +30,7 @@ from loguru import logger
 from . import cli
 from . import click_loguru
 from .common import *
+from .protein import Sanitizer
 
 # global constants
 UNITS = {
@@ -61,7 +61,6 @@ EPSILON = 0.000001
 FILETYPE = "pdf"
 MAX_BINS = 10
 DEFAULT_STEPS = 16
-ALPHABET = IUPACData.protein_letters + "X" + "-"
 
 # Classes
 class ElapsedTimeReport:
@@ -76,104 +75,6 @@ class ElapsedTimeReport:
         self.start_time = now
         self.name = next_name
         return report
-
-
-class Sanitizer(object):
-    """clean up and count potential problems with sequence
-
-       potential problems are:
-          dashes:    (optional, removed if remove_dashes=True)
-          alphabet:  if not in IUPAC set, changed to 'X'
-    """
-
-    def __init__(self, remove_dashes=False):
-        self.remove_dashes = remove_dashes
-        self.seqs_sanitized = 0
-        self.chars_in = 0
-        self.chars_removed = 0
-        self.chars_fixed = 0
-        self.endchars_removed = 0
-
-    def char_remover(self, s, character):
-        """remove positions with a given character
-
-        :param s: mutable sequence
-        :return: sequence with characters removed
-        """
-        removals = [i for i, j in enumerate(s) if j == character]
-        self.chars_removed += len(removals)
-        [s.pop(pos - k) for k, pos in enumerate(removals)]  # pylint: disable=expression-not-assigned
-        return s
-
-    def fix_alphabet(self, s):
-        """replace everything out of alphabet with 'X'
-
-        :param s: mutable sequence, upper-cased
-        :return: fixed sequence
-        """
-        fix_positions = [pos for pos, char in enumerate(s) if char not in ALPHABET]
-        self.chars_fixed = len(fix_positions)
-        [s.__setitem__(pos, "X") for pos in fix_positions]  # pylint: disable=expression-not-assigned
-        return s
-
-    def remove_char_on_ends(self, s, character):
-        """remove leading/trailing ambiguous residues
-
-        :param s: mutable sequence
-        :return: sequence with characterss removed from ends
-        """
-        in_len = len(s)
-        while s[-1] == character:
-            s.pop()
-        while s[0] == character:
-            s.pop(0)
-        self.endchars_removed += in_len - len(s)
-        return s
-
-    def sanitize(self, s):
-        """sanitize alphabet use while checking lengths
-
-        :param s: mutable sequence
-        :return: sanitized sequence
-        """
-        self.seqs_sanitized += 1
-        self.chars_in += len(s)
-        if len(s) and self.remove_dashes:
-            s = self.char_remover(s, "-")
-        if len(s):
-            s = self.fix_alphabet(s)
-        if len(s):
-            s = self.remove_char_on_ends(s, "X")
-        return s
-
-
-class DuplicateSequenceIndex(object):
-
-    """Count duplicated sequences."""
-
-    def __init__(self, concat_names=False):
-        self.match_index = 0
-        self.hash_set = set()
-        self.duplicates = {}
-        self.match_count = {}
-
-    def exact(self, s):
-        "Test and count if exact duplicate."
-        seq_hash = zlib.adler32(bytearray(str(s), "utf-8"))
-        if seq_hash not in self.hash_set:
-            self.hash_set.add(seq_hash)
-            return ""
-        if seq_hash not in self.duplicates:
-            self.duplicates[seq_hash] = self.match_index
-            self.match_count[self.match_index] = 1
-            self.match_index += 1
-        else:
-            self.match_count[self.duplicates[seq_hash]] += 1
-        return str(self.duplicates[seq_hash])
-
-    def counts(self, index):
-        """Return the number of counts for a match index."""
-        self.match_count[index]
 
 
 def read_synonyms(filepath):
@@ -612,63 +513,82 @@ def compare_clusters(file1, file2):
     print(f"{len(clusters1):d} in {file1} after dropping")
 
 
+def cleanup_fasta(set_path, fasta_path, filestem):
+    """Sanitize and characterize protein FASTA files."""
+    out_sequences = []
+    ids = []
+    lengths = []
+    positions = []
+    n_ambig = []
+    sanitizer = Sanitizer(remove_dashes=True)
+    position = 0
+    logger.debug(f"Sanitizing and summarizing {fasta_path}.")
+    with fasta_path.open("rU") as handle:
+        for record in SeqIO.parse(handle, SEQ_FILE_TYPE):
+            seq = record.seq.upper().tomutable()
+            try:
+                seq = sanitizer.sanitize(seq)
+            except ValueError:  # zero-length sequence after sanitizing
+                continue
+            record.seq = seq.toseq()
+            ids.append(record.id)
+            n_ambig.append(sanitizer.count_ambiguous(seq))
+            lengths.append(len(record))
+            out_sequences.append(record)
+            positions.append(position)
+            position += 1
+    with (set_path / f"{filestem}.faa").open("w") as output_handle:
+        SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
+    df = pd.DataFrame(list(zip(ids, positions, lengths, n_ambig)), columns=["ID", "pos", "protein_len", "n_ambig"],)
+    df = df.set_index(["ID"])
+    df.to_csv(set_path / f"{filestem}-protein_stats.tsv", sep="\t")
+    return df, sanitizer.file_stats()
+
+
 @cli.command()
 @click_loguru.init_logger(logfile=False)
 @click.argument("setname")
-@click.argument("filelist", nargs=-1)
-def combine_protein_files(setname, filelist):
+@click.option("--parallel/--no-parallel", is_flag=True, default=True, show_default=True, help="Process in parallel.")
+@click.option("--write_all/--no-write_all", is_flag=True, default=True, show_default=True, help="Process in parallel.")
+@click.argument("fasta_list", nargs=-1, type=click.Path(exists=True))
+def prepare_protein_files(setname, fasta_list, stemdict=None, write_all=True, parallel=True):
     """Sanitize and combine protein FASTA files."""
-    setpath = Path(setname)
-    if len(filelist) < 1:
+    set_path = Path(setname)
+    file_paths = [Path(p) for p in fasta_list]
+    if stemdict is None:
+        stemdict = {}
+        for file_path in file_paths:
+            stemdict[file_path] = file_path.name
+    if len(fasta_list) < 1:
         logger.error("Empty FILELIST, aborting.")
         sys.exit(1)
-    if setpath.exists() and setpath.is_file():
-        setpath.unlink()
-    elif setpath.exists() and setpath.is_dir():
+    if set_path.exists() and set_path.is_file():
+        set_path.unlink()
+    elif set_path.exists() and set_path.is_dir():
         logger.debug(f"Set path {setname} exists.")
     else:
         logger.info(f'Creating output directory "{setname}/".')
-        setpath.mkdir()
-    outfile = setpath / f"{setname}.faa"
-    statfile = setpath / f"{setname}-protein_stats.tsv"
-    out_sequences = []
-    lengths = []
-    ids = []
-    files = []
-    positions = []
-    duplicate_indices = []
-    for file in filelist:
-        position = 0
-        logger.info(f"Sanitizing and summarizing {file}.")
-        sanitizer = Sanitizer(remove_dashes=True)
-        duplicated = DuplicateSequenceIndex()
-        with open(file, "rU") as handle:
-            for record in SeqIO.parse(handle, SEQ_FILE_TYPE):
-                seq = record.seq.upper().tomutable()
-                seq = sanitizer.sanitize(seq)
-                if not len(seq):
-                    # zero-length string after sanitizing
-                    continue
-                record.seq = seq.toseq()
-                ids.append(record.id)
-                lengths.append(len(record))
-                out_sequences.append(record)
-                files.append(file)
-                positions.append(position)
-                duplicate_indices.append(duplicated.exact(seq))
-                position += 1
-    logger.debug("writing output files.")
-    with outfile.open("w") as output_handle:
-        SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
-    df = pd.DataFrame(
-        list(zip(files, ids, positions, lengths, duplicate_indices)),
-        columns=["file", "ID", "original_pos", "protein_len", "duplicate_idx"],
-    )
-    df["n_duplicates"] = df["duplicate_idx"].map(duplicated.match_count)
-    print(duplicated.match_count)
-    print(df["n_duplicates"])
-    df.to_csv(statfile, sep="\t")
-    return df
+        set_path.mkdir()
+
+    results = []
+    arg_list = []
+    for file_path in file_paths:
+        if stemdict is not None:
+            file_stem = stemdict[file_path.name]
+        else:
+            file_stem = file_path.name[: -len(file_path.suffix)]
+        arg_list.append((set_path, file_path, file_stem,))
+    for args in arg_list:
+        results.append(cleanup_fasta(*args))
+    stat_frames = []
+    file_dict_list = []
+    for protein_frame, filestat_dict in results:
+        stat_frames.append(protein_frame)
+        file_dict_list.append(filestat_dict)
+    del results
+    file_frame = pd.DataFrame.from_dict(file_dict).transpose()
+    print(file_dict_list)
+    return stat_frames
 
 
 @cli.command()

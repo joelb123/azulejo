@@ -16,6 +16,10 @@ ALLFILE_SUFFIX = f"-{NAME}_ids-all.tsv"
 CLUSTFILE_SUFFIX = f"-{NAME}_clusts.tsv"
 SEQ_FILE_TYPE = "fasta"
 
+GFF_EXT = "gff3"
+FAA_EXT = "faa"
+FNA_EXT = "fna"
+
 
 def get_paths_from_file(f, must_exist=True):
     inpath = Path(f).expanduser().resolve()
