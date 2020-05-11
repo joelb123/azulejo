@@ -262,7 +262,6 @@ def kmer_synteny(k, rmer, setname, gff_fna_path_list):
     if not len(gff_fna_path_list):
         logger.error("No files in list, exiting.")
         sys.exit(0)
-    file_dict = pair_matching_file_types(gff_fna_path_list, GFF_EXT, FAA_EXT)
     set_path = Path(setname)
     files_frame, frame_dict = read_files(setname)
     set_keys = list(files_frame["stem"])
@@ -336,10 +335,28 @@ def dagchainer_synteny(setname):
     IDs must correspond between DAGchainer files and homology blocks.
     Currently does not calculate DAGchainer synteny.
     """
+
+    cluster_path = Path.cwd() / "out_azulejo" / "clusters.tsv"
+    if not cluster_path.exists():
+        logger.debug("Running azulejo_tool clean")
+        from sh import azulejo_tool
+
+        output = azulejo_tool(["clean"])
+        print(output)
+        logger.debug("Running azulejo_tool run")
+        try:
+            output = azulejo_tool(["run"])
+            print(output)
+        except:
+            logger.error("Something went wrong in azulejo_tool, check installation.")
+            sys.exit(1)
+        if not cluster_path.exists():
+            logger.error("Something went wrong with DAGchainer run.  Please run it manually.")
+            sys.exit(1)
     synteny_func_name = "dagchainer"
     set_path = Path(setname)
     logger.debug(f"Reading {synteny_func_name} synteny file.")
-    synteny_frame = pd.read_csv(set_path / synteny_func_name / "clusters.tsv", sep="\t")
+    synteny_frame = pd.read_csv(cluster_path, sep="\t", header=None, names=["cluster", "id"])
     synteny_frame["synteny_id"] = synteny_frame["cluster"].map(dagchainer_id_to_int)
     synteny_frame = synteny_frame.drop(["cluster"], axis=1)
     cluster_counts = synteny_frame["synteny_id"].value_counts()
