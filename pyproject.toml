@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.6.5"
+version = "0.6.6"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -45,7 +45,6 @@ pandas = "^1.0.3"
 seaborn = "^0.10.1"
 coverage = "^5.1"
 click_plugins = "^1.1.1"
-poetry_version = "^0.1.5"
 sh = "^1.13.1"
 loguru = "^0.4.1"
 click_loguru = "^0.1.0"
@@ -102,6 +101,11 @@ import_heading_thirdparty = "third-party imports"
 import_heading_firstparty = "first-party imports"
 import_heading_localfolder = "module imports"
 known_standard_library = "pkg_resources"
+
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+style = "semver"
 
 [build-system]
 requires = ["poetry>=0.12"]

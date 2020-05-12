@@ -256,8 +256,8 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
 @click.option("-r", "--rmer", default=False, is_flag=True, show_default=True, help="Allow repeats in block.")
 @click.argument("setname")
 @click.argument("gff_fna_path_list", nargs=-1)
-def kmer_synteny(k, rmer, setname, gff_fna_path_list):
-    """Calculate k-mer syntenic blocks among sets of GFF/FASTA files.
+def synteny_anchors(k, rmer, setname, gff_fna_path_list):
+    """Calculate synteny anchors.
     """
     if not len(gff_fna_path_list):
         logger.error("No files in list, exiting.")
@@ -330,7 +330,7 @@ def dagchainer_id_to_int(ident):
 @click_loguru.init_logger()
 @click.argument("setname")
 def dagchainer_synteny(setname):
-    """Read DAGchainer synteny blocks into homology frames.
+    """Read DAGchainer synteny into homology frames.
 
     IDs must correspond between DAGchainer files and homology blocks.
     Currently does not calculate DAGchainer synteny.

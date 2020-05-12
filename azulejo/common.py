@@ -5,11 +5,7 @@ Constants and functions in common across modules
 # standard library imports
 from pathlib import Path
 
-# first-party imports
-import poetry_version
-
 NAME = "azulejo"
-VERSION = "".join(poetry_version.extract(source_file=__file__))
 STATFILE_SUFFIX = f"-{NAME}_stats.tsv"
 ANYFILE_SUFFIX = f"-{NAME}_ids-any.tsv"
 ALLFILE_SUFFIX = f"-{NAME}_ids-all.tsv"

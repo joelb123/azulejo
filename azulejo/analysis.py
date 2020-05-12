@@ -86,6 +86,7 @@ def log_deriv(X, Y):
 @click_loguru.init_logger()
 @click.argument("instemlist")
 def analyze_clusters(dirname, instemlist, label, reference=None, on_id=None, match_type=None):
+    """Statistics of clustering as function of identity."""
     if match_type is None:
         matches = ["all", "any"]
     else:
@@ -218,7 +219,7 @@ def do_cuts(obs, high, low, label):
 @click.argument("cluster_size")
 @click.argument("combinedfile")
 def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
-    """Plot the normalized length distribution of singletons in clusters"""
+    """Plot length distribution of outliers in clusters."""
     cluster_size = int(cluster_size)
     if not cluster_size > 0:
         logger.error("Positive cluster size must be specified")
@@ -261,7 +262,7 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
 @click.argument("cluster_size")
 @click.argument("combinedfile")
 def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
-    """Plot the normalized length distribution of singletons in clusters"""
+    """Plot length distribution of singletons in clusters"""
     cluster_size = int(cluster_size)
     if not cluster_size > 0:
         logger.error("Positive cluster size must be specified")

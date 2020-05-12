@@ -6,6 +6,7 @@ import zlib
 
 # third-party imports
 from Bio.Data import IUPACData
+from loguru import logger
 
 # global constants
 AMBIGUOUS_CHARACTER = "X"

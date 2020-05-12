@@ -281,7 +281,7 @@ def cluster_set_name(stem, identity):
 def usearch_cluster(
     seqfile, identity, delete=True, write_ids=False, do_calc=True, min_id_freq=0, substrs=None, dups=None
 ):
-    """Cluster above a global sequence identity threshold"""
+    """Cluster at a global sequence identity threshold."""
     from sh import usearch
 
     try:
@@ -420,7 +420,7 @@ def usearch_cluster(
 @click.option("--substrs", help="subpath to file of substrings. [default: none]")
 @click.option("--dups", help="subpath to file of duplicates. [default: none]")
 def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
-    """Cluster in steps from low to 100% sequence identity"""
+    """Cluster in steps from low to 100% identity."""
     try:
         inpath, dirpath = get_paths_from_file(seqfile)
     except FileNotFoundError:
@@ -462,7 +462,7 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
 @click_loguru.init_logger(logfile=False)
 @click.argument("infile")
 def clusters_to_histograms(infile):
-    """Compute histograms from a tab-delimited cluster file"""
+    """Compute histograms from cluster file."""
     try:
         inpath, dirpath = get_paths_from_file(infile)
     except FileNotFoundError:
@@ -596,7 +596,7 @@ def prepare_protein_files(setname, fasta_list, stemdict=None, write_all=True, pa
 @click.argument("infile")
 @click.argument("recordfile")
 def add_singletons(infile, recordfile):
-    """Add singleton clusters to cluster file"""
+    """Add singleton clusters to cluster file."""
     clusters = pd.read_csv(infile, header=None, names=["cluster", "id"], sep="\t")
     records = pd.read_csv(recordfile, sep="\t")
     id_set = set(records["id"])
@@ -637,6 +637,7 @@ def add_singletons(infile, recordfile):
 @click_loguru.init_logger(logfile=False)
 @click.argument("infile")
 def adjacency_to_graph(infile):
+    """Turn adjacency data into GML graph file."""
     gmlfilepath = "synteny.gml"
     clusters = pd.read_csv(infile, sep="\t", index_col=0)
     graph = nx.Graph()
