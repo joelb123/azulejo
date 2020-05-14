@@ -9,10 +9,8 @@ from pkg_resources import iter_entry_points
 
 # third-party imports
 import click
-from click_plugins import with_plugins
-
-# first-party imports
 from click_loguru import ClickLoguru
+from click_plugins import with_plugins
 from loguru import logger
 
 # module imports
@@ -20,7 +18,7 @@ from .common import NAME
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.6.6"
+__version__ = "0.6.7"
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
@@ -38,7 +36,12 @@ click_loguru = ClickLoguru(NAME, __version__, retention=LOG_FILE_RETENTION)
 @click.group()
 @click_loguru.stash_subcommand()
 @click.option(
-    "-e", "--warnings_as_errors", is_flag=True, show_default=True, default=False, help="Treat warnings as fatal."
+    "-e",
+    "--warnings_as_errors",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Treat warnings as fatal.",
 )
 @click.version_option(version=__version__, prog_name=NAME)
 def cli(warnings_as_errors, **kwargs):
@@ -51,7 +54,9 @@ def cli(warnings_as_errors, **kwargs):
     License: BSD-3-Clause
     """
     if warnings_as_errors:
-        logger.warn("Runtime warnings (e.g., from pandas) will cause exceptions")
+        logger.warn(
+            "Runtime warnings (e.g., from pandas) will cause exceptions"
+        )
         warnings.filterwarnings("error")
 
 

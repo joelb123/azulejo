@@ -20,10 +20,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from Bio import SeqIO
-
 from dask.diagnostics import ProgressBar
-
-# first-party imports
 from loguru import logger
 
 # module imports
@@ -61,7 +58,7 @@ EPSILON = 0.000001
 FILETYPE = "pdf"
 MAX_BINS = 10
 DEFAULT_STEPS = 16
-
+START_CHAR = "M"
 # Classes
 class ElapsedTimeReport:
     def __init__(self, name):
@@ -186,11 +183,17 @@ def parse_chromosome(ident):
 def parse_subids(ident):
     """Parse the subidentifiers from identifiers."""
     subids = ident.split(ID_SEPARATOR)
-    subids += [chromosome for chromosome in [parse_chromosome(ident) for ident in subids] if chromosome is not None]
+    subids += [
+        chromosome
+        for chromosome in [parse_chromosome(ident) for ident in subids]
+        if chromosome is not None
+    ]
     return subids
 
 
-def parse_clusters(outdir, identity, delete=True, count_clusters=True, synonyms=None):
+def parse_clusters(
+    outdir, identity, delete=True, count_clusters=True, synonyms=None
+):
     """Parse clusters, counting occurrances."""
     if synonyms is None:
         synonyms = {}
@@ -207,7 +210,9 @@ def parse_clusters(outdir, identity, delete=True, count_clusters=True, synonyms=
         ids = get_fasta_ids(fasta)
         if len(synonyms):
             syn_ids = set(ids).intersection(synonyms.keys())
-            [ids.extend(synonyms[i]) for i in syn_ids]  # pylint: disable=expression-not-assigned
+            [
+                ids.extend(synonyms[i]) for i in syn_ids
+            ]  # pylint: disable=expression-not-assigned
         n_ids = len(ids)
         degree_list.append(n_ids)
         degree_counter.update({n_ids: 1})
@@ -216,13 +221,23 @@ def parse_clusters(outdir, identity, delete=True, count_clusters=True, synonyms=
         size_list += [n_ids] * n_ids
         # Do 'any' and 'all' counters
         id_counter = Counter()
-        id_counter.update(chain.from_iterable([parse_subids(id) for id in ids]))
+        id_counter.update(
+            chain.from_iterable([parse_subids(id) for id in ids])
+        )
         if count_clusters:
             any_counter.update(id_counter.keys())
-            all_counter.update([id for id in id_counter.keys() if id_counter[id] == n_ids])
+            all_counter.update(
+                [id for id in id_counter.keys() if id_counter[id] == n_ids]
+            )
         elif n_ids > 1:
             any_counter.update({s: n_ids for s in id_counter.keys()})
-            all_counter.update({id: n_ids for id in id_counter.keys() if id_counter[id] == n_ids})
+            all_counter.update(
+                {
+                    id: n_ids
+                    for id in id_counter.keys()
+                    if id_counter[id] == n_ids
+                }
+            )
         # Do graph components
         graph.add_nodes_from(ids)
         if n_ids > 1:
@@ -232,7 +247,16 @@ def parse_clusters(outdir, identity, delete=True, count_clusters=True, synonyms=
             fasta.unlink()
     if delete:
         outdir.rmdir()
-    return graph, cluster_list, id_list, size_list, degree_list, degree_counter, any_counter, all_counter
+    return (
+        graph,
+        cluster_list,
+        id_list,
+        size_list,
+        degree_list,
+        degree_counter,
+        any_counter,
+        all_counter,
+    )
 
 
 def prettyprint_float(x, digits):
@@ -253,8 +277,19 @@ def cluster_set_name(stem, identity):
 @cli.command()
 @click_loguru.init_logger()
 @click.argument("seqfile")
-@click.option("--identity", "-i", default=0.0, help="Minimum sequence identity (float, 0-1). [default: lowest]")
-@click.option("--min_id_freq", "-m", default=0, show_default=True, help="Minimum frequency of ID components.")
+@click.option(
+    "--identity",
+    "-i",
+    default=0.0,
+    help="Minimum sequence identity (float, 0-1). [default: lowest]",
+)
+@click.option(
+    "--min_id_freq",
+    "-m",
+    default=0,
+    show_default=True,
+    help="Minimum frequency of ID components.",
+)
 @click.option(
     "--delete/--no-delete",
     "-d/-n",
@@ -276,10 +311,19 @@ def cluster_set_name(stem, identity):
     default=True,
     help="Write file of ID-to-clusters. [default: do_calc]",
 )
-@click.option("--substrs", help="subpath to file of substrings. [default: none]")
+@click.option(
+    "--substrs", help="subpath to file of substrings. [default: none]"
+)
 @click.option("--dups", help="subpath to file of duplicates. [default: none]")
 def usearch_cluster(
-    seqfile, identity, delete=True, write_ids=False, do_calc=True, min_id_freq=0, substrs=None, dups=None
+    seqfile,
+    identity,
+    delete=True,
+    write_ids=False,
+    do_calc=True,
+    min_id_freq=0,
+    substrs=None,
+    dups=None,
 ):
     """Cluster at a global sequence identity threshold."""
     from sh import usearch
@@ -302,18 +346,24 @@ def usearch_cluster(
     anyfilepath = dirpath / (f"{outname}-anyhist.tsv")
     allfilepath = dirpath / (f"{outname}-allhist.tsv")
     idpath = dirpath / (f"{outname}-ids.tsv")
-    logger.info(f"%{prettyprint_float(identity * 100, 2)}% sequence identity output to {outname}*")
+    logger.info(
+        f"%{prettyprint_float(identity * 100, 2)}% sequence identity output to {outname}*"
+    )
     if not delete:
         logger.debug(f"Cluster files will be kept in {logfile} and {outdir}")
     if write_ids:
-        logger.debug(f"File of cluster ID usage will be written to {anyfilepath} and {allfilepath}")
+        logger.debug(
+            f"File of cluster ID usage will be written to {anyfilepath} and {allfilepath}"
+        )
     if not do_calc:
         if not logfilepath.exists():
             logger.error("Previous results must exist, rerun with --do_calc")
             sys.exit(1)
         logger.debug("Using previous results for calculation")
     if min_id_freq:
-        logger.debug(f"Minimum number of times ID's must occur to be counted: {min_id_freq}")
+        logger.debug(
+            f"Minimum number of times ID's must occur to be counted: {min_id_freq}"
+        )
     synonyms = {}
     if substrs is not None:
         logger.debug(f"using duplicates in {dirpath / dups}")
@@ -337,12 +387,25 @@ def usearch_cluster(
         # Do the calculation.
         #
         with in_working_directory(dirpath):
-            output = usearch(["-cluster_fast", seqfile, "-id", identity, "-clusters", outdir, "-log", logfile])
+            output = usearch(
+                [
+                    "-cluster_fast",
+                    seqfile,
+                    "-id",
+                    identity,
+                    "-clusters",
+                    outdir,
+                    "-log",
+                    logfile,
+                ]
+            )
             logger.debug(output)
             logger.debug(timer.elapsed("parse"))
     run_stat_dict = OrderedDict([("divergence", 1.0 - identity)])
     parse_usearch_log(logfilepath, run_stat_dict)
-    run_stats = pd.DataFrame(list(run_stat_dict.items()), columns=["stat", "val"])
+    run_stats = pd.DataFrame(
+        list(run_stat_dict.items()), columns=["stat", "val"]
+    )
     run_stats.set_index("stat", inplace=True)
     run_stats.to_csv(statfilepath, sep="\t")
     if delete:
@@ -362,7 +425,9 @@ def usearch_cluster(
     #
     # Write out list of clusters and ids.
     #
-    id_frame = pd.DataFrame.from_dict({"id": ids, "cluster": clusters, "siz": sizes})
+    id_frame = pd.DataFrame.from_dict(
+        {"id": ids, "cluster": clusters, "siz": sizes}
+    )
     id_frame.sort_values("siz", ascending=False, inplace=True)
     id_frame = id_frame.reindex(["cluster", "siz", "id",], axis=1)
     id_frame.reset_index(inplace=True)
@@ -373,22 +438,30 @@ def usearch_cluster(
     #
     # Write out degree distribution.
     #
-    cluster_hist = pd.DataFrame(list(degree_counts.items()), columns=["degree", "clusters"])
+    cluster_hist = pd.DataFrame(
+        list(degree_counts.items()), columns=["degree", "clusters"]
+    )
     # cluster_hist['degree'] = cluster_hist['degree'] - 1
     cluster_hist.sort_values(["degree"], inplace=True)
     cluster_hist.set_index("degree", inplace=True)
     total_clusters = cluster_hist["clusters"].sum()
-    cluster_hist["pct_total"] = cluster_hist["clusters"] * 100.0 / total_clusters
+    cluster_hist["pct_total"] = (
+        cluster_hist["clusters"] * 100.0 / total_clusters
+    )
     cluster_hist.to_csv(histfilepath, sep="\t", float_format="%06.3f")
     del degree_counts
     #
     # Do histograms of "any" and "all" id usage in cluster
     #
     hist_value = f"{identity:f}"
-    any_hist = pd.DataFrame(list(any_counts.items()), columns=["id", hist_value])
+    any_hist = pd.DataFrame(
+        list(any_counts.items()), columns=["id", hist_value]
+    )
     any_hist.set_index("id", inplace=True)
     any_hist.sort_values(hist_value, inplace=True, ascending=False)
-    all_hist = pd.DataFrame(list(all_counts.items()), columns=["id", hist_value])
+    all_hist = pd.DataFrame(
+        list(all_counts.items()), columns=["id", hist_value]
+    )
     all_hist.set_index("id", inplace=True)
     all_hist.sort_values(hist_value, inplace=True, ascending=False)
     if min_id_freq:
@@ -415,9 +488,23 @@ def usearch_cluster(
 @cli.command()
 @click_loguru.init_logger()
 @click.argument("seqfile")
-@click.option("--steps", "-s", default=DEFAULT_STEPS, show_default=True, help="# of steps from lowest to highest")
-@click.option("--min_id_freq", "-m", default=0, show_default=True, help="Minimum frequency of ID components.")
-@click.option("--substrs", help="subpath to file of substrings. [default: none]")
+@click.option(
+    "--steps",
+    "-s",
+    default=DEFAULT_STEPS,
+    show_default=True,
+    help="# of steps from lowest to highest",
+)
+@click.option(
+    "--min_id_freq",
+    "-m",
+    default=0,
+    show_default=True,
+    help="Minimum frequency of ID components.",
+)
+@click.option(
+    "--substrs", help="subpath to file of substrings. [default: none]"
+)
 @click.option("--dups", help="subpath to file of duplicates. [default: none]")
 def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     """Cluster in steps from low to 100% identity."""
@@ -429,16 +516,30 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     stat_path = dirpath / (inpath.stem + STATFILE_SUFFIX)
     any_path = dirpath / (inpath.stem + ANYFILE_SUFFIX)
     all_path = dirpath / (inpath.stem + ALLFILE_SUFFIX)
-    logsteps = [1.0] + list(1.0 - np.logspace(IDENT_LOG_MIN, IDENT_LOG_MAX, num=steps))
+    logsteps = [1.0] + list(
+        1.0 - np.logspace(IDENT_LOG_MIN, IDENT_LOG_MAX, num=steps)
+    )
     min_fmt = prettyprint_float(min(logsteps) * 100.0, 2)
     max_fmt = prettyprint_float(max(logsteps) * 100.0, 2)
-    logger.info(f"Clustering at {steps} levels from {min_fmt}% to {maxfmt}% global sequence identity")
+    logger.info(
+        f"Clustering at {steps} levels from {min_fmt}% to {maxfmt}% global sequence identity"
+    )
     stat_list = []
     all_frames = []
     any_frames = []
     for id_level in logsteps:
-        stats, graph, unused_hist, any_, all_ = usearch_cluster.callback(  # pylint: disable=unused-variable
-            seqfile, id_level, min_id_freq=min_id_freq, substrs=substrs, dups=dups
+        (
+            stats,
+            graph,
+            unused_hist,
+            any_,
+            all_,
+        ) = usearch_cluster.callback(  # pylint: disable=unused-variable
+            seqfile,
+            id_level,
+            min_id_freq=min_id_freq,
+            substrs=substrs,
+            dups=dups,
         )
         stat_list.append(stats)
         any_frames.append(any_)
@@ -452,9 +553,13 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     #
     # Concatenate any/all data
     #
-    any_ = pd.concat(any_frames, axis=1, join="inner", sort=True, ignore_index=False)
+    any_ = pd.concat(
+        any_frames, axis=1, join="inner", sort=True, ignore_index=False
+    )
     any_.to_csv(any_path, sep="\t")
-    all_ = pd.concat(all_frames, axis=1, join="inner", sort=True, ignore_index=False)
+    all_ = pd.concat(
+        all_frames, axis=1, join="inner", sort=True, ignore_index=False
+    )
     all_.to_csv(all_path, sep="\t")
 
 
@@ -471,13 +576,19 @@ def clusters_to_histograms(infile):
     histfilepath = dirpath / f"{inpath.stem}-sizedist.tsv"
     clusters = pd.read_csv(dirpath / infile, sep="\t", index_col=0)
     cluster_counter = Counter()
-    for unused_cluster_id, group in clusters.groupby(["cluster"]):  # pylint: disable=unused-variable
+    for unused_cluster_id, group in clusters.groupby(
+        ["cluster"]
+    ):  # pylint: disable=unused-variable
         cluster_counter.update({len(group): 1})
     logger.info(f"Writing to {histfilepath}.")
-    cluster_hist = pd.DataFrame(list(cluster_counter.items()), columns=["siz", "clusts"])
+    cluster_hist = pd.DataFrame(
+        list(cluster_counter.items()), columns=["siz", "clusts"]
+    )
     total_clusters = cluster_hist["clusts"].sum()
     cluster_hist["%clusts"] = cluster_hist["clusts"] * 100.0 / total_clusters
-    cluster_hist["%genes"] = cluster_hist["clusts"] * cluster_hist["siz"] * 100.0 / len(clusters)
+    cluster_hist["%genes"] = (
+        cluster_hist["clusts"] * cluster_hist["siz"] * 100.0 / len(clusters)
+    )
     cluster_hist.sort_values(["siz"], inplace=True)
     cluster_hist.set_index("siz", inplace=True)
     cluster_hist.to_csv(histfilepath, sep="\t", float_format="%06.3f")
@@ -513,16 +624,17 @@ def compare_clusters(file1, file2):
     print(f"{len(clusters1):d} in {file1} after dropping")
 
 
-def cleanup_fasta(set_path, fasta_path, filestem):
+def cleanup_fasta(set_path, fasta_path, filestem, write_stats=True):
     """Sanitize and characterize protein FASTA files."""
     out_sequences = []
     ids = []
     lengths = []
     positions = []
     n_ambig = []
+    M_starts = []
     sanitizer = Sanitizer(remove_dashes=True)
     position = 0
-    logger.debug(f"Sanitizing and summarizing {fasta_path}.")
+    m_start_count = 0
     with fasta_path.open("rU") as handle:
         for record in SeqIO.parse(handle, SEQ_FILE_TYPE):
             seq = record.seq.upper().tomutable()
@@ -530,6 +642,9 @@ def cleanup_fasta(set_path, fasta_path, filestem):
                 seq = sanitizer.sanitize(seq)
             except ValueError:  # zero-length sequence after sanitizing
                 continue
+            Mstart = seq[0] == START_CHAR
+            m_start_count += Mstart
+            Mstarts.append(Mstart)
             record.seq = seq.toseq()
             ids.append(record.id)
             n_ambig.append(sanitizer.count_ambiguous(seq))
@@ -539,56 +654,85 @@ def cleanup_fasta(set_path, fasta_path, filestem):
             position += 1
     with (set_path / f"{filestem}.faa").open("w") as output_handle:
         SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
-    df = pd.DataFrame(list(zip(ids, positions, lengths, n_ambig)), columns=["ID", "pos", "protein_len", "n_ambig"],)
+    df = pd.DataFrame(
+        list(zip(ids, positions, lengths, n_ambig, Mstarts)),
+        columns=["ID", "pos", "protein_len", "n_ambig", "Mstart"],
+    )
     df = df.set_index(["ID"])
-    df.to_csv(set_path / f"{filestem}-protein_stats.tsv", sep="\t")
-    return df, sanitizer.file_stats()
+    logger.debug(f"   {len(df)} sequences in {fasta_path}.")
+    if write_stats:
+        df.to_csv(set_path / protein_properties_filename(filestem), sep="\t")
+    return filestem, df, sanitizer.file_stats()
 
 
 @cli.command()
 @click_loguru.init_logger(logfile=False)
 @click.argument("setname")
-@click.option("--parallel/--no-parallel", is_flag=True, default=True, show_default=True, help="Process in parallel.")
-@click.option("--write_all/--no-write_all", is_flag=True, default=True, show_default=True, help="Process in parallel.")
+@click.option(
+    "--parallel/--no-parallel",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Process in parallel.",
+)
+@click.option(
+    "--write_stats/--no-write_stats",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Write per-seq and per-file stats.",
+)
 @click.argument("fasta_list", nargs=-1, type=click.Path(exists=True))
-def prepare_protein_files(setname, fasta_list, stemdict=None, write_all=True, parallel=True):
+def prepare_protein_files(
+    setname, fasta_list, stemdict=None, write_stats=True, parallel=True
+):
     """Sanitize and combine protein FASTA files."""
     set_path = Path(setname)
+    set_name = set_path.name
     file_paths = [Path(p) for p in fasta_list]
-    if stemdict is None:
+    if stemdict is None or stemdict == ():
         stemdict = {}
         for file_path in file_paths:
-            stemdict[file_path] = file_path.name
-    if len(fasta_list) < 1:
+            if file_path.suffix != "." + FAA_EXT:
+                logger.error(f"Unrecognized extension in {file.path.name}")
+                sys.exit(1)
+            stemdict[file_path.name[: -len(FAA_EXT) - 1]] = {
+                FAA_EXT: file_path
+            }
+    if len(stemdict) < 1:
         logger.error("Empty FILELIST, aborting.")
         sys.exit(1)
     if set_path.exists() and set_path.is_file():
         set_path.unlink()
-    elif set_path.exists() and set_path.is_dir():
-        logger.debug(f"Set path {setname} exists.")
-    else:
-        logger.info(f'Creating output directory "{setname}/".')
-        set_path.mkdir()
-
+    elif not set_path.is_dir():
+        logger.info(f'Creating output directory "{set_name}/".')
+        set_path.mkdir(parents=True)
     results = []
     arg_list = []
-    for file_path in file_paths:
-        if stemdict is not None:
-            file_stem = stemdict[file_path.name]
-        else:
-            file_stem = file_path.name[: -len(file_path.suffix)]
-        arg_list.append((set_path, file_path, file_stem,))
+    for file_stem in stemdict.keys():
+        arg_list.append((set_path, stemdict[file_stem][FAA_EXT], file_stem,))
     for args in arg_list:
-        results.append(cleanup_fasta(*args))
-    stat_frames = []
-    file_dict_list = []
-    for protein_frame, filestat_dict in results:
-        stat_frames.append(protein_frame)
-        file_dict_list.append(filestat_dict)
+        results.append(cleanup_fasta(*args, write_stats=write_stats))
+    protein_frame_dict = {}
+    file_frame_dict = {}
+    n_seqs = 0
+    for id, protein_frame, filestat_dict in results:
+        n_seqs += len(protein_frame)
+        protein_frame_dict[id] = protein_frame
+        file_frame_dict[id] = filestat_dict
     del results
-    file_frame = pd.DataFrame.from_dict(file_dict).transpose()
-    print(file_dict_list)
-    return stat_frames
+    file_frame = pd.DataFrame.from_dict(file_frame_dict).transpose()
+    file_frame.sort_values(by=["seqs"], ascending=False, inplace=True)
+    file_frame.drop(["dashes"], axis=1, inplace=True)
+    del file_frame_dict
+    logger.info(
+        f"{n_seqs} sequences in {len(stemdict)} files in set {set_name}."
+    )
+    if write_stats:
+        file_stats_name = protein_file_stats_filename(set_name)
+        logger.debug(f"Writing overall stats to {file_stats_name}")
+        file_frame.to_csv(set_path / file_stats_name, sep="\t")
+    return protein_frame_dict, file_frame
 
 
 @cli.command()
@@ -597,7 +741,9 @@ def prepare_protein_files(setname, fasta_list, stemdict=None, write_all=True, pa
 @click.argument("recordfile")
 def add_singletons(infile, recordfile):
     """Add singleton clusters to cluster file."""
-    clusters = pd.read_csv(infile, header=None, names=["cluster", "id"], sep="\t")
+    clusters = pd.read_csv(
+        infile, header=None, names=["cluster", "id"], sep="\t"
+    )
     records = pd.read_csv(recordfile, sep="\t")
     id_set = set(records["id"])
     records.drop(["file", "pos"], axis=1, inplace=True)
@@ -629,7 +775,10 @@ def add_singletons(infile, recordfile):
         sizes.append(1)
         lengths.append(len_dict[singleton]["len"])
         n_clusters += 1
-    df = pd.DataFrame(list(zip(cluster_ids, ids, sizes, lengths)), columns=["cluster", "id", "siz", "len"])
+    df = pd.DataFrame(
+        list(zip(cluster_ids, ids, sizes, lengths)),
+        columns=["cluster", "id", "siz", "len"],
+    )
     df.to_csv(outfile, sep="\t")
 
 
@@ -660,18 +809,31 @@ def compute_subclusters(cluster, cluster_size_dict=None):
     """Compute dictionary of per-subcluster stats."""
     subcl_frame = pd.DataFrame(
         [
-            {"homo_id": i, "mean_len": g["len"].mean(), "std": g["len"].std(), "sub_siz": len(g)}
+            {
+                "homo_id": i,
+                "mean_len": g["len"].mean(),
+                "std": g["len"].std(),
+                "sub_siz": len(g),
+            }
             for i, g in cluster.groupby("link")
         ]
     )
     subcl_frame["link"] = subcl_frame["homo_id"]
-    subcl_frame["cont"] = subcl_frame["sub_siz"] == [cluster_size_dict[id] for id in subcl_frame["homo_id"]]
+    subcl_frame["cont"] = subcl_frame["sub_siz"] == [
+        cluster_size_dict[id] for id in subcl_frame["homo_id"]
+    ]
     subcl_frame.loc[subcl_frame["cont"], "link"] = np.nan
-    subcl_frame.sort_values(["sub_siz", "std", "mean_len"], ascending=[False, True, False], inplace=True)
+    subcl_frame.sort_values(
+        ["sub_siz", "std", "mean_len"],
+        ascending=[False, True, False],
+        inplace=True,
+    )
     subcl_frame["sub"] = list(range(len(subcl_frame)))
     subcl_frame.index = list(range(len(subcl_frame)))
     # normalized length is NaN for first element
-    subcl_frame["norm"] = [np.nan] + list(subcl_frame["mean_len"][1:] / subcl_frame["mean_len"][0])
+    subcl_frame["norm"] = [np.nan] + list(
+        subcl_frame["mean_len"][1:] / subcl_frame["mean_len"][0]
+    )
     subcl_dict = subcl_frame.set_index("homo_id").to_dict("index")
     #
     # subcluster attributes are done, now copy them into the cluster frame
@@ -687,10 +849,33 @@ def compute_subclusters(cluster, cluster_size_dict=None):
 
 @cli.command()
 @click_loguru.init_logger(logfile=False)
-@click.option("--first_n", default=0, show_default=True, help="Only process this many clusters.")
-@click.option("--clust_size", default=0, show_default=True, help="Process only clusters of this size.")
-@click.option("--parallel/--no-parallel", is_flag=True, default=True, show_default=True, help="Process in parallel.")
-@click.option("-q", "--quiet", is_flag=True, show_default=True, default=False, help="Suppress logging to stderr.")
+@click.option(
+    "--first_n",
+    default=0,
+    show_default=True,
+    help="Only process this many clusters.",
+)
+@click.option(
+    "--clust_size",
+    default=0,
+    show_default=True,
+    help="Process only clusters of this size.",
+)
+@click.option(
+    "--parallel/--no-parallel",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Process in parallel.",
+)
+@click.option(
+    "-q",
+    "--quiet",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Suppress logging to stderr.",
+)
 @click.argument("synfile")
 @click.argument("homofile")
 def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
@@ -707,7 +892,9 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     if not quiet and clust_size:
         logger.info(f"Only clusters of size {clust_size} will be used.")
     syn["link"] = [homo_id_dict[id] for id in syn["id"]]
-    for unused_cluster_id, gr in syn.groupby(["cluster"]):  # pylint: disable=unused-variable
+    for unused_cluster_id, gr in syn.groupby(
+        ["cluster"]
+    ):  # pylint: disable=unused-variable
         cl = gr.copy()  # copy, so mutable
         clsize = cl["siz"].iloc[0]
         if clust_size and (clsize != clust_size):
@@ -725,7 +912,9 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
         logger.info(f"Combining {cluster_count} synteny/homology clusters:")
         ProgressBar().register()
     if parallel:
-        cluster_list = bag.map(compute_subclusters, cluster_size_dict=cluster_size_dict)
+        cluster_list = bag.map(
+            compute_subclusters, cluster_size_dict=cluster_size_dict
+        )
     else:
         for clust in arg_list:
             cluster_list.append(compute_subclusters(clust, cluster_size_dict))
@@ -735,15 +924,30 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     out_frame.index = list(range(len(out_frame)))
     for column in ["sub", "sub_siz"]:
         out_frame[column] = out_frame[column].astype(int)
-    out_frame["link"] = out_frame["link"].map(lambda x: "" if pd.isnull(x) else f"{x:.0f}")
+    out_frame["link"] = out_frame["link"].map(
+        lambda x: "" if pd.isnull(x) else f"{x:.0f}"
+    )
     out_frame.to_csv(
         "combined.tsv",
         sep="\t",
-        columns=["cluster", "siz", "sub", "sub_siz", "cont", "norm", "std", "len", "link", "id"],
+        columns=[
+            "cluster",
+            "siz",
+            "sub",
+            "sub_siz",
+            "cont",
+            "norm",
+            "std",
+            "len",
+            "link",
+            "id",
+        ],
         float_format="%.3f",
         index=False,
     )
     logger.debug(timer.elapsed("computing stats"))
     n_fully_contained = len(set(out_frame[out_frame["cont"] == 1]["cluster"]))
     contained_pct = n_fully_contained * 100.0 / cluster_count
-    logger.info(f"{n_fully_contained} of {cluster_count} clusters are fully contained ({contained_pct:.1f}%.)")
+    logger.info(
+        f"{n_fully_contained} of {cluster_count} clusters are fully contained ({contained_pct:.1f}%.)"
+    )

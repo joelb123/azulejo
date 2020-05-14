@@ -23,3 +23,13 @@ def get_paths_from_file(f, must_exist=True):
         raise FileNotFoundError(f)
     dirpath = inpath.parent
     return inpath, dirpath
+
+
+def protein_file_stats_filename(setname):
+    """Returns a string that is the name of the protein stat file."""
+    return f"{setname}-protein_file_stats.tsv"
+
+
+def protein_properties_filename(filestem):
+    """Return a string that is the name of the protein properties file."""
+    return f"{filestem}-protein_stats.tsv"

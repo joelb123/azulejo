@@ -11,8 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-
-# first-party imports
 from loguru import logger
 
 # module imports
@@ -71,7 +69,9 @@ def make_histogram(dist, name, log10=False, bins=None):
 
 def tick_function(X):
     X = X * 3.0 - 3
-    vals = [(f"{v:f}").rstrip("0").rstrip(".") for v in (1.0 - 10 ** X) * 100.0]
+    vals = [
+        (f"{v:f}").rstrip("0").rstrip(".") for v in (1.0 - 10 ** X) * 100.0
+    ]
     ticks = [f"{v}%" for v in vals]
     return ticks
 
@@ -85,7 +85,9 @@ def log_deriv(X, Y):
 @cli.command()
 @click_loguru.init_logger()
 @click.argument("instemlist")
-def analyze_clusters(dirname, instemlist, label, reference=None, on_id=None, match_type=None):
+def analyze_clusters(
+    dirname, instemlist, label, reference=None, on_id=None, match_type=None
+):
     """Statistics of clustering as function of identity."""
     if match_type is None:
         matches = ["all", "any"]
@@ -107,7 +109,9 @@ def analyze_clusters(dirname, instemlist, label, reference=None, on_id=None, mat
         uniques[stem] = stats["unique_seqs"].iloc[0]
         divergence[stem] = stats["divergence"]
         if on_id is None:
-            div_dist["all"][stem] = log_deriv(divergence[stem], stats["clusters"])
+            div_dist["all"][stem] = log_deriv(
+                divergence[stem], stats["clusters"]
+            )
             div_dist["any"][stem] = None
             if stem == reference:
                 div_dist["all"]["ref"] = div_dist["all"][stem]
@@ -116,7 +120,9 @@ def analyze_clusters(dirname, instemlist, label, reference=None, on_id=None, mat
             for match in ["any", "all"]:
                 data = pd.read_csv(paths[match], sep="\t", index_col=0)
                 try:
-                    div_dist[match][stem] = log_deriv(divergence[stem], data.loc[on_id])
+                    div_dist[match][stem] = log_deriv(
+                        divergence[stem], data.loc[on_id]
+                    )
                 except KeyError:  # this label wasn't found
                     div_dist[match][stem] = None
                 if stem == reference:
@@ -153,22 +159,42 @@ def analyze_clusters(dirname, instemlist, label, reference=None, on_id=None, mat
             outfilestem = f"{label}_divergence_dist_{on_id}."
     else:
         if on_id is None:
-            title = f"{label}_Differential Divergence Distribution vs. {reference}"
+            title = (
+                f"{label}_Differential Divergence Distribution vs. {reference}"
+            )
             outfilestem = f"{label}_divergence_dist_vs{reference}."
         else:
             title = f'{label} Differential Divergence Distribution on "{on_id}" vs. {reference}'
             outfilestem = f"{label}_divergence_dist_on_{on_id}_vs_ref."
     if reference is None:
-        fig.text(0.02, 0.5, "Logarithmic Derivative on Clusters", ha="center", va="center", rotation="vertical")
+        fig.text(
+            0.02,
+            0.5,
+            "Logarithmic Derivative on Clusters",
+            ha="center",
+            va="center",
+            rotation="vertical",
+        )
     else:
         fig.text(
-            0.02, 0.5, "Logarithmic Derivative Difference on Clusters", ha="center", va="center", rotation="vertical"
+            0.02,
+            0.5,
+            "Logarithmic Derivative Difference on Clusters",
+            ha="center",
+            va="center",
+            rotation="vertical",
         )
     if len(matches) == 2:
         fig.text(0.5, 0.47, "All in Cluster", ha="center", va="center")
         fig.text(0.5, 0.89, "Any in Cluster", ha="center", va="center")
     else:
-        fig.text(0.5, 0.91, "%s in Cluster" % matches[0].capitalize(), ha="center", va="center")
+        fig.text(
+            0.5,
+            0.91,
+            "%s in Cluster" % matches[0].capitalize(),
+            ha="center",
+            va="center",
+        )
     loweraxis.set(xlabel="Divergence on Sequence Identity")
     loweraxis.legend(loc="upper left")
     fig.suptitle(title)
@@ -196,17 +222,27 @@ def do_cuts(obs, high, low, label):
         if len(hicuts):
             hifilename = label + "_hicuts.tsv"
             logger.info(
-                "%d observations dropped by high-side cutoff of %.2f written to %s", len(hicuts), high, hifilename
+                "%d observations dropped by high-side cutoff of %.2f written to %s",
+                len(hicuts),
+                high,
+                hifilename,
             )
             logger.info(hicuts)
     if low > 0.0:
         locuts = obs[obs > low]
         obs = obs[obs >= low]
-        logger.info("%d observations dropped by low-side cutoff of %.2f", len(locuts), low)
+        logger.info(
+            "%d observations dropped by low-side cutoff of %.2f",
+            len(locuts),
+            low,
+        )
         if len(locuts):
             lofilename = label + "_locuts.tsv"
             logger.info(
-                "%d observations dropped by low-side cutoff of %.2f written to %s", len(locuts), low, lofilename
+                "%d observations dropped by low-side cutoff of %.2f written to %s",
+                len(locuts),
+                low,
+                lofilename,
             )
             logger.info(locuts)
     return obs
@@ -214,8 +250,18 @@ def do_cuts(obs, high, low, label):
 
 @cli.command()
 @click_loguru.init_logger()
-@click.option("--hi_cutoff", default=2.0, show_default=True, help="Disregard above this value.")
-@click.option("--lo_cutoff", default=0.0, show_default=True, help="Disregard below this value.")
+@click.option(
+    "--hi_cutoff",
+    default=2.0,
+    show_default=True,
+    help="Disregard above this value.",
+)
+@click.option(
+    "--lo_cutoff",
+    default=0.0,
+    show_default=True,
+    help="Disregard below this value.",
+)
 @click.argument("cluster_size")
 @click.argument("combinedfile")
 def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
@@ -226,7 +272,9 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
         sys.exit(1)
     clusters = pd.read_csv(combinedfile, sep="\t", index_col=0)
     norm_lengths = []
-    for unused_cluster_id, cluster in clusters.groupby("cluster"):  # pylint: disable=unused-variable
+    for unused_cluster_id, cluster in clusters.groupby(
+        "cluster"
+    ):  # pylint: disable=unused-variable
         if cluster["siz"].iloc[0] != cluster_size:
             # not the right size
             continue
@@ -241,13 +289,19 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
         norm_lengths.append(length)
     norm_lengths = np.array(norm_lengths)
     norm_lengths = do_cuts(norm_lengths, hi_cutoff, lo_cutoff, "len")
-    logger.info("%d singleton outliers in clusters of size %d", len(norm_lengths), cluster_size)
+    logger.info(
+        "%d singleton outliers in clusters of size %d",
+        len(norm_lengths),
+        cluster_size,
+    )
     logger.info("min:\t%.3f", min(norm_lengths))
     logger.info("max:\t%.3f", max(norm_lengths))
     logger.info("mean: %.3f", norm_lengths.mean())
     ax = sns.distplot(norm_lengths, bins=100, kde_kws={"label": "KDE"})
     ax.set_xlabel("Normalized Length of Singleton")
-    plt.title("Length distribution of %d singleton subclusters" % (len(norm_lengths)))
+    plt.title(
+        "Length distribution of %d singleton subclusters" % (len(norm_lengths))
+    )
     outfilename = f"norm_len_dist.{FILETYPE}"
     logger.info("saving plot to %s", outfilename)
     # plt.yscale('log')
@@ -257,8 +311,18 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
 
 @cli.command()
 @click_loguru.init_logger()
-@click.option("--hi_cutoff", default=0.0, show_default=True, help="Disregard above this value.")
-@click.option("--lo_cutoff", default=0.0, show_default=True, help="Disregard below this value.")
+@click.option(
+    "--hi_cutoff",
+    default=0.0,
+    show_default=True,
+    help="Disregard above this value.",
+)
+@click.option(
+    "--lo_cutoff",
+    default=0.0,
+    show_default=True,
+    help="Disregard below this value.",
+)
 @click.argument("cluster_size")
 @click.argument("combinedfile")
 def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
@@ -269,7 +333,9 @@ def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
         sys.exit(1)
     clusters = pd.read_csv(combinedfile, sep="\t", index_col=0)
     stds = []
-    for unused_cluster_id, cluster in clusters.groupby("cluster"):  # pylint: disable=unused-variable
+    for unused_cluster_id, cluster in clusters.groupby(
+        "cluster"
+    ):  # pylint: disable=unused-variable
         if cluster["siz"].iloc[0] != cluster_size:
             # not the right size
             continue
@@ -281,7 +347,9 @@ def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
     stds = np.array(stds)
     pct_zeros = len(stds[stds == 0.0]) * 100 / len(stds)
     stds = do_cuts(stds, hi_cutoff, lo_cutoff, "stds")
-    logger.info("%d single-subgroup clusters of size %d", len(stds), cluster_size)
+    logger.info(
+        "%d single-subgroup clusters of size %d", len(stds), cluster_size
+    )
     logger.info("%.1f %% zeroes, max is %.2f", pct_zeros, max(stds))
     logger.info("mean is %.3f", stds.mean())
     logbins = np.logspace(0.7, 3, 100)

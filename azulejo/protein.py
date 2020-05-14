@@ -44,7 +44,9 @@ class Sanitizer(object):
         """
         removals = [i for i, j in enumerate(s) if j == character]
         self.chars_removed += len(removals)
-        [s.pop(pos - k) for k, pos in enumerate(removals)]  # pylint: disable=expression-not-assigned
+        [
+            s.pop(pos - k) for k, pos in enumerate(removals)
+        ]  # pylint: disable=expression-not-assigned
         return s
 
     def fix_alphabet(self, s):
@@ -53,9 +55,13 @@ class Sanitizer(object):
         :param s: mutable sequence, upper-cased
         :return: fixed sequence
         """
-        fix_positions = [pos for pos, char in enumerate(s) if char not in ALPHABET]
+        fix_positions = [
+            pos for pos, char in enumerate(s) if char not in ALPHABET
+        ]
         self.chars_fixed += len(fix_positions)
-        [s.__setitem__(pos, AMBIGUOUS_CHARACTER) for pos in fix_positions]  # pylint: disable=expression-not-assigned
+        [
+            s.__setitem__(pos, AMBIGUOUS_CHARACTER) for pos in fix_positions
+        ]  # pylint: disable=expression-not-assigned
         return s
 
     def remove_char_on_ends(self, s, character):
@@ -109,14 +115,14 @@ class Sanitizer(object):
     def file_stats(self):
         """Return a dictionary of file stats."""
         return {
+            "seqs": self.seqs_out,
+            "resids": self.chars_out,
             "seqs_in": self.seqs_sanitized,
-            "seqs_out": self.seqs_out,
-            "residues_in": self.chars_in,
-            "residues_out": self.chars_out,
-            "dashes_removed": self.chars_removed,
-            "chars_fixed": self.chars_fixed,
-            "ends_trimmed": self.endchars_removed,
-            "ambiguous_residues": self.ambiguous,
+            "resids_in": self.chars_in,
+            "dashes": self.chars_removed,
+            "fixed": self.chars_fixed,
+            "trimmed": self.endchars_removed,
+            "ambig": self.ambiguous,
         }
 
 

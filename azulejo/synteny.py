@@ -12,8 +12,6 @@ import gffpandas.gffpandas as gffpd
 import numpy as np
 import pandas as pd
 from Bio import SeqIO
-
-# first-party imports
 from loguru import logger
 
 # module imports
@@ -131,14 +129,26 @@ def pair_matching_file_types(mixedlist, extA, extB):
     typeB_stems = [str(Path(n).stem) for n in mixedlist if n.find(extB) > -1]
     typeB_stems.sort(key=len)
     if len(typeA_stems) != len(typeB_stems):
-        logger.error(f"Differing number of {extA} ({len(typeB_stems)}) and {extB} files ({len(typeA_stems)}).")
+        logger.error(
+            f"Differing number of {extA} ({len(typeB_stems)}) and {extB} files ({len(typeA_stems)})."
+        )
         sys.exit(1)
     for typeB in typeB_stems:
-        prefix_len = max([len(prefix([typeB, typeA])) for typeA in typeA_stems])
-        match_typeA_idx = [i for i, typeA in enumerate(typeA_stems) if len(prefix([typeB, typeA])) == prefix_len][0]
+        prefix_len = max(
+            [len(prefix([typeB, typeA])) for typeA in typeA_stems]
+        )
+        match_typeA_idx = [
+            i
+            for i, typeA in enumerate(typeA_stems)
+            if len(prefix([typeB, typeA])) == prefix_len
+        ][0]
         match_typeA = typeA_stems.pop(match_typeA_idx)
-        typeB_path = [Path(p) for p in mixedlist if p.endswith(typeB + "." + extB)][0]
-        typeA_path = [Path(p) for p in mixedlist if p.endswith(match_typeA + "." + extA)][0]
+        typeB_path = [
+            Path(p) for p in mixedlist if p.endswith(typeB + "." + extB)
+        ][0]
+        typeA_path = [
+            Path(p) for p in mixedlist if p.endswith(match_typeA + "." + extA)
+        ][0]
         stem = prefix([typeB, match_typeA])
         file_dict[stem] = {extA: typeA_path, extB: typeB_path}
     return file_dict
@@ -146,8 +156,20 @@ def pair_matching_file_types(mixedlist, extA, extB):
 
 @cli.command()
 @click_loguru.init_logger()
-@click.option("--identity", "-i", default=0.0, help="Minimum sequence ID (0-1). [default: lowest]")
-@click.option("--clust/--no-clust", "-c/-x", is_flag=True, default=True, help="Do cluster calc.", show_default=True)
+@click.option(
+    "--identity",
+    "-i",
+    default=0.0,
+    help="Minimum sequence ID (0-1). [default: lowest]",
+)
+@click.option(
+    "--clust/--no-clust",
+    "-c/-x",
+    is_flag=True,
+    default=True,
+    help="Do cluster calc.",
+    show_default=True,
+)
 @click.option(
     "-s",
     "--shorten_source",
@@ -158,7 +180,9 @@ def pair_matching_file_types(mixedlist, extA, extB):
 )
 @click.argument("setname")
 @click.argument("gff_faa_path_list", nargs=-1)
-def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_list):
+def annotate_homology(
+    identity, clust, shorten_source, setname, gff_faa_path_list
+):
     """Marshal homology and sequence information.
 
     Corresponding GFF and FASTA files must have a corresponding prefix to their
@@ -181,15 +205,24 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
     for stem in file_dict.keys():
         logger.debug(f"Reading GFF file {file_dict[stem][GFF_EXT]}.")
         annotation = gffpd.read_gff3(file_dict[stem][GFF_EXT])
-        mRNAs = annotation.filter_feature_of_type(["mRNA"]).attributes_to_columns()
+        mRNAs = annotation.filter_feature_of_type(
+            ["mRNA"]
+        ).attributes_to_columns()
         mRNAs.drop(
-            mRNAs.columns.drop(["seq_id", "start", "strand", "ID"]), axis=1, inplace=True
+            mRNAs.columns.drop(["seq_id", "start", "strand", "ID"]),
+            axis=1,
+            inplace=True,
         )  # drop non-essential columns
         if shorten_source:
             # drop identical sub-fields in seq_id to keep them visually short (for development)
             split_sources = mRNAs["seq_id"].str.split(".", expand=True)
             split_sources = split_sources.drop(
-                [i for i in split_sources.columns if len(set(split_sources[i])) == 1], axis=1
+                [
+                    i
+                    for i in split_sources.columns
+                    if len(set(split_sources[i])) == 1
+                ],
+                axis=1,
             )
             sources = split_sources.agg(".".join, axis=1)
             mRNAs["seq_id"] = sources
@@ -198,12 +231,18 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
         # TODO-add gene order
         file_dict[stem]["fragments"] = len(set(mRNAs["seq_id"]))
         logger.debug(f"Reading FASTA file {file_dict[stem][FAA_EXT]}.")
-        fasta_dict = SeqIO.to_dict(SeqIO.parse(file_dict[stem][FAA_EXT], "fasta"))
+        fasta_dict = SeqIO.to_dict(
+            SeqIO.parse(file_dict[stem][FAA_EXT], "fasta")
+        )
         # TODO-filter out crap and calculate ambiguous
         file_dict[stem]["n_seqs"] = len(fasta_dict)
-        file_dict[stem]["residues"] = sum([len(fasta_dict[k].seq) for k in fasta_dict.keys()])
+        file_dict[stem]["residues"] = sum(
+            [len(fasta_dict[k].seq) for k in fasta_dict.keys()]
+        )
         mRNAs = mRNAs[mRNAs["ID"].isin(fasta_dict.keys())]
-        mRNAs["protein_len"] = mRNAs["ID"].map(lambda k: len(fasta_dict[k].seq))
+        mRNAs["protein_len"] = mRNAs["ID"].map(
+            lambda k: len(fasta_dict[k].seq)
+        )
         frame_dict[stem] = mRNAs.set_index("ID")
         del annotation
         for key in fasta_dict.keys():
@@ -219,7 +258,9 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
     set_keys = list(file_frame["stem"])
     concatenated_fasta_name = f"{setname}.faa"
     if clust:
-        logger.debug(f"Writing concatenated FASTA file {concatenated_fasta_name}.")
+        logger.debug(
+            f"Writing concatenated FASTA file {concatenated_fasta_name}."
+        )
         with (set_path / concatenated_fasta_name).open("w") as concat_fh:
             SeqIO.write(fasta_records, concat_fh, "fasta")
         logger.debug("Doing cluster calculation.")
@@ -231,7 +272,9 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
         os.chdir(cwd)
         del stats, graph, hist, any_, all_
     del fasta_records
-    cluster_frame = pd.read_csv(set_path / (cluster_set_name(setname, identity) + "-ids.tsv"), sep="\t")
+    cluster_frame = pd.read_csv(
+        set_path / (cluster_set_name(setname, identity) + "-ids.tsv"), sep="\t"
+    )
     cluster_frame = cluster_frame.set_index("id")
     logger.debug("Mapping FASTA IDs to cluster properties.")
 
@@ -243,8 +286,12 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
 
     for stem in set_keys:
         frame = frame_dict[stem]
-        frame["cluster_id"] = frame.index.map(lambda i: id_to_cluster_property(i, "cluster"))
-        frame["cluster_size"] = frame.index.map(lambda i: id_to_cluster_property(i, "siz"))
+        frame["cluster_id"] = frame.index.map(
+            lambda i: id_to_cluster_property(i, "cluster")
+        )
+        frame["cluster_size"] = frame.index.map(
+            lambda i: id_to_cluster_property(i, "siz")
+        )
         homology_filename = f"{stem}{HOMOLOGY_ENDING}"
         logger.debug(f"Writing homology file {homology_filename}")
         frame.to_csv(set_path / homology_filename, sep="\t")
@@ -253,7 +300,14 @@ def annotate_homology(identity, clust, shorten_source, setname, gff_faa_path_lis
 @cli.command()
 @click_loguru.init_logger()
 @click.option("-k", default=6, help="Synteny block length.", show_default=True)
-@click.option("-r", "--rmer", default=False, is_flag=True, show_default=True, help="Allow repeats in block.")
+@click.option(
+    "-r",
+    "--rmer",
+    default=False,
+    is_flag=True,
+    show_default=True,
+    help="Allow repeats in block.",
+)
 @click.argument("setname")
 @click.argument("gff_fna_path_list", nargs=-1)
 def synteny_anchors(k, rmer, setname, gff_fna_path_list):
@@ -279,40 +333,56 @@ def synteny_anchors(k, rmer, setname, gff_fna_path_list):
                 map_results.append(hash_closure(i))
         frame["footprint"] = [map_results[i][0] for i in range(len(frame))]
         frame["hashdir"] = [map_results[i][1] for i in range(len(frame))]
-        frame[synteny_func_name] = [map_results[i][2] for i in range(len(frame))]
+        frame[synteny_func_name] = [
+            map_results[i][2] for i in range(len(frame))
+        ]
         del map_results
         # TODO:E values
         hash_series = frame[synteny_func_name]
         assigned_hashes = hash_series[hash_series != 0]
         del hash_series
         n_assigned = len(assigned_hashes)
-        logger.info(f"{stem} has {frame_len} proteins, {n_assigned} of which have {synteny_func_name} hashes,")
+        logger.info(
+            f"{stem} has {frame_len} proteins, {n_assigned} of which have {synteny_func_name} hashes,"
+        )
         hash_counts = assigned_hashes.value_counts()
         assigned_hash_frame = pd.DataFrame(columns=merge_frame_columns)
         assigned_hash_frame["hash"] = assigned_hashes.unique()
         assigned_hash_frame["source"] = stem
         n_non_unique = n_assigned - len(assigned_hash_frame)
         percent_non_unique = n_non_unique / n_assigned * 100.0
-        logger.info(f"  of which {n_non_unique} ({percent_non_unique:0.1f})% are non-unique.")
+        logger.info(
+            f"  of which {n_non_unique} ({percent_non_unique:0.1f})% are non-unique."
+        )
         merge_frame.append(assigned_hash_frame)
         del assigned_hash_frame
         # create self_count column in frame
         frame["self_count"] = 0
         for idx, row in frame[frame[synteny_func_name] != 0].iterrows():
-            frame.loc[idx, "self_count"] = hash_counts.loc[row[synteny_func_name]]
+            frame.loc[idx, "self_count"] = hash_counts.loc[
+                row[synteny_func_name]
+            ]
         del hash_counts
     logger.debug(f"Calculating overlap of {len(merge_frame)} hash terms.")
     hash_counts = merge_frame["hash"].value_counts()
-    merged_hash_frame = pd.DataFrame(index=merge_frame["hash"].unique(), columns=["count"])
+    merged_hash_frame = pd.DataFrame(
+        index=merge_frame["hash"].unique(), columns=["count"]
+    )
     for idx, row in merged_hash_frame.iterrows():
-        merged_hash_frame.loc[idx, "count"] = hash_counts.loc[row[synteny_func_name]]
+        merged_hash_frame.loc[idx, "count"] = hash_counts.loc[
+            row[synteny_func_name]
+        ]
     print(f"Merged_hash_frame={merged_hash_frame}")
     merged_hash_frame = merged_hash_frame[merged_hash_frame["count"] > 1]
-    print(f"after dropping non-matching hashes, len = {len(merged_hash_frame)}")
+    print(
+        f"after dropping non-matching hashes, len = {len(merged_hash_frame)}"
+    )
     print(f"merged hash counts={hash_counts}")
     for stem in set_keys:
         synteny_name = f"{stem}-{synteny_func_name}{SYNTENY_ENDING}"
-        logger.debug(f"Writing {synteny_func_name} synteny frame {synteny_name}.")
+        logger.debug(
+            f"Writing {synteny_func_name} synteny frame {synteny_name}."
+        )
         frame_dict[stem].to_csv(set_path / synteny_name, sep="\t")
 
 
@@ -348,20 +418,32 @@ def dagchainer_synteny(setname):
             output = azulejo_tool(["run"])
             print(output)
         except:
-            logger.error("Something went wrong in azulejo_tool, check installation.")
+            logger.error(
+                "Something went wrong in azulejo_tool, check installation."
+            )
             sys.exit(1)
         if not cluster_path.exists():
-            logger.error("Something went wrong with DAGchainer run.  Please run it manually.")
+            logger.error(
+                "Something went wrong with DAGchainer run.  Please run it manually."
+            )
             sys.exit(1)
     synteny_func_name = "dagchainer"
     set_path = Path(setname)
     logger.debug(f"Reading {synteny_func_name} synteny file.")
-    synteny_frame = pd.read_csv(cluster_path, sep="\t", header=None, names=["cluster", "id"])
-    synteny_frame["synteny_id"] = synteny_frame["cluster"].map(dagchainer_id_to_int)
+    synteny_frame = pd.read_csv(
+        cluster_path, sep="\t", header=None, names=["cluster", "id"]
+    )
+    synteny_frame["synteny_id"] = synteny_frame["cluster"].map(
+        dagchainer_id_to_int
+    )
     synteny_frame = synteny_frame.drop(["cluster"], axis=1)
     cluster_counts = synteny_frame["synteny_id"].value_counts()
-    synteny_frame["synteny_count"] = synteny_frame["synteny_id"].map(cluster_counts)
-    synteny_frame = synteny_frame.sort_values(by=["synteny_count", "synteny_id"])
+    synteny_frame["synteny_count"] = synteny_frame["synteny_id"].map(
+        cluster_counts
+    )
+    synteny_frame = synteny_frame.sort_values(
+        by=["synteny_count", "synteny_id"]
+    )
     synteny_frame = synteny_frame.set_index(["id"])
     files_frame, frame_dict = read_files(setname)
     set_keys = list(files_frame["stem"])
@@ -374,10 +456,16 @@ def dagchainer_synteny(setname):
 
     for stem in set_keys:
         homology_frame = frame_dict[stem]
-        homology_frame["synteny_id"] = homology_frame.index.map(lambda x: id_to_synteny_property(x, "synteny_id"))
-        homology_frame["synteny_count"] = homology_frame.index.map(lambda x: id_to_synteny_property(x, "synteny_count"))
+        homology_frame["synteny_id"] = homology_frame.index.map(
+            lambda x: id_to_synteny_property(x, "synteny_id")
+        )
+        homology_frame["synteny_count"] = homology_frame.index.map(
+            lambda x: id_to_synteny_property(x, "synteny_count")
+        )
         synteny_name = f"{stem}-{synteny_func_name}{SYNTENY_ENDING}"
-        logger.debug(f"Writing {synteny_func_name} synteny frame {synteny_name}.")
+        logger.debug(
+            f"Writing {synteny_func_name} synteny frame {synteny_name}."
+        )
         homology_frame.to_csv(set_path / synteny_name, sep="\t")
 
 
@@ -399,8 +487,12 @@ class ProxySelector(object):
     def choose(self, chosen_one, cluster, reason, drop_non_chosen=True):
         """Make the choice, recording stats."""
         self.frame.loc[chosen_one, "reason"] = reason
-        self.first_choice_unavailable += int(self.first_choice not in set(cluster["stem"]))
-        self.first_choice_hits += int(cluster.loc[chosen_one, "stem"] == self.first_choice)
+        self.first_choice_unavailable += int(
+            self.first_choice not in set(cluster["stem"])
+        )
+        self.first_choice_hits += int(
+            cluster.loc[chosen_one, "stem"] == self.first_choice
+        )
         non_chosen_ones = list(cluster.index)
         non_chosen_ones.remove(chosen_one)
         if drop_non_chosen:
@@ -408,15 +500,21 @@ class ProxySelector(object):
         else:
             self.cluster_count += len(non_chosen_ones)
 
-    def choose_by_preference(self, subcluster, cluster, reason, drop_non_chosen=True):
+    def choose_by_preference(
+        self, subcluster, cluster, reason, drop_non_chosen=True
+    ):
         """Choose in order of preference."""
         stems = subcluster["stem"]
         pref_idxs = [subcluster[stems == pref].index for pref in self.prefs]
         pref_lens = np.array([int(len(idx) > 0) for idx in pref_idxs])
         best_choice = np.argmax(pref_lens)  # first occurrance
         if pref_lens[best_choice] > 1:
-            raise ValueError(f"subcluster {subcluster} is not unique w.r.t. genome {list(stems)[best_choice]}.")
-        self.choose(pref_idxs[best_choice][0], cluster, reason, drop_non_chosen)
+            raise ValueError(
+                f"subcluster {subcluster} is not unique w.r.t. genome {list(stems)[best_choice]}."
+            )
+        self.choose(
+            pref_idxs[best_choice][0], cluster, reason, drop_non_chosen
+        )
 
     def choose_by_length(self, subcluster, cluster, drop_non_chosen=True):
         """Return an index corresponding to the selected modal/median length."""
@@ -424,15 +522,27 @@ class ProxySelector(object):
         max_count = max(counts)
         if max_count > 1:  # repeated values exist
             max_vals = list(counts[counts == max(counts)].index)
-            modal_cluster = subcluster[subcluster["protein_len"].isin(max_vals)]
+            modal_cluster = subcluster[
+                subcluster["protein_len"].isin(max_vals)
+            ]
             self.choose_by_preference(
-                modal_cluster, cluster, f"mode{len(modal_cluster)}", drop_non_chosen=drop_non_chosen
+                modal_cluster,
+                cluster,
+                f"mode{len(modal_cluster)}",
+                drop_non_chosen=drop_non_chosen,
             )
         else:
             lengths = list(subcluster["protein_len"])
-            median_vals = [statistics.median_low(lengths), statistics.median_high(lengths)]
-            median_pair = subcluster[subcluster["protein_len"].isin(median_vals)]
-            self.choose_by_preference(median_pair, cluster, "median", drop_non_chosen=drop_non_chosen)
+            median_vals = [
+                statistics.median_low(lengths),
+                statistics.median_high(lengths),
+            ]
+            median_pair = subcluster[
+                subcluster["protein_len"].isin(median_vals)
+            ]
+            self.choose_by_preference(
+                median_pair, cluster, "median", drop_non_chosen=drop_non_chosen
+            )
 
     def cluster_selector(self, cluster):
         "Calculate which gene in a homology cluster should be left and why."
@@ -442,22 +552,40 @@ class ProxySelector(object):
         else:
             for synteny_id, subcluster in cluster.groupby(by=["synteny_id"]):
                 if len(subcluster) > 1:
-                    self.choose_by_length(subcluster, cluster, drop_non_chosen=(not synteny_id))
+                    self.choose_by_length(
+                        subcluster, cluster, drop_non_chosen=(not synteny_id)
+                    )
                 else:
                     if subcluster["synteny_id"][0] != 0:
-                        self.choose(subcluster.index[0], cluster, "bad_synteny", drop_non_chosen=(not synteny_id))
+                        self.choose(
+                            subcluster.index[0],
+                            cluster,
+                            "bad_synteny",
+                            drop_non_chosen=(not synteny_id),
+                        )
                     else:
-                        self.choose(subcluster.index[0], cluster, "single", drop_non_chosen=(not synteny_id))
+                        self.choose(
+                            subcluster.index[0],
+                            cluster,
+                            "single",
+                            drop_non_chosen=(not synteny_id),
+                        )
 
     def downselect_frame(self):
         """Return a frame with reasons for keeping and non-chosen-ones dropped."""
         drop_pct = len(self.drop_ids) * 100.0 / len(self.frame)
-        logger.info(f"Dropping {len(self.drop_ids)} ({drop_pct:0.1f}%) of {len(self.frame)} genes.")
+        logger.info(
+            f"Dropping {len(self.drop_ids)} ({drop_pct:0.1f}%) of {len(self.frame)} genes."
+        )
         return self.frame.drop(self.drop_ids)
 
     def selection_stats(self):
         """Return selection stats."""
-        return self.cluster_count, self.first_choice_unavailable, self.first_choice_hits
+        return (
+            self.cluster_count,
+            self.first_choice_unavailable,
+            self.first_choice_hits,
+        )
 
 
 @cli.command()
@@ -487,7 +615,9 @@ def proxy_genes(setname, synteny_type, prefs):
     else:
         prefs = default_prefs
         order = "default"
-    logger.debug(f"Genome preference for proxy selection in {order} order: {prefs}")
+    logger.debug(
+        f"Genome preference for proxy selection in {order} order: {prefs}"
+    )
     proxy_frame = None
     for stem in set_keys:
         logger.debug(f"Reading {stem}")
@@ -497,7 +627,9 @@ def proxy_genes(setname, synteny_type, prefs):
         else:
             proxy_frame = proxy_frame.append(frame_dict[stem])
     del files_frame
-    proxy_frame = proxy_frame.sort_values(by=["cluster_size", "cluster_id", "synteny_count", "synteny_id"])
+    proxy_frame = proxy_frame.sort_values(
+        by=["cluster_size", "cluster_id", "synteny_count", "synteny_id"]
+    )
     proxy_filename = f"{setname}-{synteny_type}{PROXY_ENDING}"
     logger.debug(f"Writing initial proxy file {proxy_filename}.")
     proxy_frame.to_csv(set_path / proxy_filename, sep="\t")
@@ -509,13 +641,29 @@ def proxy_genes(setname, synteny_type, prefs):
     ):  # pylint: disable=unused-variable
         downselector.cluster_selector(homology_cluster)
     downselected = downselector.downselect_frame()
-    downselected_filename = f"{setname}-{synteny_type}-downselected{PROXY_ENDING}"
+    downselected_filename = (
+        f"{setname}-{synteny_type}-downselected{PROXY_ENDING}"
+    )
     logger.debug(f"Writing downselected proxy file {downselected_filename}.")
     downselected.to_csv(set_path / downselected_filename, sep="\t")
     # print out stats
-    cluster_count, first_choice_unavailable, first_choice_hits = downselector.selection_stats()
-    first_choice_percent = first_choice_hits * 100.0 / (cluster_count - first_choice_unavailable)
-    first_choice_unavailable_percent = first_choice_unavailable * 100.0 / cluster_count
-    logger.info(f"First-choice ({prefs[0]}) selections from {cluster_count} homology clusters:")
-    logger.info(f"   not in cluster: {first_choice_unavailable} ({first_choice_unavailable_percent:.1f}%)")
-    logger.info(f"   chosen as proxy: {first_choice_hits} ({first_choice_percent:.1f}%)")
+    (
+        cluster_count,
+        first_choice_unavailable,
+        first_choice_hits,
+    ) = downselector.selection_stats()
+    first_choice_percent = (
+        first_choice_hits * 100.0 / (cluster_count - first_choice_unavailable)
+    )
+    first_choice_unavailable_percent = (
+        first_choice_unavailable * 100.0 / cluster_count
+    )
+    logger.info(
+        f"First-choice ({prefs[0]}) selections from {cluster_count} homology clusters:"
+    )
+    logger.info(
+        f"   not in cluster: {first_choice_unavailable} ({first_choice_unavailable_percent:.1f}%)"
+    )
+    logger.info(
+        f"   chosen as proxy: {first_choice_hits} ({first_choice_percent:.1f}%)"
+    )
