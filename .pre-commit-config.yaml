@@ -21,3 +21,34 @@ repos:
     language: python
     additional_dependencies:
        - flynt
+-   repo: local
+    hooks:
+    -  id: isort
+       name: run isort
+       entry: isort
+       args: [-yq]
+       language: python
+       additional_dependencies:
+         - isort
+         - toml
+- repo: local
+  hooks:
+  - id: poetry-dynamic-versioning
+    name: update version from SCM tags
+    entry: poetry-dynamic-versioning
+    always_run: true
+    exclude: .*
+    language: python
+    additional_dependencies:
+      - poetry-dynamic-versioning
+- repo: local
+  hooks:
+  - id: tests
+    name: run tests
+    entry: pytest -s
+    language: python
+    types: [python]
+    stages: [push]
+    additional_dependencies:
+      - pytest
+      - pytest-cov

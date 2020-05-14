@@ -7,7 +7,7 @@ import locale
 import warnings
 from pkg_resources import iter_entry_points
 
-# third-party imports
+# first-party imports
 import click
 from click_loguru import ClickLoguru
 from click_plugins import with_plugins
@@ -18,7 +18,7 @@ from .common import NAME
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.6.7"
+__version__ = "0.6.7-post.1+cdd488e"
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
