@@ -262,7 +262,7 @@ run_format_synteny() {
     cat $path | awk '$1!~/^#/ {print $2 "\t" $6}' \
       >>${out_dir}/pairs.tsv
     cat $path | grep \#\# | grep -v reverse |
-      awk '{print "substr($14,0,length($14)-2) \t" $10 "\t" 1 "\t" $3 "\t" $5}' \
+      awk '{print substr($14,0,length($14)-2) "\t" $10 "\t" 1 "\t" $3 "\t" $5}' \
         >>${out_dir}/blocks.tsv
     cat $path | grep \#\# | grep reverse |
       awk '{print substr($15,0,length($15)-2) "\t" $11 "\t" 1 "\t" $3 "\t" $5}' \
