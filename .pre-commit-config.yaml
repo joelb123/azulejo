@@ -50,24 +50,18 @@ repos:
     types: [python]
     additional_dependencies:
       - pydocstyle
-- repo: local
-  hooks:
-  - id: pylint
-    name: pylint
-    description: 'Check for adherence to python style conventions.'
-    entry: pylint
-    language: python
-    types: [python]
-    additional_dependencies:
-      - pylint
-- repo: local
-  hooks:
-  - id: bandit
-    name: bandit
-    description: 'Find common security issues in Python code'
-    entry: bandit
-    language: python
-    types: [python]
+#- repo: https://github.com/pre-commit/mirrors-pylint
+#  rev: v2.5.2
+#  hooks:
+#    - id: pylint
+#- repo: local
+#  hooks:
+#  - id: bandit
+#    name: bandit
+#    description: 'Find common security issues in Python code'
+#    entry: bandit
+#    language: python
+#    types: [python]
 #- repo: local
 #  hooks:
 #  - id: poetry-dynamic-versioning
