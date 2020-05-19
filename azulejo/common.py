@@ -17,10 +17,11 @@ FAA_EXT = "faa"
 FNA_EXT = "fna"
 
 
-def get_paths_from_file(f, must_exist=True):
-    inpath = Path(f).expanduser().resolve()
+def get_paths_from_file(filepath, must_exist=True):
+    """Given a string filepath,, return the resolved path and parent."""
+    inpath = Path(filepath).expanduser().resolve()
     if must_exist and not inpath.exists():
-        raise FileNotFoundError(f)
+        raise FileNotFoundError(filepath)
     dirpath = inpath.parent
     return inpath, dirpath
 

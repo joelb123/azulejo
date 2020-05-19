@@ -1,23 +1,26 @@
 # -*- coding: utf-8 -*-
-
+"""Synteny (genome order) operations."""
 # standard library imports
 import os
 import statistics
 import sys
 from os.path import commonprefix as prefix
+from pathlib import Path
 
-# third-party imports
+# first-party imports
 import click
 import gffpandas.gffpandas as gffpd
 import numpy as np
 import pandas as pd
+import sh
 from Bio import SeqIO
 from loguru import logger
 
 # module imports
 from . import cli
 from . import click_loguru
-from .common import *
+from .common import FAA_EXT
+from .common import GFF_EXT
 from .core import cluster_set_name
 from .core import usearch_cluster
 
@@ -32,11 +35,10 @@ PROXY_ENDING = "-proxy.tsv"
 
 def synteny_block_func(k, rmer, frame, name_only=False):
     """Return a synteny block closure and its name."""
-    if name_only:
-        if rmer:
-            return f"rmer{k}"
-        else:
-            return f"kmer{k}"
+    if name_only and rmer:
+        return f"rmer{k}"
+    if name_only and not rmer:
+        return f"kmer{k}"
     frame_len = len(frame)
     cluster_size_col = frame.columns.get_loc("cluster_size")
     cluster_col = frame.columns.get_loc("cluster_id")
@@ -56,8 +58,7 @@ def synteny_block_func(k, rmer, frame, name_only=False):
         rev_hash = hash(tuple(reversed(cluster_list)))
         if fwd_hash > rev_hash:
             return k, 1, fwd_hash
-        else:
-            return k, -1, rev_hash
+        return k, -1, rev_hash
 
     def rmer_block(first_index):
         """Calculate a reversible cluster hash, ignoring repeats."""
@@ -82,13 +83,11 @@ def synteny_block_func(k, rmer, frame, name_only=False):
         rev_hash = hash(tuple(reversed(cluster_list)))
         if fwd_hash > rev_hash:
             return idx - first_index, 1, fwd_hash
-        else:
-            return idx - first_index, -1, rev_hash
+        return idx - first_index, -1, rev_hash
 
     if rmer:
         return rmer_block
-    else:
-        return kmer_block
+    return kmer_block
 
 
 def read_files(setname, synteny=None):
@@ -106,11 +105,12 @@ def read_files(setname, synteny=None):
     else:
         ending = f"-{synteny}{SYNTENY_ENDING}"
         file_type = "synteny"
-    paths = [p for p in set_path.glob("*" + ending)]
+    paths = list(set_path.glob("*" + ending))
     stems = [p.name[: -len(ending)] for p in paths]
     if len(stems) != len(file_frame):
         logger.error(
-            f"Number of {file_type} files ({len(stems)})is not the same as length of file frame({len(file_frame)})."
+            f"Number of {file_type} files ({len(stems)})"
+            + f"is not the same as length of file frame({len(file_frame)})."
         )
         sys.exit(1)
     frame_dict = {}
@@ -120,37 +120,40 @@ def read_files(setname, synteny=None):
     return file_frame, frame_dict
 
 
-def pair_matching_file_types(mixedlist, extA, extB):
+def pair_matching_file_types(mixedlist, ext_a, ext_b):
     """Matches pairs of file types with differing extensions."""
     file_dict = {}
-    typeA_stems = [str(Path(n).stem) for n in mixedlist if n.find(extA) > -1]
+    type_a_stems = [str(Path(n).stem) for n in mixedlist if n.find(ext_a) > -1]
 
-    typeA_stems.sort(key=len)
-    typeB_stems = [str(Path(n).stem) for n in mixedlist if n.find(extB) > -1]
-    typeB_stems.sort(key=len)
-    if len(typeA_stems) != len(typeB_stems):
+    type_a_stems.sort(key=len)
+    type_b_stems = [str(Path(n).stem) for n in mixedlist if n.find(ext_b) > -1]
+    type_b_stems.sort(key=len)
+    if len(type_a_stems) != len(type_b_stems):
         logger.error(
-            f"Differing number of {extA} ({len(typeB_stems)}) and {extB} files ({len(typeA_stems)})."
+            f"Differing number of {ext_a} ({len(type_b_stems)})"
+            + f" and {ext_b} files ({len(type_a_stems)})."
         )
         sys.exit(1)
-    for typeB in typeB_stems:
+    for type_b in type_b_stems:
         prefix_len = max(
-            [len(prefix([typeB, typeA])) for typeA in typeA_stems]
+            [len(prefix([type_b, type_a])) for type_a in type_a_stems]
         )
-        match_typeA_idx = [
+        match_type_a_idx = [
             i
-            for i, typeA in enumerate(typeA_stems)
-            if len(prefix([typeB, typeA])) == prefix_len
+            for i, type_a in enumerate(type_a_stems)
+            if len(prefix([type_b, type_a])) == prefix_len
         ][0]
-        match_typeA = typeA_stems.pop(match_typeA_idx)
-        typeB_path = [
-            Path(p) for p in mixedlist if p.endswith(typeB + "." + extB)
+        match_type_a = type_a_stems.pop(match_type_a_idx)
+        type_b_path = [
+            Path(p) for p in mixedlist if p.endswith(type_b + "." + ext_b)
         ][0]
-        typeA_path = [
-            Path(p) for p in mixedlist if p.endswith(match_typeA + "." + extA)
+        type_a_path = [
+            Path(p)
+            for p in mixedlist
+            if p.endswith(match_type_a + "." + ext_a)
         ][0]
-        stem = prefix([typeB, match_typeA])
-        file_dict[stem] = {extA: typeA_path, extB: typeB_path}
+        stem = prefix([type_b, match_type_a])
+        file_dict[stem] = {ext_a: type_a_path, ext_b: type_b_path}
     return file_dict
 
 
@@ -193,29 +196,28 @@ def annotate_homology(
     IDs must correspond between GFF and FASTA files and must be unique across
     the entire set.
     """
-    if not len(gff_faa_path_list):
+    if len(gff_faa_path_list) == 0:
         logger.error("No files in list, exiting.")
         sys.exit(0)
     file_dict = pair_matching_file_types(gff_faa_path_list, GFF_EXT, FAA_EXT)
     frame_dict = {}
     set_path = Path(setname)
     set_path.mkdir(parents=True, exist_ok=True)
-    # TODO-all combinations of file sets
     fasta_records = []
-    for stem in file_dict.keys():
+    for stem in file_dict:
         logger.debug(f"Reading GFF file {file_dict[stem][GFF_EXT]}.")
         annotation = gffpd.read_gff3(file_dict[stem][GFF_EXT])
-        mRNAs = annotation.filter_feature_of_type(
+        mrnas = annotation.filter_feature_of_type(
             ["mRNA"]
         ).attributes_to_columns()
-        mRNAs.drop(
-            mRNAs.columns.drop(["seq_id", "start", "strand", "ID"]),
+        mrnas.drop(
+            mrnas.columns.drop(["seq_id", "start", "strand", "ID"]),
             axis=1,
             inplace=True,
         )  # drop non-essential columns
         if shorten_source:
             # drop identical sub-fields in seq_id to keep them visually short (for development)
-            split_sources = mRNAs["seq_id"].str.split(".", expand=True)
+            split_sources = mrnas["seq_id"].str.split(".", expand=True)
             split_sources = split_sources.drop(
                 [
                     i
@@ -225,27 +227,20 @@ def annotate_homology(
                 axis=1,
             )
             sources = split_sources.agg(".".join, axis=1)
-            mRNAs["seq_id"] = sources
-        # TODO-calculated subfragments from repeated
-        # TODO-sort GFFs in order of longest fragments
-        # TODO-add gene order
-        file_dict[stem]["fragments"] = len(set(mRNAs["seq_id"]))
+            mrnas["seq_id"] = sources
+        file_dict[stem]["fragments"] = len(set(mrnas["seq_id"]))
         logger.debug(f"Reading FASTA file {file_dict[stem][FAA_EXT]}.")
         fasta_dict = SeqIO.to_dict(
             SeqIO.parse(file_dict[stem][FAA_EXT], "fasta")
         )
-        # TODO-filter out crap and calculate ambiguous
         file_dict[stem]["n_seqs"] = len(fasta_dict)
         file_dict[stem]["residues"] = sum(
-            [len(fasta_dict[k].seq) for k in fasta_dict.keys()]
+            [len(fasta_dict[k].seq) for k in fasta_dict]
         )
-        mRNAs = mRNAs[mRNAs["ID"].isin(fasta_dict.keys())]
-        mRNAs["protein_len"] = mRNAs["ID"].map(
-            lambda k: len(fasta_dict[k].seq)
-        )
-        frame_dict[stem] = mRNAs.set_index("ID")
+        mrnas = mrnas[mrnas["ID"].isin(fasta_dict.keys())]
+        frame_dict[stem] = mrnas.set_index("ID")
         del annotation
-        for key in fasta_dict.keys():
+        for key in fasta_dict:
             fasta_records.append(fasta_dict[key])
     file_frame = pd.DataFrame.from_dict(file_dict).transpose()
     file_frame = file_frame.sort_values(by=["n_seqs"])
@@ -313,7 +308,7 @@ def annotate_homology(
 def synteny_anchors(k, rmer, setname, gff_fna_path_list):
     """Calculate synteny anchors.
     """
-    if not len(gff_fna_path_list):
+    if len(gff_fna_path_list) == 0:
         logger.error("No files in list, exiting.")
         sys.exit(0)
     set_path = Path(setname)
@@ -327,7 +322,7 @@ def synteny_anchors(k, rmer, setname, gff_fna_path_list):
         synteny_func_name = synteny_block_func(k, rmer, None, name_only=True)
         frame_len = frame.shape[0]
         map_results = []
-        for seq_id, subframe in frame.groupby(by=["seq_id"]):
+        for unused_seq_id, subframe in frame.groupby(by=["seq_id"]):
             hash_closure = synteny_block_func(k, rmer, subframe)
             for i in range(len(subframe)):
                 map_results.append(hash_closure(i))
@@ -337,13 +332,13 @@ def synteny_anchors(k, rmer, setname, gff_fna_path_list):
             map_results[i][2] for i in range(len(frame))
         ]
         del map_results
-        # TODO:E values
         hash_series = frame[synteny_func_name]
         assigned_hashes = hash_series[hash_series != 0]
         del hash_series
         n_assigned = len(assigned_hashes)
         logger.info(
-            f"{stem} has {frame_len} proteins, {n_assigned} of which have {synteny_func_name} hashes,"
+            f"{stem} has {frame_len} proteins, {n_assigned}"
+            + f"of which have {synteny_func_name} hashes,"
         )
         hash_counts = assigned_hashes.value_counts()
         assigned_hash_frame = pd.DataFrame(columns=merge_frame_columns)
@@ -408,16 +403,22 @@ def dagchainer_synteny(setname):
 
     cluster_path = Path.cwd() / "out_azulejo" / "clusters.tsv"
     if not cluster_path.exists():
+        try:
+            azulejo_tool = sh.Command("azulejo_tool")
+        except sh.CommandNotFound:
+            logger.error("azulejo_tool must be installed first.")
+            sys.exit(1)
         logger.debug("Running azulejo_tool clean")
-        from sh import azulejo_tool
-
-        output = azulejo_tool(["clean"])
-        print(output)
+        try:
+            output = azulejo_tool(["clean"])
+        except sh.ErrorReturnCode:
+            logger.error("Error in clean.")
+            sys.exit(1)
         logger.debug("Running azulejo_tool run")
         try:
             output = azulejo_tool(["run"])
             print(output)
-        except:
+        except sh.ErrorReturnCode:
             logger.error(
                 "Something went wrong in azulejo_tool, check installation."
             )
@@ -469,7 +470,7 @@ def dagchainer_synteny(setname):
         homology_frame.to_csv(set_path / synteny_name, sep="\t")
 
 
-class ProxySelector(object):
+class ProxySelector:
 
     """Provide methods for downselection of proxy genes."""
 
@@ -634,7 +635,7 @@ def proxy_genes(setname, synteny_type, prefs):
     logger.debug(f"Writing initial proxy file {proxy_filename}.")
     proxy_frame.to_csv(set_path / proxy_filename, sep="\t")
     proxy_frame["reason"] = ""
-    logger.debug(f"Downselecting homology clusters.")
+    logger.debug("Downselecting homology clusters.")
     downselector = ProxySelector(proxy_frame, prefs)
     for unused_cluster_id, homology_cluster in proxy_frame.groupby(
         by=["cluster_id"]

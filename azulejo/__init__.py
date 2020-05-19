@@ -18,7 +18,7 @@ from .common import NAME
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.6.7-post.1+cdd488e"
+__version__ = "0.6.7-post.2+11abd17"
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
@@ -44,7 +44,7 @@ click_loguru = ClickLoguru(NAME, __version__, retention=LOG_FILE_RETENTION)
     help="Treat warnings as fatal.",
 )
 @click.version_option(version=__version__, prog_name=NAME)
-def cli(warnings_as_errors, **kwargs):
+def cli(warnings_as_errors):
     """azulejo -- tiling genes in subtrees across phylogenetic space.
 
     For more information, see the homepage at https://github.com/legumeinfo/azulejo
@@ -54,7 +54,7 @@ def cli(warnings_as_errors, **kwargs):
     License: BSD-3-Clause
     """
     if warnings_as_errors:
-        logger.warn(
+        logger.warning(
             "Runtime warnings (e.g., from pandas) will cause exceptions"
         )
         warnings.filterwarnings("error")

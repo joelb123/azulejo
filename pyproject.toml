@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.6.7-post.1+cdd488e"
+version = "0.6.7-post.2+11abd17"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -64,6 +64,7 @@ sh = "^1.13.0"
 flynt = "^0.46"
 pytest-datadir-mgr = "^1.0.1"
 poetry-dynamic-versioning = "^0.7.0"
+pylint = "^2.5.2"
 
 [tool.poetry.scripts]
 azulejo = "azulejo:cli"

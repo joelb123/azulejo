@@ -33,16 +33,6 @@ repos:
          - toml
 - repo: local
   hooks:
-  - id: poetry-dynamic-versioning
-    name: update version from SCM tags
-    entry: poetry-dynamic-versioning
-    always_run: true
-    exclude: .*
-    language: python
-    additional_dependencies:
-      - poetry-dynamic-versioning
-- repo: local
-  hooks:
   - id: tests
     name: run tests
     entry: pytest -s
@@ -52,3 +42,14 @@ repos:
     additional_dependencies:
       - pytest
       - pytest-cov
+
+#- repo: local
+#  hooks:
+#  - id: poetry-dynamic-versioning
+#    name: update version from SCM tags
+#    entry: poetry-dynamic-versioning
+#    always_run: true
+#    exclude: .*
+#    language: python
+#    additional_dependencies:
+#      - poetry-dynamic-versioning

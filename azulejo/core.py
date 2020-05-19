@@ -12,13 +12,15 @@ from collections import OrderedDict
 from datetime import datetime
 from itertools import chain
 from itertools import combinations
+from pathlib import Path
 
-# third-party imports
+# first-party imports
 import click
 import dask.bag as db
 import networkx as nx
 import numpy as np
 import pandas as pd
+import sh
 from Bio import SeqIO
 from dask.diagnostics import ProgressBar
 from loguru import logger
@@ -26,7 +28,14 @@ from loguru import logger
 # module imports
 from . import cli
 from . import click_loguru
-from .common import *
+from .common import ALLFILE_SUFFIX
+from .common import ANYFILE_SUFFIX
+from .common import FAA_EXT
+from .common import SEQ_FILE_TYPE
+from .common import STATFILE_SUFFIX
+from .common import get_paths_from_file
+from .common import protein_file_stats_filename
+from .common import protein_properties_filename
 from .protein import Sanitizer
 
 # global constants
@@ -59,13 +68,18 @@ FILETYPE = "pdf"
 MAX_BINS = 10
 DEFAULT_STEPS = 16
 START_CHAR = "M"
+
 # Classes
 class ElapsedTimeReport:
+    """Report time elapsed since last invocation."""
+
     def __init__(self, name):
+        """Set name and start time of phase."""
         self.start_time = datetime.now()
         self.name = name
 
     def elapsed(self, next_name):
+        """Return elapsed time in this phase and start a new one."""
         now = datetime.now()
         seconds = (now - self.start_time).total_seconds()
         report = f"{self.name} phase took {seconds:.1f} seconds"
@@ -78,19 +92,21 @@ def read_synonyms(filepath):
     """Read a file of synonymous IDs into a dictionary."""
     synonym_dict = {}
     try:
-        df = pd.read_csv(filepath, sep="\t")
+        synonym_frame = pd.read_csv(filepath, sep="\t")
     except FileNotFoundError:
-        logger.error(f'Synonym tsv file "{substrpath}" does not exist')
+        logger.error(f'Synonym tsv file "{filepath}" does not exist')
         sys.exit(1)
     except pd.errors.EmptyDataError:
-        logger.error(f'Synonym tsv "{substrpath}" is empty')
+        logger.error(f'Synonym tsv "{filepath}" is empty')
         sys.exit(1)
-    if len(df):
-        if "#file" in df:
-            df.drop("#file", axis=1, inplace=True)
-        key = list(set(("Substr", "Dups")).intersection(set(df.columns)))[0]
-        for group in df.groupby("id"):
-            synonym_dict[group[0]] = [substr for substr in group[1][key]]
+    if len(synonym_frame) > 0:
+        if "#file" in synonym_frame:
+            synonym_frame.drop("#file", axis=1, inplace=True)
+        key = list(
+            set(("Substr", "Dups")).intersection(set(synonym_frame.columns))
+        )[0]
+        for group in synonym_frame.groupby("id"):
+            synonym_dict[group[0]] = group[1][key]
     return synonym_dict
 
 
@@ -119,11 +135,10 @@ def parse_usearch_log(filepath, rundict):
                 else:
                     val = split[1].rstrip(",")
                 # rename poorly-named stats
-                if stat in RENAME_STATS:
-                    stat = RENAME_STATS[stat]
+                stat = RENAME_STATS.get(stat, stat)
                 # strip stats with units at the end
                 conversion_factor = 1
-                for unit in UNITS.keys():
+                for unit in UNITS:
                     if val.endswith(unit):
                         val = val.rstrip(unit)
                         conversion_factor = UNITS[unit]["factor"]
@@ -156,8 +171,8 @@ def in_working_directory(path):
 def get_fasta_ids(fasta):
     """Get the IDS from a FASTA file."""
     idset = set()
-    with fasta.open() as f:
-        for line in f:
+    with fasta.open() as fasta_fh:
+        for line in fasta_fh:
             if line.startswith(">"):
                 idset.add(line.split()[0][1:])
     return list(idset)
@@ -191,9 +206,7 @@ def parse_subids(ident):
     return subids
 
 
-def parse_clusters(
-    outdir, identity, delete=True, count_clusters=True, synonyms=None
-):
+def parse_clusters(outdir, delete=True, count_clusters=True, synonyms=None):
     """Parse clusters, counting occurrances."""
     if synonyms is None:
         synonyms = {}
@@ -208,11 +221,10 @@ def parse_clusters(
     for fasta in outdir.glob("*"):
         cluster_id = int(fasta.name)
         ids = get_fasta_ids(fasta)
-        if len(synonyms):
+        if len(synonyms) > 0:
             syn_ids = set(ids).intersection(synonyms.keys())
-            [
-                ids.extend(synonyms[i]) for i in syn_ids
-            ]  # pylint: disable=expression-not-assigned
+            for i in syn_ids:
+                ids.extend(synonyms[i])
         n_ids = len(ids)
         degree_list.append(n_ids)
         degree_counter.update({n_ids: 1})
@@ -259,10 +271,10 @@ def parse_clusters(
     )
 
 
-def prettyprint_float(x, digits):
+def prettyprint_float(val, digits):
     """Print a floating-point value in a nice way."""
     format_string = "%." + f"{digits:d}" + "f"
-    return (format_string % x).rstrip("0").rstrip(".")
+    return (format_string % val).rstrip("0").rstrip(".")
 
 
 def cluster_set_name(stem, identity):
@@ -326,8 +338,11 @@ def usearch_cluster(
     dups=None,
 ):
     """Cluster at a global sequence identity threshold."""
-    from sh import usearch
-
+    try:
+        usearch = sh.Command("usearch")
+    except sh.CommandNotFound:
+        logger.error("usearch must be installed first.")
+        sys.exit(1)
     try:
         inpath, dirpath = get_paths_from_file(seqfile)
     except FileNotFoundError:
@@ -420,7 +435,7 @@ def usearch_cluster(
         any_counts,
         all_counts,
     ) = parse_clusters(  # pylint: disable=unused-variable
-        outfilepath, identity, delete=delete, synonyms=synonyms
+        outfilepath, delete=delete, synonyms=synonyms
     )
     #
     # Write out list of clusters and ids.
@@ -522,7 +537,7 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     min_fmt = prettyprint_float(min(logsteps) * 100.0, 2)
     max_fmt = prettyprint_float(max(logsteps) * 100.0, 2)
     logger.info(
-        f"Clustering at {steps} levels from {min_fmt}% to {maxfmt}% global sequence identity"
+        f"Clustering at {steps} levels from {min_fmt}% to {max_fmt}% global sequence identity"
     )
     stat_list = []
     all_frames = []
@@ -530,7 +545,7 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     for id_level in logsteps:
         (
             stats,
-            graph,
+            unused_graph,
             unused_hist,
             any_,
             all_,
@@ -631,7 +646,7 @@ def cleanup_fasta(set_path, fasta_path, filestem, write_stats=True):
     lengths = []
     positions = []
     n_ambig = []
-    M_starts = []
+    m_starts = []
     sanitizer = Sanitizer(remove_dashes=True)
     position = 0
     m_start_count = 0
@@ -642,9 +657,9 @@ def cleanup_fasta(set_path, fasta_path, filestem, write_stats=True):
                 seq = sanitizer.sanitize(seq)
             except ValueError:  # zero-length sequence after sanitizing
                 continue
-            Mstart = seq[0] == START_CHAR
-            m_start_count += Mstart
-            Mstarts.append(Mstart)
+            m_start = seq[0] == START_CHAR
+            m_start_count += m_start
+            m_starts.append(m_start)
             record.seq = seq.toseq()
             ids.append(record.id)
             n_ambig.append(sanitizer.count_ambiguous(seq))
@@ -654,15 +669,17 @@ def cleanup_fasta(set_path, fasta_path, filestem, write_stats=True):
             position += 1
     with (set_path / f"{filestem}.faa").open("w") as output_handle:
         SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
-    df = pd.DataFrame(
-        list(zip(ids, positions, lengths, n_ambig, Mstarts)),
+    properties_frame = pd.DataFrame(
+        list(zip(ids, positions, lengths, n_ambig, m_starts)),
         columns=["ID", "pos", "protein_len", "n_ambig", "Mstart"],
     )
-    df = df.set_index(["ID"])
-    logger.debug(f"   {len(df)} sequences in {fasta_path}.")
+    properties_frame = properties_frame.set_index(["ID"])
+    logger.debug(f"   {len(properties_frame)} sequences in {fasta_path}.")
     if write_stats:
-        df.to_csv(set_path / protein_properties_filename(filestem), sep="\t")
-    return filestem, df, sanitizer.file_stats()
+        properties_frame.to_csv(
+            set_path / protein_properties_filename(filestem), sep="\t"
+        )
+    return filestem, properties_frame, sanitizer.file_stats()
 
 
 @cli.command()
@@ -694,7 +711,9 @@ def prepare_protein_files(
         stemdict = {}
         for file_path in file_paths:
             if file_path.suffix != "." + FAA_EXT:
-                logger.error(f"Unrecognized extension in {file.path.name}")
+                logger.error(
+                    f"Unrecognized extension in {file_path.path.name}"
+                )
                 sys.exit(1)
             stemdict[file_path.name[: -len(FAA_EXT) - 1]] = {
                 FAA_EXT: file_path
@@ -707,6 +726,8 @@ def prepare_protein_files(
     elif not set_path.is_dir():
         logger.info(f'Creating output directory "{set_name}/".')
         set_path.mkdir(parents=True)
+    if parallel:
+        pass
     results = []
     arg_list = []
     for file_stem in stemdict.keys():
@@ -716,10 +737,10 @@ def prepare_protein_files(
     protein_frame_dict = {}
     file_frame_dict = {}
     n_seqs = 0
-    for id, protein_frame, filestat_dict in results:
+    for frame_id, protein_frame, filestat_dict in results:
         n_seqs += len(protein_frame)
-        protein_frame_dict[id] = protein_frame
-        file_frame_dict[id] = filestat_dict
+        protein_frame_dict[frame_id] = protein_frame
+        file_frame_dict[frame_id] = filestat_dict
     del results
     file_frame = pd.DataFrame.from_dict(file_frame_dict).transpose()
     file_frame.sort_values(by=["seqs"], ascending=False, inplace=True)
@@ -775,11 +796,11 @@ def add_singletons(infile, recordfile):
         sizes.append(1)
         lengths.append(len_dict[singleton]["len"])
         n_clusters += 1
-    df = pd.DataFrame(
+    cluster_frame = pd.DataFrame(
         list(zip(cluster_ids, ids, sizes, lengths)),
         columns=["cluster", "id", "siz", "len"],
     )
-    df.to_csv(outfile, sep="\t")
+    cluster_frame.to_csv(outfile, sep="\t")
 
 
 @cli.command()
@@ -892,16 +913,14 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     if not quiet and clust_size:
         logger.info(f"Only clusters of size {clust_size} will be used.")
     syn["link"] = [homo_id_dict[id] for id in syn["id"]]
-    for unused_cluster_id, gr in syn.groupby(
-        ["cluster"]
-    ):  # pylint: disable=unused-variable
-        cl = gr.copy()  # copy, so mutable
-        clsize = cl["siz"].iloc[0]
+    for unused_cluster_id, group in syn.groupby(["cluster"]):
+        cluster = group.copy()  # copy, so mutable
+        clsize = cluster["siz"].iloc[0]
         if clust_size and (clsize != clust_size):
             continue
         if first_n and cluster_count == first_n:
             break
-        arg_list.append(cl)
+        arg_list.append(cluster)
         cluster_count += 1
     del syn
     if parallel:
@@ -949,5 +968,6 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     n_fully_contained = len(set(out_frame[out_frame["cont"] == 1]["cluster"]))
     contained_pct = n_fully_contained * 100.0 / cluster_count
     logger.info(
-        f"{n_fully_contained} of {cluster_count} clusters are fully contained ({contained_pct:.1f}%.)"
+        f"{n_fully_contained} of {cluster_count}"
+        + f" clusters are fully contained ({contained_pct:.1f}%.)"
     )

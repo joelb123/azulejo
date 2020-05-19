@@ -4,8 +4,9 @@ data analysis and plotting
 """
 # standard library imports
 import sys
+from pathlib import Path
 
-# third-party imports
+# first-party imports
 import click
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,8 +29,8 @@ FILETYPE = "png"
 MAX_BINS = 10
 
 
-def make_histogram(dist, name, log10=False, bins=None):
-    # do histogram plot with kernel density estimate
+def make_histogram(dist, name, log10=False):
+    """Do histogram plot with kernel density estimate."""
     dist = dist[dist < 10]
     mean = dist.mean()
     if log10:
@@ -67,19 +68,22 @@ def make_histogram(dist, name, log10=False, bins=None):
     # plt.close('all')
 
 
-def tick_function(X):
-    X = X * 3.0 - 3
+def tick_function(tick_x):
+    """Compute ticks."""
+    tick_x = tick_x * 3.0 - 3
     vals = [
-        (f"{v:f}").rstrip("0").rstrip(".") for v in (1.0 - 10 ** X) * 100.0
+        (f"{v:f}").rstrip("0").rstrip(".")
+        for v in (1.0 - 10 ** tick_x) * 100.0
     ]
     ticks = [f"{v}%" for v in vals]
     return ticks
 
 
-def log_deriv(X, Y):
-    logX = -1.0 * np.log10(X + EPSILON)
-    logY = np.log10(Y)
-    return np.gradient(logY) / np.gradient(logX)
+def log_deriv(xvals, yvals):
+    """Compute the logarithmic derivative."""
+    log_x = -1.0 * np.log10(xvals + EPSILON)
+    log_y = np.log10(yvals)
+    return np.gradient(log_y) / np.gradient(log_x)
 
 
 @cli.command()
@@ -131,20 +135,20 @@ def analyze_clusters(
     # Make the plots
     #
     plt.style.use("seaborn-whitegrid")
-    axes = {}
-    fig, ax = plt.subplots(len(matches), sharex=True)
+    axis_dict = {}
+    fig, axes = plt.subplots(len(matches), sharex=True)
     try:
-        for axis, i in enumerate(ax):
-            axes[matches[i]] = axis
-            loweraxis = ax[1]
+        for axis, i in enumerate(axes):
+            axis_dict[matches[i]] = axis
+            loweraxis = axes[1]
     except TypeError:
-        axes[matches[0]] = ax
-        loweraxis = ax
+        axis_dict[matches[0]] = axes
+        loweraxis = axes
     for stem in instemlist:
         for match in matches:
             if div_dist[match][stem] is None:
                 continue
-            axes[match].plot(
+            axis_dict[match].plot(
                 divergence[stem],
                 div_dist[match][stem] - div_dist[match]["ref"],
                 label="%s" % (stem.replace(label + ".", "")),
@@ -201,12 +205,12 @@ def analyze_clusters(
     plt.xscale("log")
     limits = [0.001, 1.0]
     new_tick_locations = np.array([0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0])
-    loweraxis.set_xlim(limits)
-    axes["second"] = loweraxis.twiny()
-    axes["second"].set_xlim(limits)
-    axes["second"].set_xticks(new_tick_locations)
-    axes["second"].set_xticklabels(tick_function(new_tick_locations))
-    axes["second"].set_xlabel("   ")
+    # loweratick_xis.set_xlim(limits)
+    axis_dict["second"] = loweraxis.twiny()
+    axis_dict["second"].set_xlim(limits)
+    axis_dict["second"].set_xticks(new_tick_locations)
+    axis_dict["second"].set_xticklabels(tick_function(new_tick_locations))
+    axis_dict["second"].set_xlabel("   ")
     # r'%Identity')
     # plt.ylim([-0.002,0.002])
     outfilename = outfilestem + f"{FILETYPE}"
@@ -216,10 +220,11 @@ def analyze_clusters(
 
 
 def do_cuts(obs, high, low, label):
+    """Cut at high and low levels."""
     if high > 0.0:
         hicuts = obs[obs > high]
         obs = obs[obs <= high]
-        if len(hicuts):
+        if len(hicuts) == 0:
             hifilename = label + "_hicuts.tsv"
             logger.info(
                 "%d observations dropped by high-side cutoff of %.2f written to %s",
@@ -236,7 +241,7 @@ def do_cuts(obs, high, low, label):
             len(locuts),
             low,
         )
-        if len(locuts):
+        if len(locuts) == 0:
             lofilename = label + "_locuts.tsv"
             logger.info(
                 "%d observations dropped by low-side cutoff of %.2f written to %s",
@@ -267,7 +272,7 @@ def do_cuts(obs, high, low, label):
 def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
     """Plot length distribution of outliers in clusters."""
     cluster_size = int(cluster_size)
-    if not cluster_size > 0:
+    if cluster_size <= 0:
         logger.error("Positive cluster size must be specified")
         sys.exit(1)
     clusters = pd.read_csv(combinedfile, sep="\t", index_col=0)
@@ -295,10 +300,10 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
         cluster_size,
     )
     logger.info("min:\t%.3f", min(norm_lengths))
-    logger.info("max:\t%.3f", max(norm_lengths))
+    logger.info("maxes:\t%.3f", max(norm_lengths))
     logger.info("mean: %.3f", norm_lengths.mean())
-    ax = sns.distplot(norm_lengths, bins=100, kde_kws={"label": "KDE"})
-    ax.set_xlabel("Normalized Length of Singleton")
+    axis = sns.distplot(norm_lengths, bins=100, kde_kws={"label": "KDE"})
+    axis.set_xlabel("Normalized Length of Singleton")
     plt.title(
         "Length distribution of %d singleton subclusters" % (len(norm_lengths))
     )
@@ -328,7 +333,7 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
 def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
     """Plot length distribution of singletons in clusters"""
     cluster_size = int(cluster_size)
-    if not cluster_size > 0:
+    if cluster_size <= 0:
         logger.error("Positive cluster size must be specified")
         sys.exit(1)
     clusters = pd.read_csv(combinedfile, sep="\t", index_col=0)
@@ -353,8 +358,8 @@ def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
     logger.info("%.1f %% zeroes, max is %.2f", pct_zeros, max(stds))
     logger.info("mean is %.3f", stds.mean())
     logbins = np.logspace(0.7, 3, 100)
-    ax = sns.distplot(stds, bins=logbins, kde=False)
-    ax.set_xlabel("Standard Deviation of Single-Subgroup Clusters")
+    axis = sns.distplot(stds, bins=logbins, kde=False)
+    axis.set_xlabel("Standard Deviation of Single-Subgroup Clusters")
     title = "Length Standard Deviation distribution of %d clusters" % len(stds)
     plt.title(title)
     outfilename = f"std_dist.{FILETYPE}"

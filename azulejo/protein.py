@@ -4,16 +4,15 @@
 # standard library imports
 import zlib
 
-# third-party imports
+# first-party imports
 from Bio.Data import IUPACData
-from loguru import logger
 
 # global constants
 AMBIGUOUS_CHARACTER = "X"
 ALPHABET = IUPACData.protein_letters + AMBIGUOUS_CHARACTER + "-"
 
 
-class Sanitizer(object):
+class Sanitizer:
 
     """Count and clean up problems with protein sequence.
 
@@ -36,79 +35,77 @@ class Sanitizer(object):
         self.chars_out = 0
         self.ambiguous = 0
 
-    def char_remover(self, s, character):
+    def char_remover(self, seq, character):
         """Remove positions with a given character.
 
-        :param s: mutable sequence
+        :param seq: mutable sequence
         :return: sequence with characters removed
         """
-        removals = [i for i, j in enumerate(s) if j == character]
+        removals = [i for i, j in enumerate(seq) if j == character]
         self.chars_removed += len(removals)
-        [
-            s.pop(pos - k) for k, pos in enumerate(removals)
-        ]  # pylint: disable=expression-not-assigned
-        return s
+        for k, pos in enumerate(removals):
+            seq.pop(pos - k)
+        return seq
 
-    def fix_alphabet(self, s):
+    def fix_alphabet(self, seq):
         """Replace everything out of alphabet with AMBIGUOUS_CHARACTER.
 
-        :param s: mutable sequence, upper-cased
+        :param seq: mutable sequence, upper-cased
         :return: fixed sequence
         """
         fix_positions = [
-            pos for pos, char in enumerate(s) if char not in ALPHABET
+            pos for pos, char in enumerate(seq) if char not in ALPHABET
         ]
         self.chars_fixed += len(fix_positions)
-        [
-            s.__setitem__(pos, AMBIGUOUS_CHARACTER) for pos in fix_positions
-        ]  # pylint: disable=expression-not-assigned
-        return s
+        for pos in fix_positions:
+            seq.__setitem__(pos, AMBIGUOUS_CHARACTER)
+        return seq
 
-    def remove_char_on_ends(self, s, character):
+    def remove_char_on_ends(self, seq, character):
         """Remove leading/trailing characters..
 
-        :param s: mutable sequence
+        :param seq: mutable sequence
         :return: sequence with characters removed from ends
         """
-        in_len = len(s)
-        while s[-1] == character:
-            s.pop()
-        while s[0] == character:
-            s.pop(0)
-        self.endchars_removed += in_len - len(s)
-        return s
+        in_len = len(seq)
+        while seq[-1] == character:
+            seq.pop()
+        while seq[0] == character:
+            seq.pop(0)
+        self.endchars_removed += in_len - len(seq)
+        return seq
 
-    def sanitize(self, s):
+    def sanitize(self, seq):
         """Sanitize potential problems with sequence.
 
         Remove dashes, change non-IUPAC characters to
         ambiguous, and remove ambiguous characters on ends.
-        :param s: mutable sequence
+        :param seq: mutable sequence
         :return: sanitized sequence
         """
         self.seqs_sanitized += 1
-        self.chars_in += len(s)
-        if not len(s):
+        self.chars_in += len(seq)
+        if len(seq) == 0:
             raise ValueError("zero-length sequence")
         if self.remove_dashes:
-            s = self.char_remover(s, "-")
-        if not len(s):
+            seq = self.char_remover(seq, "-")
+        if len(seq) == 0:
             raise ValueError("zero-length sequence after dashes removed")
-        s = self.fix_alphabet(s)
-        s = self.remove_char_on_ends(s, AMBIGUOUS_CHARACTER)
-        if not len(s):
+        seq = self.fix_alphabet(seq)
+        seq = self.remove_char_on_ends(seq, AMBIGUOUS_CHARACTER)
+        if len(seq) == 0:
             raise ValueError("zero-length sequence after ends trimmed")
-        self.chars_out += len(s)
+        self.chars_out += len(seq)
         self.seqs_out += 1
-        return s
+        return seq
 
-    def count_ambiguous(self, s):
+    def count_ambiguous(self, seq):
         """Count ambiguous residues.
 
-        :param s: sequence
+        :param seq: sequence
         :return: Number of ambiguous residues
         """
-        ambig = sum([i == AMBIGUOUS_CHARACTER for i in s])
+        ambig = sum([i == AMBIGUOUS_CHARACTER for i in seq])
         self.ambiguous += ambig
         return ambig
 
@@ -126,19 +123,19 @@ class Sanitizer(object):
         }
 
 
-class DuplicateSequenceIndex(object):
+class DuplicateSequenceIndex:
 
     """Count duplicated sequences."""
 
-    def __init__(self, concat_names=False):
+    def __init__(self):
         self.match_index = 0
         self.hash_set = set()
         self.duplicates = {}
         self.match_count = {}
 
-    def exact(self, s):
+    def exact(self, seq):
         "Test and count if exact duplicate."
-        seq_hash = zlib.adler32(bytearray(str(s), "utf-8"))
+        seq_hash = zlib.adler32(bytearray(str(seq), "utf-8"))
         if seq_hash not in self.hash_set:
             self.hash_set.add(seq_hash)
             return ""
@@ -152,4 +149,4 @@ class DuplicateSequenceIndex(object):
 
     def counts(self, index):
         """Return the number of counts for a match index."""
-        self.match_count[int(index)]
+        return self.match_count[int(index)]
