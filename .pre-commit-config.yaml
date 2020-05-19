@@ -42,7 +42,16 @@ repos:
     additional_dependencies:
       - pytest
       - pytest-cov
-
+- repo: local
+  hooks:
+  - id: pydocstyle
+    name: pydocstyle
+    description: python docstring conventions
+    entry: pydocstyle
+    language: python
+    types: [python]
+    additional_dependencies:
+      - pydocstyle
 #- repo: local
 #  hooks:
 #  - id: poetry-dynamic-versioning
