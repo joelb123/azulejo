@@ -52,10 +52,16 @@ repos:
     types: [python]
     additional_dependencies:
       - pydocstyle
-- repo: https://github.com/pre-commit/mirrors-pylint
-  rev: v2.5.2
+- repo: local
   hooks:
-    - id: pylint
+  - id: pylint
+    name: pylint
+    description: 'Check for adherence to python style conventions.'
+    entry: pylint
+    language: python
+    types: [python]
+    additional_dependencies:
+      - pylint
 - repo: local
   hooks:
   - id: bandit
