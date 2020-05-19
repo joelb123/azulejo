@@ -50,8 +50,6 @@ loguru = "^0.4.1"
 click_loguru = "^0.1.0"
 gffpandas = "^1.2.0"
 networkx = "^2.4"
-pytest-datadir-mgr = "^1.0.1"
-
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
@@ -65,6 +63,7 @@ flynt = "^0.46"
 pytest-datadir-mgr = "^1.0.1"
 poetry-dynamic-versioning = "^0.7.0"
 pylint = "^2.5.2"
+bandit = "^1.6.2"
 
 [tool.poetry.scripts]
 azulejo = "azulejo:cli"

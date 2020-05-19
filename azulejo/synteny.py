@@ -121,7 +121,7 @@ def read_files(setname, synteny=None):
 
 
 def pair_matching_file_types(mixedlist, ext_a, ext_b):
-    """Matches pairs of file types with differing extensions."""
+    """Match pairs of file types with differing extensions."""
     file_dict = {}
     type_a_stems = [str(Path(n).stem) for n in mixedlist if n.find(ext_a) > -1]
 
@@ -306,8 +306,7 @@ def annotate_homology(
 @click.argument("setname")
 @click.argument("gff_fna_path_list", nargs=-1)
 def synteny_anchors(k, rmer, setname, gff_fna_path_list):
-    """Calculate synteny anchors.
-    """
+    """Calculate synteny anchors."""
     if len(gff_fna_path_list) == 0:
         logger.error("No files in list, exiting.")
         sys.exit(0)
@@ -382,7 +381,7 @@ def synteny_anchors(k, rmer, setname, gff_fna_path_list):
 
 
 def dagchainer_id_to_int(ident):
-    """Accepts DAGchainer ids such as "cl1" and returns an integer."""
+    """Accept DAGchainer ids such as "cl1" and returns an integer."""
     if not ident.startswith("cl"):
         raise ValueError(f"Invalid ID {ident}.")
     id_val = ident[2:]
@@ -546,7 +545,7 @@ class ProxySelector:
             )
 
     def cluster_selector(self, cluster):
-        "Calculate which gene in a homology cluster should be left and why."
+        """Calculate which gene in a homology cluster should be left and why."""
         self.cluster_count += 1
         if len(cluster) == 1:
             self.choose(cluster.index[0], cluster, "singleton")

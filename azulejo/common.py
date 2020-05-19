@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Constants and functions in common across modules
-"""
+"""Constants and functions in common across modules."""
 # standard library imports
 from pathlib import Path
 
@@ -27,7 +25,7 @@ def get_paths_from_file(filepath, must_exist=True):
 
 
 def protein_file_stats_filename(setname):
-    """Returns a string that is the name of the protein stat file."""
+    """Return a string that is the name of the protein stat file."""
     return f"{setname}-protein_file_stats.tsv"
 
 

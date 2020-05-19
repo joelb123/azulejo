@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Core logic for computing subtrees
-"""
+"""Core logic for computing subtrees."""
 
 # standard library imports
 import contextlib
@@ -71,6 +69,7 @@ START_CHAR = "M"
 
 # Classes
 class ElapsedTimeReport:
+
     """Report time elapsed since last invocation."""
 
     def __init__(self, name):
@@ -159,7 +158,7 @@ def parse_usearch_log(filepath, rundict):
 
 @contextlib.contextmanager
 def in_working_directory(path):
-    """Changes working directory and returns to previous on exit."""
+    """Change working directory and return to previous wd on exit."""
     original_cwd = Path.cwd()
     os.chdir(path)
     try:
@@ -614,8 +613,7 @@ def clusters_to_histograms(infile):
 @click.argument("file1")
 @click.argument("file2")
 def compare_clusters(file1, file2):
-    """ compare one cluster file with another
-    """
+    """Compare cluster files."""
     path1 = Path(file1)
     path2 = Path(file2)
     commondir = Path(os.path.commonpath([path1, path2]))
@@ -900,7 +898,7 @@ def compute_subclusters(cluster, cluster_size_dict=None):
 @click.argument("synfile")
 @click.argument("homofile")
 def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
-    """Combine synteny and homology clusters,"""
+    """Combine synteny and homology clusters."""
     timer = ElapsedTimeReport("reading/preparing")
     syn = pd.read_csv(synfile, sep="\t", index_col=0)
     homo = pd.read_csv(homofile, sep="\t", index_col=0)

@@ -128,13 +128,14 @@ class DuplicateSequenceIndex:
     """Count duplicated sequences."""
 
     def __init__(self):
+        """Save stats."""
         self.match_index = 0
         self.hash_set = set()
         self.duplicates = {}
         self.match_count = {}
 
     def exact(self, seq):
-        "Test and count if exact duplicate."
+        """Test and count if exact duplicate."""
         seq_hash = zlib.adler32(bytearray(str(seq), "utf-8"))
         if seq_hash not in self.hash_set:
             self.hash_set.add(seq_hash)

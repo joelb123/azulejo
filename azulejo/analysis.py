@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-data analysis and plotting
-"""
+"""Data analysis and plotting."""
 # standard library imports
 import sys
 from pathlib import Path
@@ -331,7 +329,7 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
 @click.argument("cluster_size")
 @click.argument("combinedfile")
 def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
-    """Plot length distribution of singletons in clusters"""
+    """Plot length distribution of singletons in clusters."""
     cluster_size = int(cluster_size)
     if cluster_size <= 0:
         logger.error("Positive cluster size must be specified")

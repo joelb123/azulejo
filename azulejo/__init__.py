@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-azulejo -- tile phylogenetic space with subtrees
-"""
+"""azulejo -- tile phylogenetic space with subtrees."""
 # standard library imports
 import locale
 import warnings
@@ -45,10 +43,10 @@ click_loguru = ClickLoguru(NAME, __version__, retention=LOG_FILE_RETENTION)
 )
 @click.version_option(version=__version__, prog_name=NAME)
 def cli(warnings_as_errors):
-    """azulejo -- tiling genes in subtrees across phylogenetic space.
+    r"""azulejo -- tiling genes in subtrees across phylogenetic space.
 
+    \b
     For more information, see the homepage at https://github.com/legumeinfo/azulejo
-
     Written by Joel Berendzen <joelb@ncgr.org>.
     Copyright (C) 2020. National Center for Genome Resources. All rights reserved.
     License: BSD-3-Clause
