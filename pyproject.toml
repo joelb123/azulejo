@@ -64,6 +64,7 @@ pytest-datadir-mgr = "^1.0.1"
 poetry-dynamic-versioning = "^0.7.0"
 pylint = "^2.5.2"
 bandit = "^1.6.2"
+towncrier = "^19.2.0"
 
 [tool.poetry.scripts]
 azulejo = "azulejo:cli"
@@ -107,6 +108,9 @@ known_standard_library = "pkg_resources"
 [tool.poetry-dynamic-versioning]
 style = "semver"
 
+[tool.towncrier]
+package = "azulejo"
+filename = "NEWS.rst"
 
 [build-system]
 requires = ["poetry>=0.12"]

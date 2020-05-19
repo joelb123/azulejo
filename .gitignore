@@ -79,3 +79,7 @@ src
 # coverage stats#
 #################
 .coverage
+
+# towncrier #
+#############
+newsfragments/
