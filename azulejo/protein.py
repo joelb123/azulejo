@@ -4,12 +4,15 @@
 # standard library imports
 import zlib
 
-# first-party imports
+# third-party imports
 from Bio.Data import IUPACData
 
 # global constants
-AMBIGUOUS_CHARACTER = "X"
-ALPHABET = IUPACData.protein_letters + AMBIGUOUS_CHARACTER + "-"
+AMBIGUOUS = "X"
+STOP = "*"
+DASH = "-"
+START_CHARS = ("M",)
+ALPHABET = IUPACData.protein_letters + AMBIGUOUS
 
 
 class Sanitizer:
@@ -23,17 +26,27 @@ class Sanitizer:
 
     """
 
-    def __init__(self, remove_dashes=False):
+    def __init__(self, remove_stops=True, dashes_ok=False, start_chars=None):
         """Initialize counters."""
-        self.remove_dashes = remove_dashes
+        self.remove_stops = remove_stops
+        if start_chars is None:
+            self.starts = START_CHARS
+        else:
+            self.starts = tuple(start_chars)
+        if dashes_ok:
+            self.alphabet = ALPHABET + DASH
+            self.remove_dashes = False
+        else:
+            self.alphabet = ALPHABET
+            self.remove_dashes = True
+        self.improper_starts = 0
         self.seqs_sanitized = 0
         self.seqs_out = 0
-        self.chars_in = 0
-        self.chars_removed = 0
-        self.chars_fixed = 0
-        self.endchars_removed = 0
-        self.chars_out = 0
+        self.resid_removed = 0
+        self.resid_fixed = 0
+        self.resid_out = 0
         self.ambiguous = 0
+        self.stops = 0
 
     def char_remover(self, seq, character):
         """Remove positions with a given character.
@@ -42,23 +55,23 @@ class Sanitizer:
         :return: sequence with characters removed
         """
         removals = [i for i, j in enumerate(seq) if j == character]
-        self.chars_removed += len(removals)
+        self.resid_removed += len(removals)
         for k, pos in enumerate(removals):
             seq.pop(pos - k)
         return seq
 
     def fix_alphabet(self, seq):
-        """Replace everything out of alphabet with AMBIGUOUS_CHARACTER.
+        """Replace everything out of alphabet with AMBIGUOUS.
 
         :param seq: mutable sequence, upper-cased
         :return: fixed sequence
         """
         fix_positions = [
-            pos for pos, char in enumerate(seq) if char not in ALPHABET
+            pos for pos, char in enumerate(seq) if char not in self.alphabet
         ]
-        self.chars_fixed += len(fix_positions)
+        self.resid_fixed += len(fix_positions)
         for pos in fix_positions:
-            seq.__setitem__(pos, AMBIGUOUS_CHARACTER)
+            seq.__setitem__(pos, AMBIGUOUS)
         return seq
 
     def remove_char_on_ends(self, seq, character):
@@ -72,8 +85,15 @@ class Sanitizer:
             seq.pop()
         while seq[0] == character:
             seq.pop(0)
-        self.endchars_removed += in_len - len(seq)
+        self.resid_removed += in_len - len(seq)
         return seq
+
+    def stops_properly(self, seq):
+        """Remove a single stop on the end, if it exists."""
+        stops = seq[-1] == STOP
+        if stops and self.remove_stops:
+            seq.pop()
+        return seq, stops
 
     def sanitize(self, seq):
         """Sanitize potential problems with sequence.
@@ -84,20 +104,25 @@ class Sanitizer:
         :return: sanitized sequence
         """
         self.seqs_sanitized += 1
-        self.chars_in += len(seq)
         if len(seq) == 0:
             raise ValueError("zero-length sequence")
+        seq, has_stop = self.stops_properly(seq)
         if self.remove_dashes:
-            seq = self.char_remover(seq, "-")
+            seq = self.char_remover(seq, DASH)
         if len(seq) == 0:
-            raise ValueError("zero-length sequence after dashes removed")
+            raise ValueError("zero-length sequence after stop removed")
         seq = self.fix_alphabet(seq)
-        seq = self.remove_char_on_ends(seq, AMBIGUOUS_CHARACTER)
+        seq = self.remove_char_on_ends(seq, AMBIGUOUS)
         if len(seq) == 0:
             raise ValueError("zero-length sequence after ends trimmed")
-        self.chars_out += len(seq)
+        self.resid_out += len(seq)
+        self.stops += int(has_stop)
+        n_ambig = self.count_ambiguous(seq)
+        self.ambiguous += n_ambig
+        bad_start = self.starts_improperly(seq)
+        self.improper_starts += int(bad_start)
         self.seqs_out += 1
-        return seq
+        return seq, has_stop, bad_start, n_ambig
 
     def count_ambiguous(self, seq):
         """Count ambiguous residues.
@@ -105,21 +130,24 @@ class Sanitizer:
         :param seq: sequence
         :return: Number of ambiguous residues
         """
-        ambig = sum([i == AMBIGUOUS_CHARACTER for i in seq])
-        self.ambiguous += ambig
-        return ambig
+        return sum([i == AMBIGUOUS for i in seq])
+
+    def starts_improperly(self, seq):
+        """Return True if start char not in list."""
+        return seq[0] not in self.starts
 
     def file_stats(self):
         """Return a dictionary of file stats."""
         return {
-            "seqs": self.seqs_out,
-            "resids": self.chars_out,
-            "seqs_in": self.seqs_sanitized,
-            "resids_in": self.chars_in,
-            "dashes": self.chars_removed,
-            "fixed": self.chars_fixed,
-            "trimmed": self.endchars_removed,
-            "ambig": self.ambiguous,
+            "idx": 0,
+            "seqs.n": self.seqs_out,
+            "seqs.rmv": self.seqs_sanitized - self.seqs_out,
+            "seqs.stp": self.stops,
+            "seqs.nostrt": self.improper_starts,
+            "res.n": self.resid_out,
+            "res.fix": self.resid_fixed,
+            "res.rmv": self.resid_removed,
+            "res.ambg": self.ambiguous,
         }
 
 

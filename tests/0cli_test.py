@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Tests for basic CLI function."""
 # standard library imports
 import contextlib
 import os
@@ -21,7 +22,7 @@ def working_directory(path):
 
 
 def test_cli(tmp_path):
-    print("testing basic cli function")
+    """Test basic cli function."""
     with working_directory(tmp_path):
         try:
             output = sh.azulejo()
@@ -35,7 +36,7 @@ def test_cli(tmp_path):
 
 
 def test_version(tmp_path):
-    print("testing version")
+    """Test version command."""
     with working_directory(tmp_path):
         try:
             output = sh.azulejo(["--version"])

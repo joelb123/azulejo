@@ -7,7 +7,7 @@ import sys
 from os.path import commonprefix as prefix
 from pathlib import Path
 
-# first-party imports
+# third-party imports
 import click
 import gffpandas.gffpandas as gffpd
 import numpy as np
@@ -22,6 +22,7 @@ from . import click_loguru
 from .common import FAA_EXT
 from .common import GFF_EXT
 from .core import cluster_set_name
+from .core import prepare_protein_files
 from .core import usearch_cluster
 
 # global constants
@@ -160,20 +161,6 @@ def pair_matching_file_types(mixedlist, ext_a, ext_b):
 @cli.command()
 @click_loguru.init_logger()
 @click.option(
-    "--identity",
-    "-i",
-    default=0.0,
-    help="Minimum sequence ID (0-1). [default: lowest]",
-)
-@click.option(
-    "--clust/--no-clust",
-    "-c/-x",
-    is_flag=True,
-    default=True,
-    help="Do cluster calc.",
-    show_default=True,
-)
-@click.option(
     "-s",
     "--shorten_source",
     default=False,
@@ -183,10 +170,8 @@ def pair_matching_file_types(mixedlist, ext_a, ext_b):
 )
 @click.argument("setname")
 @click.argument("gff_faa_path_list", nargs=-1)
-def annotate_homology(
-    identity, clust, shorten_source, setname, gff_faa_path_list
-):
-    """Marshal homology and sequence information.
+def join_protein_position_info(shorten_source, setname, gff_faa_path_list):
+    """Marshal protein and genome sequence information.
 
     Corresponding GFF and FASTA files must have a corresponding prefix to their
     file names, but theu may occur in any order in the list.  Paths to files
@@ -200,16 +185,18 @@ def annotate_homology(
         logger.error("No files in list, exiting.")
         sys.exit(0)
     file_dict = pair_matching_file_types(gff_faa_path_list, GFF_EXT, FAA_EXT)
-    frame_dict = {}
     set_path = Path(setname)
     set_path.mkdir(parents=True, exist_ok=True)
-    fasta_records = []
+    file_frame, propfile_path_dict = prepare_protein_files.callback(
+        setname, None, stemdict=file_dict
+    )
     for stem in file_dict:
         logger.debug(f"Reading GFF file {file_dict[stem][GFF_EXT]}.")
         annotation = gffpd.read_gff3(file_dict[stem][GFF_EXT])
         mrnas = annotation.filter_feature_of_type(
             ["mRNA"]
         ).attributes_to_columns()
+        del annotation
         mrnas.drop(
             mrnas.columns.drop(["seq_id", "start", "strand", "ID"]),
             axis=1,
@@ -228,36 +215,72 @@ def annotate_homology(
             )
             sources = split_sources.agg(".".join, axis=1)
             mrnas["seq_id"] = sources
-        file_dict[stem]["fragments"] = len(set(mrnas["seq_id"]))
-        logger.debug(f"Reading FASTA file {file_dict[stem][FAA_EXT]}.")
-        fasta_dict = SeqIO.to_dict(
-            SeqIO.parse(file_dict[stem][FAA_EXT], "fasta")
+        mrnas = mrnas.set_index("ID")
+        # Make a categorical column, frag_id, based on seq_id
+        mrnas["frag_id"] = pd.Categorical(mrnas["seq_id"])
+        mrnas.drop(["seq_id"], axis=1, inplace=True)
+        propfile_path = propfile_path_dict[stem]
+        logger.debug(f"Reading properties file {propfile_path}.")
+        prop_frame = pd.read_csv(propfile_path, sep="\t", index_col=0)
+        # Drop any mrnas not found in sequence file, e.g., zero-length
+        mrnas_len_before = len(mrnas)
+        mrnas = mrnas[mrnas.index.isin(prop_frame.index)]
+        if len(mrnas) != mrnas_len_before:
+            logger.debug(
+                f"Dropped {mrnas_len_before - len(mrnas)} "
+                + f"mRNA defs from {stem}"
+            )
+        # sort by largest value
+        frag_counts = mrnas["frag_id"].value_counts()
+        frag_frame = pd.DataFrame()
+        frag_frame["counts"] = frag_counts
+        frag_frame["idx"] = range(len(frag_frame))
+        frag_frame["frag_id"] = frag_frame.index
+        frag_count_path = set_path / f"{stem}-fragment_counts.tsv"
+        logger.debug(f"Writing fragment count to file {frag_count_path}")
+        frag_frame.set_index(["idx"]).to_csv(frag_count_path, sep="\t")
+        del frag_frame
+        mrnas["frag_count"] = mrnas["frag_id"].map(frag_counts)
+        mrnas.sort_values(
+            by=["frag_count", "start"], ascending=[False, True], inplace=True
         )
-        file_dict[stem]["n_seqs"] = len(fasta_dict)
-        file_dict[stem]["residues"] = sum(
-            [len(fasta_dict[k].seq) for k in fasta_dict]
+        frag_id_range = []
+        for frag_id in frag_counts.index:
+            frag_id_range += list(range(frag_counts[frag_id]))
+        mrnas["frag_pos"] = frag_id_range
+        del frag_id_range
+        mrnas.drop(["frag_count"], axis=1, inplace=True)
+        # join GFF info to FASTA info
+        joined_path = set_path / f"{stem}-protein_positions.tsv"
+        logger.debug(
+            f"Joined {len(mrnas)} position and protein info for {stem}"
         )
-        mrnas = mrnas[mrnas["ID"].isin(fasta_dict.keys())]
-        frame_dict[stem] = mrnas.set_index("ID")
-        del annotation
-        for key in fasta_dict:
-            fasta_records.append(fasta_dict[key])
-    file_frame = pd.DataFrame.from_dict(file_dict).transpose()
-    file_frame = file_frame.sort_values(by=["n_seqs"])
-    file_frame["n"] = range(len(file_frame))
-    file_frame["stem"] = file_frame.index
-    file_frame = file_frame.set_index("n")
-    logger.debug("Writing files frame.")
-    file_frame.to_csv(set_path / f"{setname}{FILES_ENDING}", sep="\t")
-    del file_dict
+        mrnas = mrnas.join(prop_frame)
+        mrnas.to_csv(joined_path, sep="\t")
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click.option(
+    "--identity",
+    "-i",
+    default=0.0,
+    help="Minimum sequence ID (0-1). [default: lowest]",
+)
+@click.option(
+    "--clust/--no-clust",
+    "-c/-x",
+    is_flag=True,
+    default=True,
+    help="Do cluster calc.",
+    show_default=True,
+)
+@click.argument("setname")
+def annotate_homology(identity, clust, setname):
+    """Add homology cluster info."""
     set_keys = list(file_frame["stem"])
     concatenated_fasta_name = f"{setname}.faa"
     if clust:
-        logger.debug(
-            f"Writing concatenated FASTA file {concatenated_fasta_name}."
-        )
-        with (set_path / concatenated_fasta_name).open("w") as concat_fh:
-            SeqIO.write(fasta_records, concat_fh, "fasta")
         logger.debug("Doing cluster calculation.")
         cwd = Path.cwd()
         os.chdir(set_path)

@@ -19,37 +19,37 @@ repos:
     language: python
     additional_dependencies:
        - flynt
--   repo: local
-    hooks:
-    -  id: isort
-       name: run isort
-       entry: isort
-       args: [-yq]
-       language: python
-       additional_dependencies:
-         - isort
-         - toml
-- repo: local
-  hooks:
-  - id: tests
-    name: run tests
-    entry: pytest -s
-    language: python
-    types: [python]
-    stages: [push]
-    additional_dependencies:
-      - pytest
-      - pytest-cov
-- repo: local
-  hooks:
-  - id: pydocstyle
-    name: pydocstyle
-    description: 'Check for adherence to python docstring conventions.'
-    entry: pydocstyle
-    language: python
-    types: [python]
-    additional_dependencies:
-      - pydocstyle
+#-   repo: local
+#    hooks:
+#    -  id: isort
+#       name: run isort
+#       entry: isort
+#       args: [-yq]
+#       language: python
+#       additional_dependencies:
+#         - isort
+#         - toml
+#- repo: local
+#  hooks:
+#  - id: tests
+#    name: run tests
+#    entry: pytest -s
+#    language: python
+#    types: [python]
+#    stages: [push]
+#    additional_dependencies:
+#      - pytest
+#      - pytest-cov
+#- repo: local
+#  hooks:
+#  - id: pydocstyle
+#    name: pydocstyle
+#    description: 'Check for adherence to python docstring conventions.'
+#    entry: pydocstyle
+#    language: python
+#    types: [python]
+#    additional_dependencies:
+#      - pydocstyle
 #- repo: https://github.com/pre-commit/mirrors-pylint
 #  rev: v2.5.2
 #  hooks:

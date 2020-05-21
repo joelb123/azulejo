@@ -5,7 +5,7 @@ import locale
 import warnings
 from pkg_resources import iter_entry_points
 
-# first-party imports
+# third-party imports
 import click
 from click_loguru import ClickLoguru
 from click_plugins import with_plugins
@@ -16,7 +16,7 @@ from .common import NAME
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.6.8"
+__version__ = "0.7.0"
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
@@ -42,11 +42,12 @@ click_loguru = ClickLoguru(NAME, __version__, retention=LOG_FILE_RETENTION)
     help="Treat warnings as fatal.",
 )
 @click.version_option(version=__version__, prog_name=NAME)
-def cli(warnings_as_errors):
-    r"""azulejo -- tiling genes in subtrees across phylogenetic space.
+def cli(warnings_as_errors, **unused_kwargs):
+    """azulejo -- tiling genes in subtrees across phylogenetic space.
 
     \b
     For more information, see the homepage at https://github.com/legumeinfo/azulejo
+
     Written by Joel Berendzen <joelb@ncgr.org>.
     Copyright (C) 2020. National Center for Genome Resources. All rights reserved.
     License: BSD-3-Clause
@@ -70,6 +71,7 @@ from .core import compare_clusters  #  isort:skip
 from .core import prepare_protein_files  #  isort:skip
 from .core import usearch_cluster  #  isort:skip
 from .synteny import annotate_homology  # isort:skip
+from .synteny import join_protein_position_info  # isort:skip
 from .synteny import synteny_anchors  # isort:skip
 from .synteny import dagchainer_synteny  # isort:skip
 from .synteny import proxy_genes  # isort:skip

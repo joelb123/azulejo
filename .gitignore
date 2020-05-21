@@ -68,9 +68,9 @@ tmp/
 ############
 readme.html
 
-# virtual environment #
-#######################
-venv
+# nox #
+#######
+.nox/
 
 # src directory (git installs)#
 ###############################

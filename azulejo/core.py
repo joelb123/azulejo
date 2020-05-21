@@ -12,7 +12,7 @@ from itertools import chain
 from itertools import combinations
 from pathlib import Path
 
-# first-party imports
+# third-party imports
 import click
 import dask.bag as db
 import networkx as nx
@@ -637,51 +637,55 @@ def compare_clusters(file1, file2):
     print(f"{len(clusters1):d} in {file1} after dropping")
 
 
-def cleanup_fasta(set_path, fasta_path, filestem, write_stats=True):
+def cleanup_fasta(args):
     """Sanitize and characterize protein FASTA files."""
+    set_path, fasta_path, filestem = args
     out_sequences = []
     ids = []
     lengths = []
     positions = []
-    n_ambig = []
+    n_ambigs = []
     m_starts = []
-    sanitizer = Sanitizer(remove_dashes=True)
+    no_stops = []
+    sanitizer = Sanitizer()
     position = 0
-    m_start_count = 0
     with fasta_path.open("rU") as handle:
         for record in SeqIO.parse(handle, SEQ_FILE_TYPE):
             seq = record.seq.upper().tomutable()
             try:
-                seq = sanitizer.sanitize(seq)
+                seq, m_start, no_stop, n_ambig = sanitizer.sanitize(seq)
             except ValueError:  # zero-length sequence after sanitizing
                 continue
-            m_start = seq[0] == START_CHAR
-            m_start_count += m_start
-            m_starts.append(m_start)
             record.seq = seq.toseq()
-            ids.append(record.id)
-            n_ambig.append(sanitizer.count_ambiguous(seq))
-            lengths.append(len(record))
             out_sequences.append(record)
+            ids.append(record.id)
             positions.append(position)
             position += 1
+            lengths.append(len(seq))
+            n_ambigs.append(n_ambig)
+            m_starts.append(m_start)
+            no_stops.append(no_stop)
     with (set_path / f"{filestem}.faa").open("w") as output_handle:
         SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
     properties_frame = pd.DataFrame(
-        list(zip(ids, positions, lengths, n_ambig, m_starts)),
-        columns=["ID", "pos", "protein_len", "n_ambig", "Mstart"],
+        list(zip(ids, positions, lengths, n_ambigs, m_starts, no_stops)),
+        columns=["ID", "faa_pos", "prot_len", "n_ambig", "m_start", "no_stop"],
     )
     properties_frame = properties_frame.set_index(["ID"])
-    logger.debug(f"   {len(properties_frame)} sequences in {fasta_path}.")
-    if write_stats:
-        properties_frame.to_csv(
-            set_path / protein_properties_filename(filestem), sep="\t"
-        )
-    return filestem, properties_frame, sanitizer.file_stats()
+    # logger.debug(f"   {len(properties_frame)} sequences in {fasta_path}.")
+    propfile_path = set_path / protein_properties_filename(filestem)
+    properties_frame.to_csv(propfile_path, sep="\t")
+    return (
+        filestem,
+        propfile_path,
+        len(properties_frame),
+        sanitizer.file_stats(),
+    )
 
 
 @cli.command()
-@click_loguru.init_logger(logfile=False)
+@click_loguru.init_logger()
+@click_loguru.log_elapsed_time()
 @click.argument("setname")
 @click.option(
     "--parallel/--no-parallel",
@@ -690,24 +694,17 @@ def cleanup_fasta(set_path, fasta_path, filestem, write_stats=True):
     show_default=True,
     help="Process in parallel.",
 )
-@click.option(
-    "--write_stats/--no-write_stats",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Write per-seq and per-file stats.",
-)
 @click.argument("fasta_list", nargs=-1, type=click.Path(exists=True))
-def prepare_protein_files(
-    setname, fasta_list, stemdict=None, write_stats=True, parallel=True
-):
+def prepare_protein_files(setname, fasta_list, stemdict=None, parallel=True):
     """Sanitize and combine protein FASTA files."""
+    options = click_loguru.get_global_options()
     set_path = Path(setname)
     set_name = set_path.name
-    file_paths = [Path(p) for p in fasta_list]
     if stemdict is None or stemdict == ():
+        if fasta_list is None or len(fasta_list) < 1:
+            logger.error("Empty FASTA_LIST, aborting.")
         stemdict = {}
-        for file_path in file_paths:
+        for file_path in [Path(p) for p in fasta_list]:
             if file_path.suffix != "." + FAA_EXT:
                 logger.error(
                     f"Unrecognized extension in {file_path.path.name}"
@@ -717,41 +714,48 @@ def prepare_protein_files(
                 FAA_EXT: file_path
             }
     if len(stemdict) < 1:
-        logger.error("Empty FILELIST, aborting.")
+        logger.error("Empty stemdict, aborting.")
         sys.exit(1)
     if set_path.exists() and set_path.is_file():
         set_path.unlink()
     elif not set_path.is_dir():
         logger.info(f'Creating output directory "{set_name}/".')
         set_path.mkdir(parents=True)
-    if parallel:
-        pass
-    results = []
     arg_list = []
     for file_stem in stemdict.keys():
         arg_list.append((set_path, stemdict[file_stem][FAA_EXT], file_stem,))
-    for args in arg_list:
-        results.append(cleanup_fasta(*args, write_stats=write_stats))
-    protein_frame_dict = {}
+    if parallel:
+        bag = db.from_sequence(arg_list)
+        del arg_list
+        if not options.quiet:
+            ProgressBar().register()
+    else:
+        protein_stats = []
+    logger.info(f"Preparing {len(stemdict)} protein FASTA files:")
+    if parallel:
+        protein_stats = bag.map(cleanup_fasta)
+    else:
+        for args in arg_list:
+            protein_stats.append(cleanup_fasta(args))
     file_frame_dict = {}
+    propfile_path_dict = {}
     n_seqs = 0
-    for frame_id, protein_frame, filestat_dict in results:
-        n_seqs += len(protein_frame)
-        protein_frame_dict[frame_id] = protein_frame
+    for frame_id, propfile_path, file_seqs, filestat_dict in protein_stats:
+        n_seqs += file_seqs
         file_frame_dict[frame_id] = filestat_dict
-    del results
+        propfile_path_dict[frame_id] = propfile_path
+    del protein_stats
     file_frame = pd.DataFrame.from_dict(file_frame_dict).transpose()
-    file_frame.sort_values(by=["seqs"], ascending=False, inplace=True)
-    file_frame.drop(["dashes"], axis=1, inplace=True)
+    file_frame.sort_values(by=["seqs.n"], ascending=False, inplace=True)
+    file_frame["idx"] = range(len(file_frame))
     del file_frame_dict
     logger.info(
-        f"{n_seqs} sequences in {len(stemdict)} files in set {set_name}."
+        f'{n_seqs} sequences in {len(stemdict)} files in set "{set_name}".'
     )
-    if write_stats:
-        file_stats_name = protein_file_stats_filename(set_name)
-        logger.debug(f"Writing overall stats to {file_stats_name}")
-        file_frame.to_csv(set_path / file_stats_name, sep="\t")
-    return protein_frame_dict, file_frame
+    file_stats_name = protein_file_stats_filename(set_name)
+    logger.debug(f"Writing overall stats to {file_stats_name}")
+    file_frame.to_csv(set_path / file_stats_name, sep="\t")
+    return file_frame, propfile_path_dict
 
 
 @cli.command()
@@ -887,18 +891,11 @@ def compute_subclusters(cluster, cluster_size_dict=None):
     show_default=True,
     help="Process in parallel.",
 )
-@click.option(
-    "-q",
-    "--quiet",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help="Suppress logging to stderr.",
-)
 @click.argument("synfile")
 @click.argument("homofile")
-def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
+def combine_clusters(first_n, clust_size, synfile, homofile, parallel):
     """Combine synteny and homology clusters."""
+    options = click_loguru.get_global_options()
     timer = ElapsedTimeReport("reading/preparing")
     syn = pd.read_csv(synfile, sep="\t", index_col=0)
     homo = pd.read_csv(homofile, sep="\t", index_col=0)
@@ -908,7 +905,7 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
     arg_list = []
     if first_n:
         logger.debug(f"processing only first {first_n:d} clusters")
-    if not quiet and clust_size:
+    if not options.quiet and clust_size:
         logger.info(f"Only clusters of size {clust_size} will be used.")
     syn["link"] = [homo_id_dict[id] for id in syn["id"]]
     for unused_cluster_id, group in syn.groupby(["cluster"]):
@@ -925,7 +922,7 @@ def combine_clusters(first_n, clust_size, synfile, homofile, quiet, parallel):
         bag = db.from_sequence(arg_list)
     else:
         cluster_list = []
-    if not quiet:
+    if not options.quiet:
         logger.info(f"Combining {cluster_count} synteny/homology clusters:")
         ProgressBar().register()
     if parallel:

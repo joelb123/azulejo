@@ -4,7 +4,7 @@
 import sys
 from pathlib import Path
 
-# first-party imports
+# third-party imports
 import click
 import matplotlib.pyplot as plt
 import numpy as np
