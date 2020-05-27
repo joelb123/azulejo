@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Synteny (genome order) operations."""
 # standard library imports
+import json
 import os
 import statistics
 import sys
@@ -13,7 +14,6 @@ import gffpandas.gffpandas as gffpd
 import numpy as np
 import pandas as pd
 import sh
-from Bio import SeqIO
 from loguru import logger
 
 # module imports
@@ -21,6 +21,7 @@ from . import cli
 from . import click_loguru
 from .common import FAA_EXT
 from .common import GFF_EXT
+from .common import protein_file_stats_filename
 from .core import cluster_set_name
 from .core import prepare_protein_files
 from .core import usearch_cluster
@@ -188,8 +189,9 @@ def join_protein_position_info(shorten_source, setname, gff_faa_path_list):
     set_path = Path(setname)
     set_path.mkdir(parents=True, exist_ok=True)
     file_frame, propfile_path_dict = prepare_protein_files.callback(
-        setname, None, stemdict=file_dict
+        setname, None, stemdict=file_dict, fasta=False
     )
+    fasta_path = set_path / f"{setname}.faa"
     for stem in file_dict:
         logger.debug(f"Reading GFF file {file_dict[stem][GFF_EXT]}.")
         annotation = gffpd.read_gff3(file_dict[stem][GFF_EXT])
@@ -256,7 +258,10 @@ def join_protein_position_info(shorten_source, setname, gff_faa_path_list):
             f"Joined {len(mrnas)} position and protein info for {stem}"
         )
         mrnas = mrnas.join(prop_frame)
+        logger.debug(f"Writing info file {joined_path}.")
         mrnas.to_csv(joined_path, sep="\t")
+        mrnas["stem"] = stem
+        info_to_fasta.callback(None, fasta_path, append=True, infoobj=mrnas)
 
 
 @cli.command()
@@ -278,18 +283,34 @@ def join_protein_position_info(shorten_source, setname, gff_faa_path_list):
 @click.argument("setname")
 def annotate_homology(identity, clust, setname):
     """Add homology cluster info."""
-    set_keys = list(file_frame["stem"])
+    set_path = Path(setname)
+    file_stats_path = set_path / protein_file_stats_filename(setname)
+    file_frame = pd.read_csv(file_stats_path, index_col=0, sep="\t")
+    set_keys = list(file_frame.index)
     concatenated_fasta_name = f"{setname}.faa"
     if clust:
         logger.debug("Doing cluster calculation.")
         cwd = Path.cwd()
         os.chdir(set_path)
-        stats, graph, hist, any_, all_ = usearch_cluster.callback(
-            concatenated_fasta_name, identity, write_ids=True, delete=False
+        run_stats = usearch_cluster.callback(
+            concatenated_fasta_name,
+            identity,
+            write_ids=True,
+            delete=False,
+            cluster_stats=False,
         )
         os.chdir(cwd)
-        del stats, graph, hist, any_, all_
-    del fasta_records
+        print(run_stats)
+        del run_stats
+    cluster_path = set_path / cluster_set_name(setname, identity)
+    cluster_stats = []
+    for clust_fasta in cluster_path.glob("*.faa"):
+        print(clust_fasta)
+        cluster_stats.append(parse_cluster(clust_fasta))
+        break
+    print(f"cluster_stats={cluster_stats}")
+    sys.exit(1)
+
     cluster_frame = pd.read_csv(
         set_path / (cluster_set_name(setname, identity) + "-ids.tsv"), sep="\t"
     )
@@ -313,6 +334,64 @@ def annotate_homology(identity, clust, setname):
         homology_filename = f"{stem}{HOMOLOGY_ENDING}"
         logger.debug(f"Writing homology file {homology_filename}")
         frame.to_csv(set_path / homology_filename, sep="\t")
+
+
+def parse_cluster(fasta_path):
+    """Parse cluster FASTA headers to create cluster table.."""
+    cluster_id = fasta_path.name
+    outdir = fasta_path.parent
+    prop_dict = {}
+    with fasta_path.open() as fasta_fh:
+        for line in fasta_fh:
+            if line.startswith(">"):
+                gene_id = line.split()[0][1:]
+                json_dict = line[len(gene_id) + 1 :]
+                prop_dict[gene_id] = json.loads(json_dict)
+    cluster_frame = pd.DataFrame.from_dict(prop_dict).transpose()
+    cluster_frame.sort_values(by=["stem", "frag_id", "frag_pos"], inplace=True)
+    print(cluster_frame)
+    stem_values = cluster_frame["stem"].value_counts()
+    print(stem_values)
+    stem_set = tuple(stem_values.index)
+    cluster_frame.to_csv(outdir / f"{cluster_id}.tsv", sep="\t")
+    return {
+        cluster_id: {
+            "clust_size": len(cluster_frame),
+            "n_memb": len(stem_values),
+            "members": stem_set,
+        }
+    }
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click.option(
+    "--append/--no-append",
+    "-a/-x",
+    is_flag=True,
+    default=True,
+    help="Append to FASTA file.",
+    show_default=True,
+)
+@click.argument("infofile")
+@click.argument("fastafile")
+def info_to_fasta(infofile, fastafile, append, infoobj=None):
+    """Convert infofile to FASTA file."""
+    if infoobj is None:
+        infoobj = pd.read_csv(infofile, index_col=0, sep="\t")
+    if append:
+        filemode = "a+"
+    else:
+        filemode = "w"
+    with Path(fastafile).open(filemode) as fh:
+        logger.debug(f"Writing to {fastafile} with mode {filemode}.")
+        for gene_id, row in infoobj.iterrows():
+            row_dict = row.to_dict()
+            seq = row_dict["seq"]
+            del row_dict["seq"]
+            json_row = json.dumps(row_dict, separators=(",", ":"))
+            fh.write(f">{gene_id} {json_row}\n")
+            fh.write(f"{seq}\n")
 
 
 @cli.command()

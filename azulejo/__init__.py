@@ -62,6 +62,7 @@ def cli(warnings_as_errors, **unused_kwargs):
 from .analysis import analyze_clusters  # isort:skip
 from .analysis import length_std_dist  # isort:skip
 from .analysis import outlier_length_dist  # isort:skip
+from .analysis import plot_degree_dists  # isort:skip
 from .core import add_singletons  #  isort:skip
 from .core import adjacency_to_graph  #  isort:skip
 from .core import cluster_in_steps  #  isort:skip
@@ -71,6 +72,7 @@ from .core import compare_clusters  #  isort:skip
 from .core import prepare_protein_files  #  isort:skip
 from .core import usearch_cluster  #  isort:skip
 from .synteny import annotate_homology  # isort:skip
+from .synteny import info_to_fasta  # isort:skip
 from .synteny import join_protein_position_info  # isort:skip
 from .synteny import synteny_anchors  # isort:skip
 from .synteny import dagchainer_synteny  # isort:skip

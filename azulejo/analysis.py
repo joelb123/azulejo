@@ -2,15 +2,21 @@
 """Data analysis and plotting."""
 # standard library imports
 import sys
+
+from math import log10
 from pathlib import Path
 
 # third-party imports
 import click
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from loguru import logger
+from numpy import log2
+import matplotlib.pyplot as plt
+from matplotlib import scale as mscale
+from matplotlib import transforms as mtransforms
+
 
 # module imports
 from . import cli
@@ -18,6 +24,8 @@ from . import click_loguru
 from .common import ALLFILE_SUFFIX
 from .common import ANYFILE_SUFFIX
 from .common import STATFILE_SUFFIX
+from .common import cluster_set_name
+from .common import homo_degree_dist_filename
 
 # Global constants
 IDENT_LOG_MIN = -3
@@ -85,7 +93,7 @@ def log_deriv(xvals, yvals):
 
 
 @cli.command()
-@click_loguru.init_logger()
+@click_loguru.init_logger(logfile=False)
 @click.argument("instemlist")
 def analyze_clusters(
     dirname, instemlist, label, reference=None, on_id=None, match_type=None
@@ -252,7 +260,7 @@ def do_cuts(obs, high, low, label):
 
 
 @cli.command()
-@click_loguru.init_logger()
+@click_loguru.init_logger(logfile=False)
 @click.option(
     "--hi_cutoff",
     default=2.0,
@@ -313,7 +321,7 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
 
 
 @cli.command()
-@click_loguru.init_logger()
+@click_loguru.init_logger(logfile=False)
 @click.option(
     "--hi_cutoff",
     default=0.0,
@@ -364,5 +372,72 @@ def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
     logger.info("saving plot to %s", outfilename)
     plt.yscale("log")
     plt.xscale("log")
+    plt.savefig(outfilename, dpi=200)
+    plt.show()
+
+
+@cli.command()
+@click_loguru.init_logger(logfile=False)
+@click.option(
+    "--hi_cutoff",
+    default=1000,
+    show_default=True,
+    help="Disregard above this value.",
+)
+@click.option(
+    "--lo_cutoff",
+    default=1,
+    show_default=True,
+    help="Disregard below this value.",
+)
+@click.option(
+    "--identity",
+    "-i",
+    default=0.0,
+    help="Minimum sequence ID (0-1). [default: lowest]",
+)
+@click.argument("n", type=click.IntRange(2, 100))
+@click.argument("setname")
+def plot_degree_dists(identity, hi_cutoff, lo_cutoff, setname, n):
+    """Plot homology and synteny degree distributions."""
+    set_path = Path(setname)
+    homo_cluster_name = cluster_set_name(setname, identity)
+    homo_degree = pd.read_csv(
+        set_path / homo_degree_dist_filename(homo_cluster_name),
+        index_col=0,
+        sep="\t",
+    )
+    homo_degree.index.name = "size"
+    homo_degree = homo_degree.rename(
+        columns={"clusters": "clusts", "pct_total": "%clusts"}
+    )
+    homo_clusts = sum(homo_degree["clusts"])
+    homo_genes = sum(homo_degree["clusts"] * homo_degree.index)
+
+    homo_degree["%genes"] = (
+        homo_degree["clusts"] * homo_degree.index * 100.0 / homo_genes
+    )
+    synteny_degree_path = set_path / "dagchainer" / "clusters-sizedist.tsv"
+    synteny_degree = pd.read_csv(synteny_degree_path, index_col=0, sep="\t")
+    synteny_clusts = sum(synteny_degree["clusts"])
+    synteny_genes = sum(synteny_degree["clusts"] * synteny_degree.index)
+    logger.info("  method       clusters  genes")
+    logger.info(f"homology:\t{homo_clusts}\t{homo_genes}")
+    logger.info(f" synteny:\t{synteny_clusts}\t{synteny_genes}")
+    # Make plot
+    axis = plt.plot(homo_degree.index, homo_degree["%genes"], label="homology")
+    plt.plot(synteny_degree.index, synteny_degree["%genes"], label="synteny")
+    plt.style.use("seaborn-whitegrid")
+    plt.xlabel(f"Cluster Size")
+    plt.ylabel("% of Genes in Cluster")
+    plt.title(
+        f"Cluster size distribution of {homo_genes} genes in {n} {setname} genomes"
+    )
+    outfilename = f"cluster_size_dist.{FILETYPE}"
+    logger.info(f"saving plot to {outfilename}")
+    plt.xlim([lo_cutoff, hi_cutoff])
+    plt.legend()
+    plt.yscale("log")
+    plt.xscale("log", basex=n)
     plt.savefig(outfilename, dpi=200)
     plt.show()

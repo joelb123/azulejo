@@ -31,7 +31,9 @@ from .common import ANYFILE_SUFFIX
 from .common import FAA_EXT
 from .common import SEQ_FILE_TYPE
 from .common import STATFILE_SUFFIX
+from .common import cluster_set_name
 from .common import get_paths_from_file
+from .common import homo_degree_dist_filename
 from .common import protein_file_stats_filename
 from .common import protein_properties_filename
 from .protein import Sanitizer
@@ -276,15 +278,6 @@ def prettyprint_float(val, digits):
     return (format_string % val).rstrip("0").rstrip(".")
 
 
-def cluster_set_name(stem, identity):
-    """Get a setname that specifies the %identity value.."""
-    if identity == 1.0:
-        digits = "10000"
-    else:
-        digits = (f"{identity:.4f}")[2:]
-    return f"{stem}-nr-{digits}"
-
-
 @cli.command()
 @click_loguru.init_logger()
 @click.argument("seqfile")
@@ -335,6 +328,7 @@ def usearch_cluster(
     min_id_freq=0,
     substrs=None,
     dups=None,
+    cluster_stats=True,
 ):
     """Cluster at a global sequence identity threshold."""
     try:
@@ -354,14 +348,14 @@ def usearch_cluster(
     logfile = f"{outname}.log"
     outfilepath = dirpath / outdir
     logfilepath = dirpath / logfile
-    histfilepath = dirpath / (f"{outname}-degreedist.tsv")
+    histfilepath = dirpath / homo_degree_dist_filename(outname)
     gmlfilepath = dirpath / (f"{outname}.gml")
     statfilepath = dirpath / (f"{outname}-stats.tsv")
     anyfilepath = dirpath / (f"{outname}-anyhist.tsv")
     allfilepath = dirpath / (f"{outname}-allhist.tsv")
     idpath = dirpath / (f"{outname}-ids.tsv")
     logger.info(
-        f"%{prettyprint_float(identity * 100, 2)}% sequence identity output to {outname}*"
+        f"{prettyprint_float(identity * 100, 2)}% sequence identity cluster to {outname}*"
     )
     if not delete:
         logger.debug(f"Cluster files will be kept in {logfile} and {outdir}")
@@ -386,6 +380,7 @@ def usearch_cluster(
         logger.debug(f"using duplicates in {dirpath/dups}")
         synonyms.update(read_synonyms(dirpath / dups))
     timer = ElapsedTimeReport("usearch")
+    print(f"outfilepath: {outfilepath}")
     if do_calc:
         #
         # Delete previous results, if any.
@@ -424,6 +419,10 @@ def usearch_cluster(
     run_stats.to_csv(statfilepath, sep="\t")
     if delete:
         logfilepath.unlink()
+    if not cluster_stats:
+        for fasta_path in outfilepath.glob("*"):
+            fasta_path.rename(fasta_path.name + ".faa")
+        return run_stats
     (
         cluster_graph,
         clusters,
@@ -496,7 +495,7 @@ def usearch_cluster(
     # degree_hist.to_csv(histfilepath, sep='\t')
     nx.write_gml(cluster_graph, gmlfilepath)
     logger.debug(timer.elapsed("final"))
-    return run_stat_dict, cluster_graph, cluster_hist, any_hist, all_hist
+    return run_stats, cluster_graph, cluster_hist, any_hist, all_hist
 
 
 @cli.command()
@@ -631,13 +630,12 @@ def compare_clusters(file1, file2):
     notin2 = pd.DataFrame(ids1.difference(ids2), columns=["id"])
     notin2.sort_values("id", inplace=True)
     notin2.to_csv(missing2, sep="\t")
-
     print("%d ids not in ids1" % len(notin1))
     print("%d ids not in ids2" % len(notin2))
     print(f"{len(clusters1):d} in {file1} after dropping")
 
 
-def cleanup_fasta(args):
+def cleanup_fasta(args, write_fasta=True):
     """Sanitize and characterize protein FASTA files."""
     set_path, fasta_path, filestem = args
     out_sequences = []
@@ -647,6 +645,7 @@ def cleanup_fasta(args):
     n_ambigs = []
     m_starts = []
     no_stops = []
+    seqs = []
     sanitizer = Sanitizer()
     position = 0
     with fasta_path.open("rU") as handle:
@@ -656,8 +655,10 @@ def cleanup_fasta(args):
                 seq, m_start, no_stop, n_ambig = sanitizer.sanitize(seq)
             except ValueError:  # zero-length sequence after sanitizing
                 continue
-            record.seq = seq.toseq()
-            out_sequences.append(record)
+            seqs.append(seq)
+            if write_fasta:
+                record.seq = seq.toseq()
+                out_sequences.append(record)
             ids.append(record.id)
             positions.append(position)
             position += 1
@@ -665,11 +666,20 @@ def cleanup_fasta(args):
             n_ambigs.append(n_ambig)
             m_starts.append(m_start)
             no_stops.append(no_stop)
-    with (set_path / f"{filestem}.faa").open("w") as output_handle:
-        SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
+    if write_fasta:
+        with (set_path / f"{filestem}.faa").open("w") as output_handle:
+            SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
     properties_frame = pd.DataFrame(
-        list(zip(ids, positions, lengths, n_ambigs, m_starts, no_stops)),
-        columns=["ID", "faa_pos", "prot_len", "n_ambig", "m_start", "no_stop"],
+        list(zip(ids, positions, lengths, n_ambigs, m_starts, no_stops, seqs)),
+        columns=[
+            "ID",
+            "faa_pos",
+            "prot_len",
+            "n_ambig",
+            "m_start",
+            "no_stop",
+            "seq",
+        ],
     )
     properties_frame = properties_frame.set_index(["ID"])
     # logger.debug(f"   {len(properties_frame)} sequences in {fasta_path}.")
@@ -694,8 +704,17 @@ def cleanup_fasta(args):
     show_default=True,
     help="Process in parallel.",
 )
+@click.option(
+    "--fasta/--no-fasta",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Write FASTA output.",
+)
 @click.argument("fasta_list", nargs=-1, type=click.Path(exists=True))
-def prepare_protein_files(setname, fasta_list, stemdict=None, parallel=True):
+def prepare_protein_files(
+    setname, fasta_list, stemdict=None, parallel=True, fasta=True
+):
     """Sanitize and combine protein FASTA files."""
     options = click_loguru.get_global_options()
     set_path = Path(setname)
@@ -733,10 +752,10 @@ def prepare_protein_files(setname, fasta_list, stemdict=None, parallel=True):
         protein_stats = []
     logger.info(f"Preparing {len(stemdict)} protein FASTA files:")
     if parallel:
-        protein_stats = bag.map(cleanup_fasta)
+        protein_stats = bag.map(cleanup_fasta, write_fasta=fasta)
     else:
         for args in arg_list:
-            protein_stats.append(cleanup_fasta(args))
+            protein_stats.append(cleanup_fasta(args, write_fasta=fasta))
     file_frame_dict = {}
     propfile_path_dict = {}
     n_seqs = 0

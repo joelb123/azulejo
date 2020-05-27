@@ -4,15 +4,13 @@
 # standard library imports
 import zlib
 
-# third-party imports
-from Bio.Data import IUPACData
-
 # global constants
 AMBIGUOUS = "X"
 STOP = "*"
 DASH = "-"
 START_CHARS = ("M",)
-ALPHABET = IUPACData.protein_letters + AMBIGUOUS
+UNAMBIGUOUS_ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
+ALPHABET = UNAMBIGUOUS_ALPHABET + AMBIGUOUS
 
 
 class Sanitizer:
