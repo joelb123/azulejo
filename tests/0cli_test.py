@@ -9,6 +9,9 @@ from pathlib import Path
 import pytest
 import sh
 
+# global constant
+azulejo = sh.Command("azulejo")
+
 
 @contextlib.contextmanager
 def working_directory(path):
@@ -25,9 +28,9 @@ def test_cli(tmp_path):
     """Test basic cli function."""
     with working_directory(tmp_path):
         try:
-            output = sh.azulejo()
-        except sh.ErrorReturnCode as e:
-            print(e)
+            output = azulejo()
+        except sh.ErrorReturnCode as errors:
+            print(errors)
             pytest.fail("Basic cli test failed")
         print(output)
         assert "Usage:" in output
@@ -39,9 +42,9 @@ def test_version(tmp_path):
     """Test version command."""
     with working_directory(tmp_path):
         try:
-            output = sh.azulejo(["--version"])
-        except sh.ErrorReturnCode as e:
-            print(e)
-            pytest.fail(e)
+            output = azulejo(["--version"])
+        except sh.ErrorReturnCode as errors:
+            print(errors)
+            pytest.fail(errors)
         print(output)
         assert "version" in output

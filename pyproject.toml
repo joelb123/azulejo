@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.7.1-post.1+e6a1111"
+version = "0.7.1-post.2+bfed555"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"

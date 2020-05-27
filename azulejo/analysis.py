@@ -2,8 +2,6 @@
 """Data analysis and plotting."""
 # standard library imports
 import sys
-
-from math import log10
 from pathlib import Path
 
 # third-party imports
@@ -12,10 +10,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from loguru import logger
-from numpy import log2
 import matplotlib.pyplot as plt
-from matplotlib import scale as mscale
-from matplotlib import transforms as mtransforms
 
 
 # module imports
@@ -396,9 +391,9 @@ def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
     default=0.0,
     help="Minimum sequence ID (0-1). [default: lowest]",
 )
-@click.argument("n", type=click.IntRange(2, 100))
+@click.argument("setsize", type=click.IntRange(2, 100))
 @click.argument("setname")
-def plot_degree_dists(identity, hi_cutoff, lo_cutoff, setname, n):
+def plot_degree_dists(identity, hi_cutoff, lo_cutoff, setname, setsize):
     """Plot homology and synteny degree distributions."""
     set_path = Path(setname)
     homo_cluster_name = cluster_set_name(setname, identity)
@@ -425,19 +420,19 @@ def plot_degree_dists(identity, hi_cutoff, lo_cutoff, setname, n):
     logger.info(f"homology:\t{homo_clusts}\t{homo_genes}")
     logger.info(f" synteny:\t{synteny_clusts}\t{synteny_genes}")
     # Make plot
-    axis = plt.plot(homo_degree.index, homo_degree["%genes"], label="homology")
+    plt.plot(homo_degree.index, homo_degree["%genes"], label="homology")
     plt.plot(synteny_degree.index, synteny_degree["%genes"], label="synteny")
     plt.style.use("seaborn-whitegrid")
-    plt.xlabel(f"Cluster Size")
+    plt.xlabel("Cluster Size")
     plt.ylabel("% of Genes in Cluster")
     plt.title(
-        f"Cluster size distribution of {homo_genes} genes in {n} {setname} genomes"
+        f"Cluster size distribution of {homo_genes} genes in {setsize} {setname} genomes"
     )
     outfilename = f"cluster_size_dist.{FILETYPE}"
     logger.info(f"saving plot to {outfilename}")
     plt.xlim([lo_cutoff, hi_cutoff])
     plt.legend()
     plt.yscale("log")
-    plt.xscale("log", basex=n)
+    plt.xscale("log", basex=setsize)
     plt.savefig(outfilename, dpi=200)
     plt.show()
