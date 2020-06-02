@@ -32,6 +32,7 @@ from .common import FAA_EXT
 from .common import SEQ_FILE_TYPE
 from .common import STATFILE_SUFFIX
 from .common import cluster_set_name
+from .common import fasta_records
 from .common import get_paths_from_file
 from .common import homo_degree_dist_filename
 from .common import protein_file_stats_filename
@@ -50,7 +51,7 @@ SEQ_IN_LINE = 6
 IDENT_STATS_LINE = 7
 FIRST_LOG_LINE = 14
 LAST_LOG_LINE = 23
-STAT_SUFFIXES = ["siz", "mem", "time", "memory"]
+STAT_SUFFIXES = ["size", "mem", "time", "memory"]
 RENAME_STATS = {
     "throughput": "throughput_seq_s",
     "time": "CPU_time",
@@ -329,6 +330,7 @@ def usearch_cluster(
     substrs=None,
     dups=None,
     cluster_stats=True,
+    outname=None,
 ):
     """Cluster at a global sequence identity threshold."""
     try:
@@ -343,7 +345,8 @@ def usearch_cluster(
         sys.exit(1)
     stem = inpath.stem
     dirpath = inpath.parent
-    outname = cluster_set_name(stem, identity)
+    if outname is None:
+        outname = cluster_set_name(stem, identity)
     outdir = f"{outname}/"
     logfile = f"{outname}.log"
     outfilepath = dirpath / outdir
@@ -355,11 +358,11 @@ def usearch_cluster(
     allfilepath = dirpath / (f"{outname}-allhist.tsv")
     idpath = dirpath / (f"{outname}-ids.tsv")
     logger.info(
-        f"{prettyprint_float(identity * 100, 2)}% sequence identity cluster to {outname}*"
+        f"{prettyprint_float(identity * 100, 2)}% sequence identity cluster to {outname}"
     )
     if not delete:
         logger.debug(f"Cluster files will be kept in {logfile} and {outdir}")
-    if write_ids:
+    if cluster_stats and write_ids:
         logger.debug(
             f"File of cluster ID usage will be written to {anyfilepath} and {allfilepath}"
         )
@@ -380,7 +383,6 @@ def usearch_cluster(
         logger.debug(f"using duplicates in {dirpath/dups}")
         synonyms.update(read_synonyms(dirpath / dups))
     timer = ElapsedTimeReport("usearch")
-    print(f"outfilepath: {outfilepath}")
     if do_calc:
         #
         # Delete previous results, if any.
@@ -420,9 +422,33 @@ def usearch_cluster(
     if delete:
         logfilepath.unlink()
     if not cluster_stats:
+        file_sizes = []
+        file_names = []
+        record_counts = []
+        logger.debug("Ordering clusters by number of records and size.")
         for fasta_path in outfilepath.glob("*"):
-            fasta_path.rename(fasta_path.name + ".faa")
-        return run_stats
+            records, size = fasta_records(fasta_path)
+            if records == 1:
+                fasta_path.unlink()
+                continue
+            file_names.append(fasta_path.name)
+            file_sizes.append(size)
+            record_counts.append(records)
+        file_frame = pd.DataFrame(
+            list(zip(file_names, file_sizes, record_counts)),
+            columns=["name", "size", "seqs"],
+        )
+        file_frame.sort_values(
+            by=["seqs", "size"], ascending=False, inplace=True
+        )
+        file_frame["idx"] = range(len(file_frame))
+        for id, row in file_frame.iterrows():
+            (outfilepath / row["name"]).rename(
+                outfilepath / f'{row["idx"]}.faa'
+            )
+        file_frame.drop(["name"], axis=1, inplace=True)
+        file_frame.set_index("idx", inplace=True)
+        return run_stats, file_frame
     (
         cluster_graph,
         clusters,

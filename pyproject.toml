@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.7.1-post.2+bfed555"
+version = "0.7.5"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -102,6 +102,7 @@ import_heading_localfolder = "module imports"
 known_standard_library = "pkg_resources"
 
 [tool.poetry-dynamic-versioning]
+enable = false
 style = "semver"
 
 [tool.coverage.run]

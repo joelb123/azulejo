@@ -10,10 +10,12 @@ from pathlib import Path
 
 # third-party imports
 import click
+import dask.bag as db
 import gffpandas.gffpandas as gffpd
 import numpy as np
 import pandas as pd
 import sh
+from dask.diagnostics import ProgressBar
 from loguru import logger
 
 # module imports
@@ -21,8 +23,8 @@ from . import cli
 from . import click_loguru
 from .common import FAA_EXT
 from .common import GFF_EXT
+from .common import fasta_headers
 from .common import protein_file_stats_filename
-from .core import cluster_set_name
 from .core import prepare_protein_files
 from .core import usearch_cluster
 
@@ -280,40 +282,115 @@ def join_protein_position_info(shorten_source, setname, gff_faa_path_list):
     help="Do cluster calc.",
     show_default=True,
 )
+@click.option(
+    "--parallel/--no-parallel",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Process in parallel.",
+)
 @click.argument("setname")
-def annotate_homology(identity, clust, setname):
+def annotate_homology(identity, clust, setname, parallel):
     """Add homology cluster info."""
+    options = click_loguru.get_global_options()
     set_path = Path(setname)
     file_stats_path = set_path / protein_file_stats_filename(setname)
     file_frame = pd.read_csv(file_stats_path, index_col=0, sep="\t")
-    set_keys = list(file_frame.index)
+    file_idx = {}
+    stem_dict = {}
+    for stem, row in file_frame.iterrows():
+        file_idx[stem] = row["idx"]
+        stem_dict[row["idx"]] = stem
     concatenated_fasta_name = f"{setname}.faa"
     if clust:
         logger.debug("Doing cluster calculation.")
         cwd = Path.cwd()
         os.chdir(set_path)
-        run_stats = usearch_cluster.callback(
+        run_stats, cluster_frame = usearch_cluster.callback(
             concatenated_fasta_name,
             identity,
             write_ids=True,
             delete=False,
             cluster_stats=False,
+            outname="homology",
         )
         os.chdir(cwd)
-        print(run_stats)
+        logger.info(run_stats)
+        del cluster_frame
         del run_stats
-    cluster_path = set_path / cluster_set_name(setname, identity)
-    cluster_stats = []
-    for clust_fasta in cluster_path.glob("*.faa"):
-        print(clust_fasta)
-        cluster_stats.append(parse_cluster(clust_fasta))
-        break
-    print(f"cluster_stats={cluster_stats}")
+    cluster_path = set_path / "homology"
+    cluster_file_list = list(cluster_path.glob("*.faa"))
+    if parallel:
+        bag = db.from_sequence(cluster_file_list)
+    else:
+        cluster_stats = []
+    if not options.quiet:
+        logger.info(
+            f"Calculating stats for {len(cluster_file_list)} homology clusters:"
+        )
+        ProgressBar().register()
+    if parallel:
+        cluster_stats = bag.map(parse_cluster, file_dict=file_idx)
+    else:
+        for clust_fasta in cluster_file_list:
+            cluster_stats.append(
+                parse_cluster(clust_fasta, file_dict=file_idx)
+            )
+    n_clust_genes = 0
+    clusters_dict = {}
+    for cluster_id, cluster_dict in cluster_stats:
+        n_clust_genes += cluster_dict["size"]
+        clusters_dict[cluster_id] = cluster_dict
+    del cluster_stats
+    cluster_frame = pd.DataFrame.from_dict(clusters_dict).transpose()
+    del clusters_dict
+    cluster_frame.sort_index(inplace=True)
+    grouping_dict = {}
+    for i in range(len(file_frame)):  # keep numbering of single-file clusters
+        grouping_dict[f"[{i}]"] = i
+    grouping_dict[str(list(range(len(file_frame))))] = 0
+    for n_members, subframe in cluster_frame.groupby(["n_memb"]):
+        if n_members == 1:
+            continue
+        if n_members == len(file_frame):
+            continue
+        member_counts = pd.DataFrame(subframe["members"].value_counts())
+        member_counts["key"] = range(len(member_counts))
+        for newcol in range(n_members):
+            member_counts[f"memb{newcol}"] = ""
+        for member_string, row in member_counts.iterrows():
+            grouping_dict[member_string] = row["key"]
+            member_list = json.loads(member_string)
+            for col in range(n_members):
+                member_counts.loc[member_string, f"memb{col}"] = stem_dict[
+                    member_list[col]
+                ]
+        member_counts = member_counts.set_index("key")
+        keyfile = f"{setname}-groupkeys-{n_members}.tsv"
+        logger.debug(
+            f"Writing group keys for group size {n_members} to {keyfile}"
+        )
+        member_counts.to_csv(set_path / keyfile, sep="\t")
+    cluster_frame["members"] = cluster_frame["members"].map(grouping_dict)
+    cluster_frame = cluster_frame.rename(columns={"members": "group_key"})
+    n_adj = cluster_frame["n_adj"].sum()
+    adj_pct = n_adj * 100.0 / n_clust_genes
+    n_adj_clust = sum(cluster_frame["adj_groups"] != 0)
+    adj_clust_pct = n_adj_clust * 100.0 / len(cluster_frame)
+    logger.info(
+        f"{n_adj} ({adj_pct:.1f}%) out of {n_clust_genes}"
+        + " clustered genes are adjacent"
+    )
+    logger.info(
+        f"{n_adj_clust} ({adj_clust_pct:.1f}%) out of "
+        + f"{len(cluster_frame)} clusters contain adjacency"
+    )
+    cluster_file_name = f"{setname}-clusters.tsv"
+    logger.debug(f"Writing cluster file to {cluster_file_name}")
+    cluster_frame.to_csv(set_path / cluster_file_name, sep="\t")
     sys.exit(1)
 
-    cluster_frame = pd.read_csv(
-        set_path / (cluster_set_name(setname, identity) + "-ids.tsv"), sep="\t"
-    )
+    cluster_frame = pd.read_csv(set_path / "homology-ids.tsv", sep="\t")
     cluster_frame = cluster_frame.set_index("id")
     logger.debug("Mapping FASTA IDs to cluster properties.")
 
@@ -336,31 +413,71 @@ def annotate_homology(identity, clust, setname):
         frame.to_csv(set_path / homology_filename, sep="\t")
 
 
-def parse_cluster(fasta_path):
+def parse_cluster(fasta_path, file_dict=None):
     """Parse cluster FASTA headers to create cluster table.."""
-    cluster_id = fasta_path.name
+    cluster_id = fasta_path.name[:-4]
     outdir = fasta_path.parent
     prop_dict = {}
-    with fasta_path.open() as fasta_fh:
-        for line in fasta_fh:
-            if line.startswith(">"):
-                gene_id = line.split()[0][1:]
-                json_dict = line[len(gene_id) + 1 :]
-                prop_dict[gene_id] = json.loads(json_dict)
+    headers, unused_non_header_size = fasta_headers(fasta_path)
+    for header in headers:
+        space_pos = header.find(b" ")
+        if space_pos == -1:
+            raise ValueError(f"Header format is bad in {fasta_path}")
+        gene_id = header[:space_pos].decode("utf-8")
+        prop_dict[gene_id] = json.loads(header[space_pos + 1 :])
+    if len(prop_dict) < 2:
+        logger.warning(f"singleton cluster {fasta_path} removed")
+        fasta_path.unlink()
+        raise ValueError("Singleton Cluster")
     cluster_frame = pd.DataFrame.from_dict(prop_dict).transpose()
-    cluster_frame.sort_values(by=["stem", "frag_id", "frag_pos"], inplace=True)
-    print(cluster_frame)
-    stem_values = cluster_frame["stem"].value_counts()
-    print(stem_values)
-    stem_set = tuple(stem_values.index)
+    cluster_frame["idx"] = cluster_frame["stem"].map(file_dict)
+    cluster_frame.sort_values(by=["idx", "frag_id", "frag_pos"], inplace=True)
+    cluster_frame["adj_group"] = ""
+    adjacency_group = 0
+    was_adj = False
+    for unused_group_id, subframe in cluster_frame.groupby(
+        by=["idx", "frag_id"]
+    ):
+        if len(subframe) == 1:
+            continue
+        last_pos = -2
+        # last_faa_pos = -2
+        last_ID = None
+        if was_adj:
+            adjacency_group += 1
+        was_adj = False
+        for gene_id, row in subframe.iterrows():
+            if row["frag_pos"] == last_pos + 1:
+                # if row["faa_pos"] != last_faa_pos +1:
+                #    logger.debug(f"non-congruent faa in {fasta_path} group {adjacency_group}")
+                if not was_adj:
+                    cluster_frame.loc[last_ID, "adj_group"] = str(
+                        adjacency_group
+                    )
+                was_adj = True
+                cluster_frame.loc[gene_id, "adj_group"] = str(adjacency_group)
+            else:
+                if was_adj:
+                    adjacency_group += 1
+                    was_adj = False
+            last_pos = row["frag_pos"]
+            # last_faa_pos = row["faa_pos"]
+            last_ID = gene_id
+    if was_adj:
+        adjacency_group += 1
+    idx_values = cluster_frame["idx"].value_counts()
+    idx_list = list(idx_values.index)
+    idx_list.sort()
     cluster_frame.to_csv(outdir / f"{cluster_id}.tsv", sep="\t")
-    return {
-        cluster_id: {
-            "clust_size": len(cluster_frame),
-            "n_memb": len(stem_values),
-            "members": stem_set,
-        }
+    n_adj = sum(cluster_frame["adj_group"] != "")
+    cluster_dict = {
+        "size": len(cluster_frame),
+        "n_memb": len(idx_values),
+        "members": str(idx_list),
+        "n_adj": n_adj,
+        "adj_groups": adjacency_group,
     }
+    return int(cluster_id), cluster_dict
 
 
 @cli.command()

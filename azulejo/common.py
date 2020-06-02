@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Constants and functions in common across modules."""
 # standard library imports
+import mmap
+import os
 from pathlib import Path
 
 NAME = "azulejo"
@@ -31,6 +33,41 @@ def get_paths_from_file(filepath, must_exist=True):
         raise FileNotFoundError(filepath)
     dirpath = inpath.parent
     return inpath, dirpath
+
+
+def fasta_records(filepath):
+    """Count the number of records in a FASTA file."""
+    count = 0
+    next_pos = 0
+    angle_bracket = bytes(">", "utf-8")
+    with filepath.open("r+b") as fh:
+        mm = mmap.mmap(fh.fileno(), 0)
+        size = mm.size()
+        next_pos = mm.find(angle_bracket, next_pos)
+        while next_pos != -1 and next_pos < size:
+            count += 1
+            next_pos = mm.find(angle_bracket, next_pos + 1)
+    return count, size
+
+
+def fasta_headers(filepath):
+    """Return FASTA headers as list of bytes."""
+    next_pos = 0
+    headers = []
+    with filepath.open("r+b") as fh:
+        mm = mmap.mmap(fh.fileno(), 0)
+        size = mm.size()
+        non_header_size = size
+        next_pos = mm.find(b">", next_pos)
+        while next_pos != -1 and next_pos < size:
+            eol_pos = mm.find(b"\n", next_pos)
+            if eol_pos == -1:
+                break
+            header = mm[next_pos + 1 : eol_pos]
+            non_header_size -= eol_pos - next_pos
+            headers.append(header)
+            next_pos = mm.find(b">", eol_pos + 1)
+    return headers, non_header_size
 
 
 def protein_file_stats_filename(setname):
