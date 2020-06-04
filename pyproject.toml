@@ -48,6 +48,9 @@ sh = "^1.13.1"
 gffpandas = "^1.2.0"
 networkx = "^2.4"
 click_loguru = "^0.3.3"
+uri = "^2.0.1"
+requests_download = "^0.1.2"
+xopen = "^0.9.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
@@ -58,13 +61,13 @@ pydocstyle = "^5.0.2"
 isort = {version = "^4.3.21", extras = ["pyproject"]}
 sh = "^1.13.0"
 flynt = "^0.46"
-pytest-datadir-mgr = "^1.0.1"
 poetry-dynamic-versioning = "^0.7.0"
 pylint = "^2.5.2"
 bandit = "^1.6.2"
 towncrier = "^19.2.0"
 nox = "^2019.11.9"
 coverage = {extras = ["toml"], version = "^5.1"}
+pytest-datadir-mgr = "^1.0.1"
 
 [tool.poetry.scripts]
 azulejo = "azulejo:cli"

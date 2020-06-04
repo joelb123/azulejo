@@ -52,6 +52,42 @@ Installation puts a single script called ``azulejo`` in your path.  The usage fo
 
     azulejo [GLOBALOPTIONS] COMMAND [COMMANDOPTIONS][ARGS]
 
+Input Files
+-----------
+The genome feature files and protein sequence files necessary for ``azulejo`` may be read
+from local disk, or may be downloaded on-the-fly from a data source such as LegumeInfo or GenBank.
+These files may be compressed, with extensions ``.gz``, ``.bz2``, or ``.xz``.  Downloads are not
+cached, so if you intend to run ``azulejo`` more than once, you will save time by downloading
+and uncompressing files to local storage.
+
+The first step in azulejo requires a tab-separated input file with the following
+header line: ::
+    label\tfeature\tprotein\tURI
+
+The order of lines in this file determines the order of preference for any preference-based
+choices in later processing.  For example, genes from the first genome you list are going to
+be chosen before genes from later genomes if everything else is equal.
+
+``key`` should be a label that is short and distinguishable.  Think of what you'd like to appear in
+plots.
+
+``feature`` must be the path to a version 3 Genome Feature File (GFF3).  Acceptable file extensions
+are ``.gff`` and ``.gff3``.  Sequence IDs must match between feature and protein files, and
+must be unique across all input sequences. mRNA records must exist for each protein identifier.
+
+``protein`` must be the path to a FASTA file of peptide sequences.  In eukaryotes, this should be a
+file of primary (generally longest) protein transcripts, if available, rather than all protein
+transcripts (i.e., not including splice variants).  Acceptable file extensions are ``.faa``, ``.fa``,
+and ``.fasta``.  Sequences will be cleaned of dashes, stops and other out-of-alphabet characters.
+Ambiguous residues at the beginnings and ends of sequences will be trimmed. Zero-length sequences
+will be discarded.
+
+``URI`` is a uniform resource identifier such as ``file://`` or ``https://sitename/dir/``.  The
+only transports supported are ``file:``, ``http:``, ``https:``, and ``ftp:``. If this
+field is blank, ``file://`` is assumed.  File references are normally relative to the current
+working directory, but may be made absolute by using ``file:///dir/`` as the URI. The URI will
+be prepended to ``feature`` and ``protein`` paths.
+
 Global Options
 --------------
 The following options are global in scope and, if used must be placed before

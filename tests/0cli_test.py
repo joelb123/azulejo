@@ -1,27 +1,13 @@
 # -*- coding: utf-8 -*-
 """Tests for basic CLI function."""
-# standard library imports
-import contextlib
-import os
-from pathlib import Path
-
 # third-party imports
 import pytest
 import sh
 
-# global constant
+from . import working_directory
+
+# global constants
 azulejo = sh.Command("azulejo")
-
-
-@contextlib.contextmanager
-def working_directory(path):
-    """Change working directory in context."""
-    prev_cwd = Path.cwd()
-    os.chdir(path)
-    try:
-        yield
-    finally:
-        os.chdir(prev_cwd)
 
 
 def test_cli(tmp_path):
