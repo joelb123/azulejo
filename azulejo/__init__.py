@@ -73,7 +73,7 @@ from .core import prepare_protein_files  #  isort:skip
 from .core import usearch_cluster  #  isort:skip
 from .synteny import annotate_homology  # isort:skip
 from .synteny import info_to_fasta  # isort:skip
-from .synteny import join_protein_position_info  # isort:skip
+from .synteny import ingest_data  # isort:skip
 from .synteny import synteny_anchors  # isort:skip
 from .synteny import dagchainer_synteny  # isort:skip
 from .synteny import proxy_genes  # isort:skip

@@ -51,9 +51,9 @@ click_loguru = "^0.3.3"
 uri = "^2.0.1"
 requests_download = "^0.1.2"
 xopen = "^0.9.0"
+toml = "^0.10.1"
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.2"
 pytest-cov = "^2.8.1"
 black = {version = "^19.10b0", allow-prereleases = true}
 pre-commit = "^2.3.0"

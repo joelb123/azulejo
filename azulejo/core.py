@@ -444,7 +444,7 @@ def usearch_cluster(
         file_frame["idx"] = range(len(file_frame))
         for id, row in file_frame.iterrows():
             (outfilepath / row["name"]).rename(
-                outfilepath / f'{row["idx"]}.faa'
+                outfilepath / f'{row["idx"]}.fa'
             )
         file_frame.drop(["name"], axis=1, inplace=True)
         file_frame.set_index("idx", inplace=True)
@@ -693,7 +693,7 @@ def cleanup_fasta(args, write_fasta=True):
             m_starts.append(m_start)
             no_stops.append(no_stop)
     if write_fasta:
-        with (set_path / f"{filestem}.faa").open("w") as output_handle:
+        with (set_path / f"{filestem}.fa").open("w") as output_handle:
             SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
     properties_frame = pd.DataFrame(
         list(zip(ids, positions, lengths, n_ambigs, m_starts, no_stops, seqs)),

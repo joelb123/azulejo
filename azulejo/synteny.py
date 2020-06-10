@@ -23,7 +23,7 @@ from . import cli
 from . import click_loguru
 from .common import FAA_EXT
 from .common import GFF_EXT
-from .common import fasta_headers
+from .common import parse_cluster_fasta
 from .common import protein_file_stats_filename
 from .core import prepare_protein_files
 from .core import usearch_cluster
@@ -164,16 +164,16 @@ def pair_matching_file_types(mixedlist, ext_a, ext_b):
 @cli.command()
 @click_loguru.init_logger()
 @click.option(
-    "-s",
-    "--shorten_source",
-    default=False,
+    "-s/-l",
+    "--shorten_source/--no-shorten_source",
+    default=True,
     is_flag=True,
     show_default=True,
     help="Remove invariant dotpaths in source IDs.",
 )
 @click.argument("setname")
 @click.argument("gff_faa_path_list", nargs=-1)
-def join_protein_position_info(shorten_source, setname, gff_faa_path_list):
+def ingest_data(shorten_source, setname, gff_faa_path_list):
     """Marshal protein and genome sequence information.
 
     Corresponding GFF and FASTA files must have a corresponding prefix to their
@@ -193,7 +193,7 @@ def join_protein_position_info(shorten_source, setname, gff_faa_path_list):
     file_frame, propfile_path_dict = prepare_protein_files.callback(
         setname, None, stemdict=file_dict, fasta=False
     )
-    fasta_path = set_path / f"{setname}.faa"
+    fasta_path = set_path / f"{setname}.fa"
     for stem in file_dict:
         logger.debug(f"Reading GFF file {file_dict[stem][GFF_EXT]}.")
         annotation = gffpd.read_gff3(file_dict[stem][GFF_EXT])
@@ -240,6 +240,7 @@ def join_protein_position_info(shorten_source, setname, gff_faa_path_list):
         frag_frame["counts"] = frag_counts
         frag_frame["idx"] = range(len(frag_frame))
         frag_frame["frag_id"] = frag_frame.index
+        frag_frame["new_name"] = ""
         frag_count_path = set_path / f"{stem}-fragment_counts.tsv"
         logger.debug(f"Writing fragment count to file {frag_count_path}")
         frag_frame.set_index(["idx"]).to_csv(frag_count_path, sep="\t")
@@ -301,7 +302,7 @@ def annotate_homology(identity, clust, setname, parallel):
     for stem, row in file_frame.iterrows():
         file_idx[stem] = row["idx"]
         stem_dict[row["idx"]] = stem
-    concatenated_fasta_name = f"{setname}.faa"
+    concatenated_fasta_name = f"{setname}.fa"
     if clust:
         logger.debug("Doing cluster calculation.")
         cwd = Path.cwd()
@@ -316,23 +317,26 @@ def annotate_homology(identity, clust, setname, parallel):
         )
         os.chdir(cwd)
         logger.info(run_stats)
+        n_clusters = len(cluster_frame)
         del cluster_frame
         del run_stats
-    cluster_path = set_path / "homology"
-    cluster_file_list = list(cluster_path.glob("*.faa"))
+    n_clusters = len(list((set_path / "homology").glob("*.fa")))
+    cluster_paths = [
+        set_path / "homology" / f"{i}.fa" for i in range(n_clusters)
+    ]
     if parallel:
-        bag = db.from_sequence(cluster_file_list)
+        bag = db.from_sequence(cluster_paths)
     else:
         cluster_stats = []
     if not options.quiet:
         logger.info(
-            f"Calculating stats for {len(cluster_file_list)} homology clusters:"
+            f"Calculating stats for {len(cluster_paths)} homology clusters:"
         )
         ProgressBar().register()
     if parallel:
         cluster_stats = bag.map(parse_cluster, file_dict=file_idx)
     else:
-        for clust_fasta in cluster_file_list:
+        for clust_fasta in cluster_paths:
             cluster_stats.append(
                 parse_cluster(clust_fasta, file_dict=file_idx)
             )
@@ -415,20 +419,34 @@ def annotate_homology(identity, clust, setname, parallel):
 
 def parse_cluster(fasta_path, file_dict=None):
     """Parse cluster FASTA headers to create cluster table.."""
-    cluster_id = fasta_path.name[:-4]
+    cluster_id = fasta_path.name[:-3]
     outdir = fasta_path.parent
-    prop_dict = {}
-    headers, unused_non_header_size = fasta_headers(fasta_path)
-    for header in headers:
-        space_pos = header.find(b" ")
-        if space_pos == -1:
-            raise ValueError(f"Header format is bad in {fasta_path}")
-        gene_id = header[:space_pos].decode("utf-8")
-        prop_dict[gene_id] = json.loads(header[space_pos + 1 :])
+    prop_dict = parse_cluster_fasta(fasta_path)
     if len(prop_dict) < 2:
         logger.warning(f"singleton cluster {fasta_path} removed")
         fasta_path.unlink()
         raise ValueError("Singleton Cluster")
+    # calculate MSA and return guide tree
+    muscle_args = [
+        "-in",
+        f"{outdir}/{cluster_id}.fa",
+        "-out",
+        f"{outdir}/{cluster_id}.faa",
+        "-diags",
+        "-sv",
+        "-maxiters",
+        "2",
+        "-quiet",
+        "-distance1",
+        "kmer20_4",
+    ]
+    if len(prop_dict) >= 4:
+        muscle_args += [
+            "-tree2",
+            f"{outdir}/{cluster_id}.nwk",
+        ]  # ,  "-cluster2", "neighborjoining"] #adds 20%
+    muscle = sh.Command("muscle")
+    muscle(muscle_args)
     cluster_frame = pd.DataFrame.from_dict(prop_dict).transpose()
     cluster_frame["idx"] = cluster_frame["stem"].map(file_dict)
     cluster_frame.sort_values(by=["idx", "frag_id", "frag_pos"], inplace=True)
@@ -493,6 +511,7 @@ def parse_cluster(fasta_path, file_dict=None):
 @click.argument("infofile")
 @click.argument("fastafile")
 def info_to_fasta(infofile, fastafile, append, infoobj=None):
+    """Convert infofile to FASTA file."""
     """Convert infofile to FASTA file."""
     if infoobj is None:
         infoobj = pd.read_csv(infofile, index_col=0, sep="\t")

@@ -6,10 +6,11 @@ import shutil
 from pathlib import Path
 
 # first-party imports
+from azulejo.uri import read_from_url
 from azulejo.uri import read_input_table
 
+
 # third-party imports
-import pytest
 import sh
 
 # global constants
@@ -17,7 +18,7 @@ azulejo = sh.Command("azulejo")
 DOWNLOAD_URL = "https://v1.legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
 RAW_FASTA_FILE = "glyso.W05.gnm1.ann1.T47J.protein.faa"
 RAW_GFF_FILE = "glyso.W05.gnm1.ann1.T47J.gene_models_main.gff3"
-INPUT_FILE = "glyso.tsv"
+INPUT_FILE = "glyso.toml"
 
 
 def test_setup(request):
@@ -34,15 +35,37 @@ def test_input_tsv_parsing(datadir_mgr):
     """Test basic cli function."""
     datadir_mgr.download(
         download_url=DOWNLOAD_URL,
-        files=[RAW_FASTA_FILE, RAW_GFF_FILE, INPUT_FILE],
+        files=[RAW_FASTA_FILE, RAW_GFF_FILE],
         scope="module",
         md5_check=False,
         gunzip=True,
         progressbar=False,
     )
     with datadir_mgr.in_tmp_dir(
-        inpathlist=[RAW_GFF_FILE], save_outputs=True, excludepatterns=["*.log"]
+        inpathlist=[RAW_GFF_FILE, RAW_FASTA_FILE, INPUT_FILE]
     ):
-        outlist = read_input_table(INPUT_FILE)
-        print(outlist)
-        assert len(outlist) == 2
+        input_dict = read_input_table(INPUT_FILE)
+        print(f"input_dict={input_dict}")
+        assert len(input_dict) == 2
+
+
+def test_input_local_file_reading(datadir_mgr):
+    """Test basic cli function."""
+    datadir_mgr.download(
+        download_url=DOWNLOAD_URL,
+        files=[RAW_FASTA_FILE, RAW_GFF_FILE],
+        scope="module",
+        md5_check=False,
+        gunzip=True,
+        progressbar=False,
+    )
+    with datadir_mgr.in_tmp_dir(
+        inpathlist=[RAW_GFF_FILE, RAW_FASTA_FILE, INPUT_FILE]
+    ):
+        input_dict = read_input_table(INPUT_FILE)
+        key = list(input_dict.keys())[0]
+        outfile = Path("myfile")
+        with read_from_url(input_dict[key]["fasta"]) as filehandle:
+            shutil.copyfileobj(filehandle, outfile.open("wb"))
+        filelen = outfile.stat().st_size
+        assert filelen == 1

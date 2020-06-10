@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Constants and functions in common across modules."""
 # standard library imports
+import contextlib
+import json
 import mmap
 import os
 from pathlib import Path
@@ -35,14 +37,48 @@ def get_paths_from_file(filepath, must_exist=True):
     return inpath, dirpath
 
 
+class TrimmableMemoryMap:
+    """A memory-mapped file that can be resized at the end."""
+
+    def __init__(self, filepath, access=mmap.ACCESS_WRITE):
+        """Open the memory-mapped file."""
+        self.orig_size = None
+        self.size = None
+        self.map_obj = None
+        self.access = access
+        self.filehandle = open(filepath, "r+b")
+
+    def trim(self, start, end):
+        """Trim the memory map and mark the nex size."""
+        self.map_obj.move(start, end, self.orig_size - end)
+        self.size -= end - start
+        return self.size
+
+    @contextlib.contextmanager
+    def map(self):
+        """Open a memory-mapped view of filepath."""
+        try:
+            self.map_obj = mmap.mmap(
+                self.filehandle.fileno(), 0, access=self.access
+            )
+            self.orig_size = self.map_obj.size()
+            self.size = self.orig_size
+            yield self.map_obj
+        finally:
+            if self.access == mmap.ACCESS_WRITE:
+                self.map_obj.flush()
+                self.map_obj.close()
+                self.filehandle.truncate(self.size)
+
+
 def fasta_records(filepath):
     """Count the number of records in a FASTA file."""
     count = 0
     next_pos = 0
     angle_bracket = bytes(">", "utf-8")
-    with filepath.open("r+b") as fh:
-        mm = mmap.mmap(fh.fileno(), 0)
-        size = mm.size()
+    memory_map = TrimmableMemoryMap(filepath, access=mmap.ACCESS_READ)
+    with memory_map.map() as mm:
+        size = memory_map.size
         next_pos = mm.find(angle_bracket, next_pos)
         while next_pos != -1 and next_pos < size:
             count += 1
@@ -50,24 +86,30 @@ def fasta_records(filepath):
     return count, size
 
 
-def fasta_headers(filepath):
-    """Return FASTA headers as list of bytes."""
+def parse_cluster_fasta(filepath, trim_dict=True):
+    """Return FASTA headers as a dictionary of properties."""
     next_pos = 0
-    headers = []
-    with filepath.open("r+b") as fh:
-        mm = mmap.mmap(fh.fileno(), 0)
-        size = mm.size()
-        non_header_size = size
+    properties_dict = {}
+    memory_map = TrimmableMemoryMap(filepath)
+    with memory_map.map() as mm:
+        size = memory_map.size
         next_pos = mm.find(b">", next_pos)
         while next_pos != -1 and next_pos < size:
             eol_pos = mm.find(b"\n", next_pos)
             if eol_pos == -1:
                 break
-            header = mm[next_pos + 1 : eol_pos]
-            non_header_size -= eol_pos - next_pos
-            headers.append(header)
-            next_pos = mm.find(b">", eol_pos + 1)
-    return headers, non_header_size
+            space_pos = mm.find(b" ", next_pos + 1, eol_pos)
+            if space_pos == -1:
+                raise ValueError(
+                    f"Header format is bad in {filepath} header {len(properties_dict)+1}"
+                )
+            id = mm[next_pos + 1 : space_pos].decode("utf-8")
+            payload = json.loads(mm[space_pos + 1 : eol_pos])
+            properties_dict[id] = payload
+            if trim_dict:
+                size = memory_map.trim(space_pos, eol_pos)
+            next_pos = mm.find(b">", space_pos)
+    return properties_dict
 
 
 def protein_file_stats_filename(setname):
