@@ -34,7 +34,9 @@ def tests(session):
     """Run tests with pytest and pytest-cov."""
     args = session.posargs or ["--cov"]
     session.run("poetry", "install", "--no-dev", external=True)
-    install_with_constraints(session, "coverage[toml]", "pytest", "pytest-cov")
+    install_with_constraints(
+        session, "coverage[toml]", "pytest", "pytest-cov", "pytest-datadir-mgr"
+    )
     session.run("pytest", *args)
 
 
