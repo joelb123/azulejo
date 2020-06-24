@@ -357,9 +357,11 @@ def usearch_cluster(
     anyfilepath = dirpath / (f"{outname}-anyhist.tsv")
     allfilepath = dirpath / (f"{outname}-allhist.tsv")
     idpath = dirpath / (f"{outname}-ids.tsv")
-    logger.info(
-        f"{prettyprint_float(identity * 100, 2)}% sequence identity cluster to {outname}"
-    )
+    if identity == 0.0:
+        identity_string = "minimum"
+    else:
+        identity_string = f"{prettyprint_float(identity *100, 2)}%"
+    logger.info(f'{identity_string} sequence identity cluster "{outname}":')
     if not delete:
         logger.debug(f"Cluster files will be kept in {logfile} and {outdir}")
     if cluster_stats and write_ids:
@@ -661,20 +663,27 @@ def compare_clusters(file1, file2):
     print(f"{len(clusters1):d} in {file1} after dropping")
 
 
-def cleanup_fasta(args, write_fasta=True):
+def cleanup_fasta(
+    set_path,
+    fasta_path_or_handle,
+    filestem,
+    write_fasta=True,
+    write_stats=True,
+):
     """Sanitize and characterize protein FASTA files."""
-    set_path, fasta_path, filestem = args
     out_sequences = []
     ids = []
     lengths = []
-    positions = []
     n_ambigs = []
     m_starts = []
     no_stops = []
     seqs = []
-    sanitizer = Sanitizer()
-    position = 0
-    with fasta_path.open("rU") as handle:
+    sanitizer = Sanitizer(filestem)
+    if hasattr(fasta_path_or_handle, "read"):
+        handle = fasta_path_or_handle
+    else:
+        handle = fasta_path_or_handle.open("rU")
+    with handle:
         for record in SeqIO.parse(handle, SEQ_FILE_TYPE):
             seq = record.seq.upper().tomutable()
             try:
@@ -686,8 +695,6 @@ def cleanup_fasta(args, write_fasta=True):
                 record.seq = seq.toseq()
                 out_sequences.append(record)
             ids.append(record.id)
-            positions.append(position)
-            position += 1
             lengths.append(len(seq))
             n_ambigs.append(n_ambig)
             m_starts.append(m_start)
@@ -696,25 +703,28 @@ def cleanup_fasta(args, write_fasta=True):
         with (set_path / f"{filestem}.fa").open("w") as output_handle:
             SeqIO.write(out_sequences, output_handle, SEQ_FILE_TYPE)
     properties_frame = pd.DataFrame(
-        list(zip(ids, positions, lengths, n_ambigs, m_starts, no_stops, seqs)),
+        list(zip(ids, lengths, n_ambigs, m_starts, no_stops, seqs)),
         columns=[
             "ID",
-            "faa_pos",
-            "prot_len",
-            "n_ambig",
-            "m_start",
-            "no_stop",
-            "seq",
+            "prot.len",
+            "prot.n_ambig",
+            "prot.m_start",
+            "prot.no_stop",
+            "prot.seq",
         ],
     )
     properties_frame = properties_frame.set_index(["ID"])
-    # logger.debug(f"   {len(properties_frame)} sequences in {fasta_path}.")
-    propfile_path = set_path / protein_properties_filename(filestem)
-    properties_frame.to_csv(propfile_path, sep="\t")
+    if write_stats:
+        propfile_path = set_path / protein_properties_filename(filestem)
+        properties_frame.to_csv(propfile_path, sep="\t")
+        frame_return = len(properties_frame)
+    else:
+        propfile_path = None
+        frame_return = properties_frame
     return (
         filestem,
         propfile_path,
-        len(properties_frame),
+        frame_return,
         sanitizer.file_stats(),
     )
 

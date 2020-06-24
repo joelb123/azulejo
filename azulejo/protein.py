@@ -24,8 +24,11 @@ class Sanitizer:
 
     """
 
-    def __init__(self, remove_stops=True, dashes_ok=False, start_chars=None):
+    def __init__(
+        self, ident, remove_stops=True, dashes_ok=False, start_chars=None
+    ):
         """Initialize counters."""
+        self.id = ident
         self.remove_stops = remove_stops
         if start_chars is None:
             self.starts = START_CHARS
@@ -137,7 +140,7 @@ class Sanitizer:
     def file_stats(self):
         """Return a dictionary of file stats."""
         return {
-            "idx": 0,
+            "path": self.id,
             "seqs.n": self.seqs_out,
             "seqs.rmv": self.seqs_sanitized - self.seqs_out,
             "seqs.stp": self.stops,

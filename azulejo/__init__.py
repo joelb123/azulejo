@@ -16,7 +16,7 @@ from .common import NAME
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.7.6"
+__version__ = "0.8.0"
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
@@ -77,3 +77,4 @@ from .synteny import ingest_data  # isort:skip
 from .synteny import synteny_anchors  # isort:skip
 from .synteny import dagchainer_synteny  # isort:skip
 from .synteny import proxy_genes  # isort:skip
+from .taxonomy import check_taxonomic_rank  # isort:skip

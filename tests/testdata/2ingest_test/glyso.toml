@@ -1,0 +1,53 @@
+[glycines]
+rank = "genus"
+tax_id = 3846
+parent = 163735
+name = "Glycine"
+comments = """
+Glycine (soybean or soya bean) is a genus in the legume family Fabaceae.
+The cultivated soybean, Glycine max, is native to East Asia and
+is an especially important food crop there because it is cheap
+and nutritious.  The ease with which they are grown is partly
+reasons reflected in the genomes: the flowers are hermaphroditic,
+containing both stamen and pistil, making them self-pollinating.
+"""
+citation_url = "https://en.wikipedia.org/wiki/Glycine_(plant)"
+
+[glycines.glyso]
+rank = "species"
+tax_id = 3848
+name = "Glycine soja"
+common_name = "wild soybean"
+comments = """
+Glycine soja is the closest wild relative of soybean, Glycine max.
+Populations of G. soja exist in the wild in China, Japan, Korea, and Russia.
+Analysis of genetic differences between the two species suggests that the two
+separated approximately 200 thousand years ago. The species remain interfertile,
+and G. soja accessions are used in breeding projects in order to introgress
+traits such as tolerance to particular diseases or environmental stresses."""
+citation_url = "https://en.wikipedia.org/wiki/Glycine_soja"
+
+[glycines.glyso.W05]
+rank = "strain"
+gff = "glyso.W05.gnm1.ann1.T47J.gene_models_main.gff3"
+fasta = "glyso.W05.gnm1.ann1.T47J.protein.faa"
+origin = "Henan Province, China"
+comments = """
+Glycine soja accession W05 is a salt-tolerant wild soybean whose genome has been
+sequenced to serve as a reference genome assembly. The W05 accession has been used
+for genetic studies of several traits, including indeterminacy, seed size, pod number
+per plant, and seed color (Xie et al., 2019)."""
+citation_url =  "https://doi.org/10.1038/s41467-019-09142-9"
+
+[glycines.glyso.PI483463]
+rank = "strain"
+preference = 0
+gff = "glyso.PI483463.gff"
+fasta = "glyso.PI483463.faa"
+uri = "file://glycines/glyso/PI483463/"
+origin = "Shanxi Sheng, China"
+comments = """
+Glycine soja accession PI 483463 has been identified as being unusually
+salt-tolerant (Lee et al., 2009)."""
+citation_url = "https://doi.org/10.1093/jhered/esp027"
+

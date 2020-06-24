@@ -34,3 +34,17 @@ def test_version(tmp_path):
             pytest.fail(errors)
         print(output)
         assert "version" in output
+
+
+def test_taxonomy(tmp_path):
+    """Test version command."""
+    with working_directory(tmp_path):
+        try:
+            output = azulejo(["check-taxonomic-rank"])
+        except sh.ErrorReturnCode as errors:
+            print(errors)
+            pytest.fail(errors)
+        print(output)
+        assert int(azulejo(["check-taxonomic-rank", "species"])) == 130
+        assert int(azulejo(["check-taxonomic-rank", "subspecies"])) == 131
+        assert int(azulejo(["check-taxonomic-rank", "superspecies"])) == 128

@@ -21,12 +21,13 @@ from loguru import logger
 # module imports
 from . import cli
 from . import click_loguru
-from .common import FAA_EXT
-from .common import GFF_EXT
+from .common import dotpath_to_path
 from .common import parse_cluster_fasta
-from .common import protein_file_stats_filename
-from .core import prepare_protein_files
+from .core import cleanup_fasta
 from .core import usearch_cluster
+from .inputs import TaxonomicInputTable
+from .inputs import filepath_from_url
+from .inputs import read_from_url
 
 # global constants
 
@@ -124,43 +125,6 @@ def read_files(setname, synteny=None):
     return file_frame, frame_dict
 
 
-def pair_matching_file_types(mixedlist, ext_a, ext_b):
-    """Match pairs of file types with differing extensions."""
-    file_dict = {}
-    type_a_stems = [str(Path(n).stem) for n in mixedlist if n.find(ext_a) > -1]
-
-    type_a_stems.sort(key=len)
-    type_b_stems = [str(Path(n).stem) for n in mixedlist if n.find(ext_b) > -1]
-    type_b_stems.sort(key=len)
-    if len(type_a_stems) != len(type_b_stems):
-        logger.error(
-            f"Differing number of {ext_a} ({len(type_b_stems)})"
-            + f" and {ext_b} files ({len(type_a_stems)})."
-        )
-        sys.exit(1)
-    for type_b in type_b_stems:
-        prefix_len = max(
-            [len(prefix([type_b, type_a])) for type_a in type_a_stems]
-        )
-        match_type_a_idx = [
-            i
-            for i, type_a in enumerate(type_a_stems)
-            if len(prefix([type_b, type_a])) == prefix_len
-        ][0]
-        match_type_a = type_a_stems.pop(match_type_a_idx)
-        type_b_path = [
-            Path(p) for p in mixedlist if p.endswith(type_b + "." + ext_b)
-        ][0]
-        type_a_path = [
-            Path(p)
-            for p in mixedlist
-            if p.endswith(match_type_a + "." + ext_a)
-        ][0]
-        stem = prefix([type_b, match_type_a])
-        file_dict[stem] = {ext_a: type_a_path, ext_b: type_b_path}
-    return file_dict
-
-
 @cli.command()
 @click_loguru.init_logger()
 @click.option(
@@ -171,100 +135,157 @@ def pair_matching_file_types(mixedlist, ext_a, ext_b):
     show_default=True,
     help="Remove invariant dotpaths in source IDs.",
 )
-@click.argument("setname")
-@click.argument("gff_faa_path_list", nargs=-1)
-def ingest_data(shorten_source, setname, gff_faa_path_list):
+@click.option(
+    "--parallel/--no-parallel",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Process in parallel.",
+)
+@click.argument("input_toml")
+def ingest_data(shorten_source, input_toml, parallel):
     """Marshal protein and genome sequence information.
 
-    Corresponding GFF and FASTA files must have a corresponding prefix to their
-    file names, but theu may occur in any order in the list.  Paths to files
-    need not be the same.  Files must be uncompressed. FASTA files must be
-    protein files with extension ".faa".  GFF files must have extension ".gff3".
 
     IDs must correspond between GFF and FASTA files and must be unique across
     the entire set.
     """
-    if len(gff_faa_path_list) == 0:
-        logger.error("No files in list, exiting.")
-        sys.exit(0)
-    file_dict = pair_matching_file_types(gff_faa_path_list, GFF_EXT, FAA_EXT)
-    set_path = Path(setname)
-    set_path.mkdir(parents=True, exist_ok=True)
-    file_frame, propfile_path_dict = prepare_protein_files.callback(
-        setname, None, stemdict=file_dict, fasta=False
+    options = click_loguru.get_global_options()
+    input_obj = TaxonomicInputTable(Path(input_toml), write_table=False)
+    input_table = input_obj.input_table
+    set_path = Path(input_obj.setname)
+    fasta_path = set_path / "proteins.fa"
+    arg_list = []
+    for i, row in input_table.iterrows():
+        arg_list.append(
+            [row["path"], row["fasta_url"], row["gff_url"], fasta_path]
+        )
+    if parallel:
+        bag = db.from_sequence(arg_list)
+    else:
+        file_stats = []
+    if not options.quiet:
+        logger.info(f"Extracting FASTA/GFF info for {len(arg_list)} genomes:")
+        ProgressBar().register()
+    if parallel:
+        file_stats = bag.map(read_fasta_and_gff, shorten_source=shorten_source)
+    else:
+        for args in arg_list:
+            file_stats.append(
+                read_fasta_and_gff(*args, shorten_source=shorten_source)
+            )
+    seq_frame = pd.DataFrame.from_dict([s[0] for s in file_stats]).set_index(
+        "path"
     )
-    fasta_path = set_path / f"{setname}.fa"
-    for stem in file_dict:
-        logger.debug(f"Reading GFF file {file_dict[stem][GFF_EXT]}.")
-        annotation = gffpd.read_gff3(file_dict[stem][GFF_EXT])
-        mrnas = annotation.filter_feature_of_type(
-            ["mRNA"]
-        ).attributes_to_columns()
-        del annotation
-        mrnas.drop(
-            mrnas.columns.drop(["seq_id", "start", "strand", "ID"]),
+    frag_frame = pd.DataFrame.from_dict([s[1] for s in file_stats]).set_index(
+        "path"
+    )
+    proteomes = pd.concat(
+        [input_table.set_index("path"), frag_frame, seq_frame], axis=1
+    )
+    proteomes.drop(["fasta_url", "gff_url"], axis=1, inplace=True)
+    proteomes = sort_proteome_frame(proteomes)
+    proteome_table_path = set_path / "proteomes.tsv"
+    logger.info(
+        f'Writing table of proteomes to "{proteome_table_path}", edit it to change preferences'
+    )
+    proteomes.to_csv(proteome_table_path, sep="\t")
+
+
+def sort_proteome_frame(df):
+    """Sort a proteome frame by preference and frag.max and renumber."""
+    if df.index.name == "path":
+        df["path"] = df.index
+    df.sort_values(
+        by=["preference", "frag.max"], ascending=[True, False], inplace=True
+    )
+    df["order"] = range(len(df))
+    df.set_index("order", inplace=True)
+    return df
+
+
+def read_fasta_and_gff(
+    dotpath, fasta_url, gff_url, concat_fasta_path, shorten_source=True
+):
+    """Read corresponding sequence and position files and construct consolidated tables."""
+    out_path = dotpath_to_path(dotpath)
+
+    with read_from_url(fasta_url) as fasta_fh:
+        unused_stem, unused_path, prop_frame, file_stats = cleanup_fasta(
+            out_path, fasta_fh, dotpath, write_fasta=False, write_stats=False
+        )
+    logger.debug(f"Reading GFF file {gff_url}.")
+    with filepath_from_url(gff_url) as local_gff_file:
+        annotation = gffpd.read_gff3(local_gff_file)
+    mrnas = annotation.filter_feature_of_type(["mRNA"]).attributes_to_columns()
+    del annotation
+    mrnas.drop(
+        mrnas.columns.drop(["seq_id", "start", "strand", "ID"]),
+        axis=1,
+        inplace=True,
+    )  # drop non-essential columns
+    if shorten_source:
+        # drop identical sub-fields in seq_id to keep them visually short (for development)
+        split_sources = mrnas["seq_id"].str.split(".", expand=True)
+        split_sources = split_sources.drop(
+            [
+                i
+                for i in split_sources.columns
+                if len(set(split_sources[i])) == 1
+            ],
             axis=1,
-            inplace=True,
-        )  # drop non-essential columns
-        if shorten_source:
-            # drop identical sub-fields in seq_id to keep them visually short (for development)
-            split_sources = mrnas["seq_id"].str.split(".", expand=True)
-            split_sources = split_sources.drop(
-                [
-                    i
-                    for i in split_sources.columns
-                    if len(set(split_sources[i])) == 1
-                ],
-                axis=1,
-            )
-            sources = split_sources.agg(".".join, axis=1)
-            mrnas["seq_id"] = sources
-        mrnas = mrnas.set_index("ID")
-        # Make a categorical column, frag_id, based on seq_id
-        mrnas["frag_id"] = pd.Categorical(mrnas["seq_id"])
-        mrnas.drop(["seq_id"], axis=1, inplace=True)
-        propfile_path = propfile_path_dict[stem]
-        logger.debug(f"Reading properties file {propfile_path}.")
-        prop_frame = pd.read_csv(propfile_path, sep="\t", index_col=0)
-        # Drop any mrnas not found in sequence file, e.g., zero-length
-        mrnas_len_before = len(mrnas)
-        mrnas = mrnas[mrnas.index.isin(prop_frame.index)]
-        if len(mrnas) != mrnas_len_before:
-            logger.debug(
-                f"Dropped {mrnas_len_before - len(mrnas)} "
-                + f"mRNA defs from {stem}"
-            )
-        # sort by largest value
-        frag_counts = mrnas["frag_id"].value_counts()
-        frag_frame = pd.DataFrame()
-        frag_frame["counts"] = frag_counts
-        frag_frame["idx"] = range(len(frag_frame))
-        frag_frame["frag_id"] = frag_frame.index
-        frag_frame["new_name"] = ""
-        frag_count_path = set_path / f"{stem}-fragment_counts.tsv"
-        logger.debug(f"Writing fragment count to file {frag_count_path}")
-        frag_frame.set_index(["idx"]).to_csv(frag_count_path, sep="\t")
-        del frag_frame
-        mrnas["frag_count"] = mrnas["frag_id"].map(frag_counts)
-        mrnas.sort_values(
-            by=["frag_count", "start"], ascending=[False, True], inplace=True
         )
-        frag_id_range = []
-        for frag_id in frag_counts.index:
-            frag_id_range += list(range(frag_counts[frag_id]))
-        mrnas["frag_pos"] = frag_id_range
-        del frag_id_range
-        mrnas.drop(["frag_count"], axis=1, inplace=True)
-        # join GFF info to FASTA info
-        joined_path = set_path / f"{stem}-protein_positions.tsv"
+        sources = split_sources.agg(".".join, axis=1)
+        mrnas["seq_id"] = sources
+    mrnas = mrnas.set_index("ID")
+    # Make a categorical column, frag_id, based on seq_id
+    mrnas["frag_id"] = pd.Categorical(mrnas["seq_id"])
+    mrnas.drop(["seq_id"], axis=1, inplace=True)
+    # Drop any mrnas not found in sequence file, e.g., zero-length
+    mrnas_len_before = len(mrnas)
+    mrnas = mrnas[mrnas.index.isin(prop_frame.index)]
+    if len(mrnas) != mrnas_len_before:
         logger.debug(
-            f"Joined {len(mrnas)} position and protein info for {stem}"
+            f"Dropped {mrnas_len_before - len(mrnas)} "
+            + f"mRNA defs from {dotpath}"
         )
-        mrnas = mrnas.join(prop_frame)
-        logger.debug(f"Writing info file {joined_path}.")
-        mrnas.to_csv(joined_path, sep="\t")
-        mrnas["stem"] = stem
-        info_to_fasta.callback(None, fasta_path, append=True, infoobj=mrnas)
+    # sort by largest value
+    frag_counts = mrnas["frag_id"].value_counts()
+    frag_frame = pd.DataFrame()
+    frag_frame["counts"] = frag_counts
+    frag_frame["idx"] = range(len(frag_frame))
+    frag_frame["frag_id"] = frag_frame.index
+    frag_frame["new_name"] = ""
+    frag_frame.set_index(["idx"], inplace=True)
+    frag_stats = {
+        "path": dotpath,
+        "frag.n": len(frag_frame),
+        "frag.max": frag_counts[0],
+    }
+    frag_count_path = out_path / "fragments.tsv"
+    if not frag_count_path.exists():
+        logger.debug(f"Writing fragment stats to file {frag_count_path}")
+        frag_frame.to_csv(frag_count_path, sep="\t")
+    del frag_frame
+    mrnas["frag_count"] = mrnas["frag_id"].map(frag_counts)
+    mrnas.sort_values(
+        by=["frag_count", "start"], ascending=[False, True], inplace=True
+    )
+    frag_id_range = []
+    for frag_id in frag_counts.index:
+        frag_id_range += list(range(frag_counts[frag_id]))
+    mrnas["frag_pos"] = frag_id_range
+    del frag_id_range
+    mrnas.drop(["frag_count"], axis=1, inplace=True)
+    # join GFF info to FASTA info
+    joined_path = out_path / f"proteins.tsv"
+    mrnas = mrnas.join(prop_frame)
+    logger.debug(f"Writing joined protein info file {joined_path}.")
+    mrnas.to_csv(joined_path, sep="\t")
+    mrnas["path"] = dotpath
+    # TODO - move to annotate_homology with phylogeny info written
+    info_to_fasta.callback(None, concat_fasta_path, append=True, infoobj=mrnas)
+    return file_stats, frag_stats
 
 
 @cli.command()
@@ -276,14 +297,6 @@ def ingest_data(shorten_source, setname, gff_faa_path_list):
     help="Minimum sequence ID (0-1). [default: lowest]",
 )
 @click.option(
-    "--clust/--no-clust",
-    "-c/-x",
-    is_flag=True,
-    default=True,
-    help="Do cluster calc.",
-    show_default=True,
-)
-@click.option(
     "--parallel/--no-parallel",
     is_flag=True,
     default=True,
@@ -291,35 +304,34 @@ def ingest_data(shorten_source, setname, gff_faa_path_list):
     help="Process in parallel.",
 )
 @click.argument("setname")
-def annotate_homology(identity, clust, setname, parallel):
+def annotate_homology(identity, setname, parallel):
     """Add homology cluster info."""
     options = click_loguru.get_global_options()
     set_path = Path(setname)
-    file_stats_path = set_path / protein_file_stats_filename(setname)
+    file_stats_path = set_path / "proteomes.tsv"
     file_frame = pd.read_csv(file_stats_path, index_col=0, sep="\t")
+    n_genomes = len(file_frame)
     file_idx = {}
     stem_dict = {}
-    for stem, row in file_frame.iterrows():
-        file_idx[stem] = row["idx"]
-        stem_dict[row["idx"]] = stem
-    concatenated_fasta_name = f"{setname}.fa"
-    if clust:
-        logger.debug("Doing cluster calculation.")
-        cwd = Path.cwd()
-        os.chdir(set_path)
-        run_stats, cluster_frame = usearch_cluster.callback(
-            concatenated_fasta_name,
-            identity,
-            write_ids=True,
-            delete=False,
-            cluster_stats=False,
-            outname="homology",
-        )
-        os.chdir(cwd)
-        logger.info(run_stats)
-        n_clusters = len(cluster_frame)
-        del cluster_frame
-        del run_stats
+    for i, row in file_frame.iterrows():
+        stem = row["path"]
+        file_idx[stem] = i
+        stem_dict[i] = stem
+    logger.debug("Doing cluster calculation.")
+    cwd = Path.cwd()
+    os.chdir(set_path)
+    run_stats, cluster_frame = usearch_cluster.callback(
+        "proteins.fa",
+        identity,
+        write_ids=True,
+        delete=False,
+        cluster_stats=False,
+        outname="homology",
+    )
+    os.chdir(cwd)
+    logger.info(run_stats)
+    del cluster_frame
+    del run_stats
     n_clusters = len(list((set_path / "homology").glob("*.fa")))
     cluster_paths = [
         set_path / "homology" / f"{i}.fa" for i in range(n_clusters)
@@ -330,7 +342,7 @@ def annotate_homology(identity, clust, setname, parallel):
         cluster_stats = []
     if not options.quiet:
         logger.info(
-            f"Calculating stats for {len(cluster_paths)} homology clusters:"
+            f"Calculating MSAs and trees for {len(cluster_paths)} homology clusters:"
         )
         ProgressBar().register()
     if parallel:
@@ -350,13 +362,13 @@ def annotate_homology(identity, clust, setname, parallel):
     del clusters_dict
     cluster_frame.sort_index(inplace=True)
     grouping_dict = {}
-    for i in range(len(file_frame)):  # keep numbering of single-file clusters
+    for i in range(n_genomes):  # keep numbering of single-file clusters
         grouping_dict[f"[{i}]"] = i
-    grouping_dict[str(list(range(len(file_frame))))] = 0
+    grouping_dict[str(list(range(n_genomes)))] = 0
     for n_members, subframe in cluster_frame.groupby(["n_memb"]):
         if n_members == 1:
             continue
-        if n_members == len(file_frame):
+        if n_members == n_genomes:
             continue
         member_counts = pd.DataFrame(subframe["members"].value_counts())
         member_counts["key"] = range(len(member_counts))
@@ -375,6 +387,8 @@ def annotate_homology(identity, clust, setname, parallel):
             f"Writing group keys for group size {n_members} to {keyfile}"
         )
         member_counts.to_csv(set_path / keyfile, sep="\t")
+    sys.exit(0)
+
     cluster_frame["members"] = cluster_frame["members"].map(grouping_dict)
     cluster_frame = cluster_frame.rename(columns={"members": "group_key"})
     n_adj = cluster_frame["n_adj"].sum()
@@ -392,8 +406,6 @@ def annotate_homology(identity, clust, setname, parallel):
     cluster_file_name = f"{setname}-clusters.tsv"
     logger.debug(f"Writing cluster file to {cluster_file_name}")
     cluster_frame.to_csv(set_path / cluster_file_name, sep="\t")
-    sys.exit(1)
-
     cluster_frame = pd.read_csv(set_path / "homology-ids.tsv", sep="\t")
     cluster_frame = cluster_frame.set_index("id")
     logger.debug("Mapping FASTA IDs to cluster properties.")
@@ -448,7 +460,7 @@ def parse_cluster(fasta_path, file_dict=None):
     muscle = sh.Command("muscle")
     muscle(muscle_args)
     cluster_frame = pd.DataFrame.from_dict(prop_dict).transpose()
-    cluster_frame["idx"] = cluster_frame["stem"].map(file_dict)
+    cluster_frame["idx"] = cluster_frame["path"].map(file_dict)
     cluster_frame.sort_values(by=["idx", "frag_id", "frag_pos"], inplace=True)
     cluster_frame["adj_group"] = ""
     adjacency_group = 0
@@ -459,15 +471,12 @@ def parse_cluster(fasta_path, file_dict=None):
         if len(subframe) == 1:
             continue
         last_pos = -2
-        # last_faa_pos = -2
         last_ID = None
         if was_adj:
             adjacency_group += 1
         was_adj = False
         for gene_id, row in subframe.iterrows():
             if row["frag_pos"] == last_pos + 1:
-                # if row["faa_pos"] != last_faa_pos +1:
-                #    logger.debug(f"non-congruent faa in {fasta_path} group {adjacency_group}")
                 if not was_adj:
                     cluster_frame.loc[last_ID, "adj_group"] = str(
                         adjacency_group
@@ -479,7 +488,6 @@ def parse_cluster(fasta_path, file_dict=None):
                     adjacency_group += 1
                     was_adj = False
             last_pos = row["frag_pos"]
-            # last_faa_pos = row["faa_pos"]
             last_ID = gene_id
     if was_adj:
         adjacency_group += 1
@@ -499,7 +507,7 @@ def parse_cluster(fasta_path, file_dict=None):
 
 
 @cli.command()
-@click_loguru.init_logger()
+@click_loguru.init_logger(logfile=False)
 @click.option(
     "--append/--no-append",
     "-a/-x",
@@ -512,7 +520,6 @@ def parse_cluster(fasta_path, file_dict=None):
 @click.argument("fastafile")
 def info_to_fasta(infofile, fastafile, append, infoobj=None):
     """Convert infofile to FASTA file."""
-    """Convert infofile to FASTA file."""
     if infoobj is None:
         infoobj = pd.read_csv(infofile, index_col=0, sep="\t")
     if append:
@@ -523,8 +530,8 @@ def info_to_fasta(infofile, fastafile, append, infoobj=None):
         logger.debug(f"Writing to {fastafile} with mode {filemode}.")
         for gene_id, row in infoobj.iterrows():
             row_dict = row.to_dict()
-            seq = row_dict["seq"]
-            del row_dict["seq"]
+            seq = row_dict["prot.seq"]
+            del row_dict["prot.seq"]
             json_row = json.dumps(row_dict, separators=(",", ":"))
             fh.write(f">{gene_id} {json_row}\n")
             fh.write(f"{seq}\n")

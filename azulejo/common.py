@@ -71,6 +71,11 @@ class TrimmableMemoryMap:
                 self.filehandle.truncate(self.size)
 
 
+def dotpath_to_path(dotpath):
+    "Return a dot-separated pathstring as a path."
+    return Path("/".join(dotpath.split(".")))
+
+
 def fasta_records(filepath):
     """Count the number of records in a FASTA file."""
     count = 0
@@ -114,11 +119,15 @@ def parse_cluster_fasta(filepath, trim_dict=True):
 
 def protein_file_stats_filename(setname):
     """Return the name of the protein stat file."""
+    if setname is None:
+        return "protein_files.tsv"
     return f"{setname}-protein_files.tsv"
 
 
 def protein_properties_filename(filestem):
     """Return the name of the protein properties file."""
+    if filestem is None:
+        return "proteins.tsv"
     return f"{filestem}-proteins.tsv"
 
 
