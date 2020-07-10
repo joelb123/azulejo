@@ -450,7 +450,24 @@ def usearch_cluster(
             )
         file_frame.drop(["name"], axis=1, inplace=True)
         file_frame.set_index("idx", inplace=True)
-        return run_stats, file_frame
+        file_frame.to_csv("clusters.tsv", sep="\t")
+        # cluster histogram
+        cluster_hist = pd.DataFrame(file_frame["seqs"].value_counts())
+        cluster_hist.rename(columns={"seqs": "clusters"}, inplace=True)
+        cluster_hist.index.name = "n"
+        cluster_hist.sort_index(inplace=True)
+        total_seqs = sum(file_frame["seqs"])
+        n_clusters = len(file_frame)
+        cluster_hist["pct_clusts"] = (
+            cluster_hist["clusters"] * 100.0 / n_clusters
+        )
+        cluster_hist["pct_seqs"] = (
+            cluster_hist["clusters"] * cluster_hist.index * 100.0 / total_seqs
+        )
+        cluster_hist.to_csv(
+            "cluster_hist.tsv", sep="\t", float_format="%06.3f"
+        )
+        return n_clusters, run_stats, cluster_hist
     (
         cluster_graph,
         clusters,
@@ -482,7 +499,6 @@ def usearch_cluster(
     cluster_hist = pd.DataFrame(
         list(degree_counts.items()), columns=["degree", "clusters"]
     )
-    # cluster_hist['degree'] = cluster_hist['degree'] - 1
     cluster_hist.sort_values(["degree"], inplace=True)
     cluster_hist.set_index("degree", inplace=True)
     total_clusters = cluster_hist["clusters"].sum()

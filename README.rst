@@ -204,19 +204,25 @@ Project Status
 +-------------------+------------+------------+
 | Latest Release    | |pypi|     | |azulejo|  |
 +-------------------+------------+            +
-| GitHub            | |repo|     |            |
+| Activity          | |repo|     |            |
++-------------------+------------+            +
+| Downloads         ||downloads| |            |
++-------------------+------------+            +
+| Download Rate     ||dlrate|    |            |
 +-------------------+------------+            +
 | License           | |license|  |            |
 +-------------------+------------+            +
-| Travis Build      | |travis|   |            |
+| Code Grade        | |codacy|   |            |
 +-------------------+------------+            +
 | Coverage          | |coverage| |            |
 +-------------------+------------+            +
-| Code Grade        | |codacy|   |            |
+| Travis Build      | |travis|   |            |
 +-------------------+------------+            +
 | Dependencies      | |depend|   |            |
 +-------------------+------------+            +
 | Issues            | |issues|   |            |
++-------------------+------------+            +
+| Code Style        | |black|    |            |
 +-------------------+------------+------------+
 
 
@@ -224,11 +230,15 @@ Project Status
      :target: https://en.wikipedia.org/wiki/Azulejo
      :alt: azulejo Definition
 
+.. |black| image:: https://img.shields.io/badge/code%20style-black-000000.svg?style=flat-square
+    :target: https://github.com/psf/black
+    :alt: Black is the uncompromising Python code formatter
+
 .. |pypi| image:: https://img.shields.io/pypi/v/azulejo.svg
     :target: https://pypi.python.org/pypi/azulejo
     :alt: Python package
 
-.. |repo| image:: https://img.shields.io/github/commits-since/legumeinfo/azulejo/0.3.svg
+.. |repo| image:: https://img.shields.io/github/last-commit/legumeinfo/azulejo
     :target: https://github.com/legumeinfo/azulejo
     :alt: GitHub repository
 
@@ -264,3 +274,10 @@ Project Status
      :target: https://app.dependabot.com/accounts/legumeinfo/repos/203668510
      :alt: dependabot dependencies
 
+.. |dlrate| image:: https://img.shields.io/pypi/dm/azulejo
+    :target: https://pypistats.org/packages/azulejo
+    :alt: Download stats
+
+.. |downloads| image:: https://pepy.tech/badge/azulejo
+    :target: https://pepy.tech/project/azulejo
+    :alt: Download stats

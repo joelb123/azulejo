@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.8.0"
+version = "0.8.1"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -54,6 +54,7 @@ pathvalidate = "^2.3.0"
 attrs = "^19.3.0"
 smart-open = "^2.0.0"
 paramiko = "^2.7.1"
+poetry-dynamic-versioning = "^0.8.1"
 
 [tool.poetry.dev-dependencies]
 pytest-cov = "^2.8.1"
@@ -62,14 +63,13 @@ pre-commit = "^2.3.0"
 pydocstyle = "^5.0.2"
 isort = {version = "^4.3.21", extras = ["pyproject"]}
 sh = "^1.13.0"
-flynt = "^0.46"
-poetry-dynamic-versioning = "^0.7.0"
 pylint = "^2.5.2"
 bandit = "^1.6.2"
 towncrier = "^19.2.0"
-nox = "^2019.11.9"
 coverage = {extras = ["toml"], version = "^5.1"}
 pytest-datadir-mgr = "^1.0.1"
+nox = "^2020.5.24"
+flynt = "^0.48.1"
 
 [tool.poetry.scripts]
 azulejo = "azulejo:cli"
@@ -81,7 +81,8 @@ include = '\.pyi?$'
 exclude = '''
 /(
   \.git
-  | \.mypy_cache
+  | \.mypy
+  _cache
   | \.nox
   | \.idea
   | \.pytest-cache

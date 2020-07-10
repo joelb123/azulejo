@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for basic CLI function."""
+"""Tests for input table creation."""
 # standard library imports
 import shutil
 from pathlib import Path

@@ -240,7 +240,7 @@ def filepath_from_url(url):
         yield url
     else:
         dirpath = tempfile.mkdtemp()
-        logger.debug(f"Downloading/decompressing {url} to {dirpath}")
+        # logger.debug(f"Downloading/decompressing {url} to {dirpath}")
         filehandle = smart_open.open(url)
         dldata = filehandle.read()
 
