@@ -180,15 +180,19 @@ The currently implemented commands are:
 
 ========================= ==================================================
   analyze-clusters        Statistics of clustering as function of identity.
-  annotate-homology       Cluster, align, and calculate tree info.
+  calculate-proxy-genes   Calculate a set of proxy genes from synteny files.
+  change-compression      Change the compression type of a Parquet file.
+  check-taxonomic-rank    Check/show a lit of taxonomic ranks.
   cluster-in-steps        Cluster in steps from low to 100% identity.
   clusters-to-histograms  Compute histograms from cluster file.
   combine-clusters        Combine synteny and homology clusters,
   compare-clusters        compare one cluster file with another
   dagchainer-synteny      Read DAGchainer synteny into homology frames.
-  ingest-data             Marshal protein and genome sequence information.
+  do-homology             Calculate homology clusters, MSAs, trees.
+  ingest-sequence-data    Marshal protein and genome sequence information.
   length-std-dist         Plot length distribution of singletons in clusters
   outlier-length-dist     Plot length distribution of outliers in clusters.
+  parquet-to-tsv          Reads parquet file, writes tsv.
   prepare-protein-files   Sanitize and combine protein FASTA files.
   proxy-genes             Calculate a set of proxy genes from synteny files.
   synteny-anchors         Calculate synteny anchors.

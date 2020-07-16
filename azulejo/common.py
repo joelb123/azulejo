@@ -4,19 +4,36 @@
 import contextlib
 import json
 import mmap
-import os
+import sys
 from pathlib import Path
 
-NAME = "azulejo"
-STATFILE_SUFFIX = f"-{NAME}_stats.tsv"
-ANYFILE_SUFFIX = f"-{NAME}_ids-any.tsv"
-ALLFILE_SUFFIX = f"-{NAME}_ids-all.tsv"
-CLUSTFILE_SUFFIX = f"-{NAME}_clusts.tsv"
-SEQ_FILE_TYPE = "fasta"
+# third-party imports
+import pandas as pd
+from loguru import logger
 
-GFF_EXT = "gff3"
-FAA_EXT = "faa"
-FNA_EXT = "fna"
+# global constants
+NAME = "azulejo"
+DEFAULT_PARQUET_COMPRESSION = None
+PARQUET_EXTENSIONS = ["parquet", "pq", "parq"]
+TSV_EXTENSIONS = ["tsv"]
+SAVED_INPUT_FILE = "input.toml"
+
+# Changing the extension of these files will change the type of file written.
+# TSV files, though readable/editable, do not give the written values back.
+# Parquet is also ~100X faster.
+4
+CLUSTER_FILETYPE = "tsv"
+CLUSTERS_FILE = "clusters.parq"
+FRAGMENTS_FILE = "fragments.tsv"
+HASH_HIST_FILE = "hash_hist.tsv"
+HOMOLOGY_FILE = "proteins+homology.parq"
+MERGED_HASH_FILE = "merged_hashes.parq"
+PROTEOMES_FILE = "proteomes.tsv"
+PROTEOMOLOGY_FILE = "proteomes+homology.parq"
+PROTEINS_FILE = "proteins.parq"
+SYNTENY_FILE = "proteins+homology+synteny.parq"
+
+# shared functions
 
 
 def cluster_set_name(stem, identity):
@@ -24,7 +41,7 @@ def cluster_set_name(stem, identity):
     if identity == 1.0:
         digits = "10000"
     else:
-        digits = (f"{identity:.4f}")[2:]
+        digits = f"{identity:.4f}"[2:]
     return f"{stem}-nr-{digits}"
 
 
@@ -106,7 +123,8 @@ def parse_cluster_fasta(filepath, trim_dict=True):
             space_pos = mm.find(b" ", next_pos + 1, eol_pos)
             if space_pos == -1:
                 raise ValueError(
-                    f"Header format is bad in {filepath} header {len(properties_dict)+1}"
+                    f"Header format is bad in {filepath} header"
+                    f" {len(properties_dict)+1}"
                 )
             id = mm[next_pos + 1 : space_pos].decode("utf-8")
             payload = json.loads(mm[space_pos + 1 : eol_pos])
@@ -134,3 +152,58 @@ def protein_properties_filename(filestem):
 def homo_degree_dist_filename(filestem):
     """Return the name of the homology degree distribution file."""
     return f"{filestem}-degreedist.tsv"
+
+
+def group_key_filename(members):
+    """Return the name of the group key file."""
+    return f"groupkeys-{members}.tsv"
+
+
+def sort_proteome_frame(df):
+    """Sort a proteome frame by preference and frag.max and renumber."""
+    if df.index.name == "path":
+        df["path"] = df.index
+    df.sort_values(
+        by=["preference", "frag.max"], ascending=[True, False], inplace=True
+    )
+    df["order"] = range(len(df))
+    df.set_index("order", inplace=True)
+    return df
+
+
+def write_tsv_or_parquet(
+    df,
+    filepath,
+    compression=DEFAULT_PARQUET_COMPRESSION,
+    float_format=None,
+    desc=None,
+):
+    """Write either a TSV or a parquet file by file extension."""
+    filepath = Path(filepath)
+    ext = filepath.suffix.lstrip(".")
+    if desc is not None:
+        file_desc = f"{desc} file"
+        logger.debug(f'Writing {file_desc} "{filepath}')
+    if ext in PARQUET_EXTENSIONS:
+        df.to_parquet(filepath, compression=compression)
+    elif ext in TSV_EXTENSIONS:
+        df.to_csv(filepath, sep="\t", float_format=float_format)
+    else:
+        logger.error(f"Unrecognized file extension {ext} in {filepath}")
+        sys.exit(1)
+
+
+def read_tsv_or_parquet(filepath):
+    """Read either a TSV or a parquet file by file extension."""
+    filepath = Path(filepath)
+    if not filepath.exists():
+        logger.error(f'File "{filepath}" does not exist.')
+        sys.exit(1)
+    ext = filepath.suffix.lstrip(".")
+    if ext in PARQUET_EXTENSIONS:
+        return pd.read_parquet(filepath)
+    elif ext in TSV_EXTENSIONS:
+        return pd.read_csv(filepath, sep="\t", index_col=0)
+    else:
+        logger.error(f"Unrecognized file extensions {ext} in {filepath}")
+        sys.exit(1)

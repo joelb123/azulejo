@@ -6,8 +6,8 @@ from pathlib import Path
 
 # first-party imports
 from azulejo.common import dotpath_to_path
-from azulejo.inputs import read_from_url
-from azulejo.inputs import TaxonomicInputTable
+from azulejo.ingest import read_from_url
+from azulejo.ingest import TaxonomicInputTable
 
 
 # global constants

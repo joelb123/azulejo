@@ -18,28 +18,32 @@ import dask.bag as db
 import networkx as nx
 import numpy as np
 import pandas as pd
-import sh
 from Bio import SeqIO
 from dask.diagnostics import ProgressBar
+
+# first-party imports
+import sh
 from loguru import logger
 
 # module imports
 from . import cli
 from . import click_loguru
-from .common import ALLFILE_SUFFIX
-from .common import ANYFILE_SUFFIX
-from .common import FAA_EXT
-from .common import SEQ_FILE_TYPE
-from .common import STATFILE_SUFFIX
 from .common import cluster_set_name
 from .common import fasta_records
 from .common import get_paths_from_file
 from .common import homo_degree_dist_filename
 from .common import protein_file_stats_filename
 from .common import protein_properties_filename
+from .common import write_tsv_or_parquet
 from .protein import Sanitizer
 
 # global constants
+NAME = "azulejo"
+STATFILE_SUFFIX = f"-{NAME}_stats.tsv"
+ANYFILE_SUFFIX = f"-{NAME}_ids-any.tsv"
+ALLFILE_SUFFIX = f"-{NAME}_ids-all.tsv"
+CLUSTFILE_SUFFIX = f"-{NAME}_clusts.tsv"
+SEQ_FILE_TYPE = "fasta"
 UNITS = {
     "Mb": {"factor": 1, "outunits": "MB"},
     "Gb": {"factor": 1024, "outunits": "MB"},
@@ -64,11 +68,7 @@ RENAME_STATS = {
 ID_SEPARATOR = "."
 IDENT_LOG_MIN = -3
 IDENT_LOG_MAX = 0
-EPSILON = 0.000001
-FILETYPE = "pdf"
-MAX_BINS = 10
 DEFAULT_STEPS = 16
-START_CHAR = "M"
 
 # Classes
 class ElapsedTimeReport:
@@ -320,7 +320,7 @@ def prettyprint_float(val, digits):
     "--substrs", help="subpath to file of substrings. [default: none]"
 )
 @click.option("--dups", help="subpath to file of duplicates. [default: none]")
-def usearch_cluster(
+def homology_cluster(
     seqfile,
     identity,
     delete=True,
@@ -352,11 +352,11 @@ def usearch_cluster(
     outfilepath = dirpath / outdir
     logfilepath = dirpath / logfile
     histfilepath = dirpath / homo_degree_dist_filename(outname)
-    gmlfilepath = dirpath / (f"{outname}.gml")
-    statfilepath = dirpath / (f"{outname}-stats.tsv")
-    anyfilepath = dirpath / (f"{outname}-anyhist.tsv")
-    allfilepath = dirpath / (f"{outname}-allhist.tsv")
-    idpath = dirpath / (f"{outname}-ids.tsv")
+    gmlfilepath = dirpath / f"{outname}.gml"
+    statfilepath = dirpath / f"{outname}-stats.tsv"
+    anyfilepath = dirpath / f"{outname}-anyhist.tsv"
+    allfilepath = dirpath / f"{outname}-allhist.tsv"
+    idpath = dirpath / f"{outname}-ids.tsv"
     if identity == 0.0:
         identity_string = "minimum"
     else:
@@ -366,7 +366,8 @@ def usearch_cluster(
         logger.debug(f"Cluster files will be kept in {logfile} and {outdir}")
     if cluster_stats and write_ids:
         logger.debug(
-            f"File of cluster ID usage will be written to {anyfilepath} and {allfilepath}"
+            f"File of cluster ID usage will be written to {anyfilepath} and"
+            f" {allfilepath}"
         )
     if not do_calc:
         if not logfilepath.exists():
@@ -375,7 +376,8 @@ def usearch_cluster(
         logger.debug("Using previous results for calculation")
     if min_id_freq:
         logger.debug(
-            f"Minimum number of times ID's must occur to be counted: {min_id_freq}"
+            "Minimum number of times ID's must occur to be counted:"
+            f" {min_id_freq}"
         )
     synonyms = {}
     if substrs is not None:
@@ -420,7 +422,7 @@ def usearch_cluster(
         list(run_stat_dict.items()), columns=["stat", "val"]
     )
     run_stats.set_index("stat", inplace=True)
-    run_stats.to_csv(statfilepath, sep="\t")
+    write_tsv_or_parquet(run_stats, statfilepath)
     if delete:
         logfilepath.unlink()
     if not cluster_stats:
@@ -450,7 +452,7 @@ def usearch_cluster(
             )
         file_frame.drop(["name"], axis=1, inplace=True)
         file_frame.set_index("idx", inplace=True)
-        file_frame.to_csv("clusters.tsv", sep="\t")
+        write_tsv_or_parquet(file_frame, "clusters.tsv")
         # cluster histogram
         cluster_hist = pd.DataFrame(file_frame["seqs"].value_counts())
         cluster_hist.rename(columns={"seqs": "clusters"}, inplace=True)
@@ -579,7 +581,8 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     min_fmt = prettyprint_float(min(logsteps) * 100.0, 2)
     max_fmt = prettyprint_float(max(logsteps) * 100.0, 2)
     logger.info(
-        f"Clustering at {steps} levels from {min_fmt}% to {max_fmt}% global sequence identity"
+        f"Clustering at {steps} levels from {min_fmt}% to {max_fmt}% global"
+        " sequence identity"
     )
     stat_list = []
     all_frames = []
@@ -591,7 +594,7 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
             unused_hist,
             any_,
             all_,
-        ) = usearch_cluster.callback(  # pylint: disable=unused-variable
+        ) = homology_cluster.callback(  # pylint: disable=unused-variable
             seqfile,
             id_level,
             min_id_freq=min_id_freq,
@@ -706,7 +709,7 @@ def cleanup_fasta(
                 seq, m_start, no_stop, n_ambig = sanitizer.sanitize(seq)
             except ValueError:  # zero-length sequence after sanitizing
                 continue
-            seqs.append(seq)
+            seqs.append(str(seq))
             if write_fasta:
                 record.seq = seq.toseq()
                 out_sequences.append(record)

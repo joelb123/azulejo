@@ -7,8 +7,10 @@ from pkg_resources import iter_entry_points
 
 # third-party imports
 import click
-from click_loguru import ClickLoguru
 from click_plugins import with_plugins
+
+# first-party imports
+from click_loguru import ClickLoguru
 from loguru import logger
 
 # module imports
@@ -16,7 +18,7 @@ from .common import NAME
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.8.1"
+__version__ = "0.8.5"
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
@@ -70,11 +72,13 @@ from .core import clusters_to_histograms  #  isort:skip
 from .core import combine_clusters  #  isort:skip
 from .core import compare_clusters  #  isort:skip
 from .core import prepare_protein_files  #  isort:skip
-from .core import usearch_cluster  #  isort:skip
-from .synteny import annotate_homology  # isort:skip
-from .synteny import info_to_fasta  # isort:skip
-from .synteny import ingest_data  # isort:skip
+from .core import homology_cluster  #  isort:skip
+from .homology import do_homology  # isort:skip
+from .homology import info_to_fasta  # isort:skip
+from .ingest import ingest_sequence_data  # isort:skip
+from .parquet import change_compression  # isort:skip
+from .parquet import tsv_to_parquet  # isort:skip
+from .proxy import calculate_proxy_genes  # isort:skip
 from .synteny import synteny_anchors  # isort:skip
 from .synteny import dagchainer_synteny  # isort:skip
-from .synteny import proxy_genes  # isort:skip
 from .taxonomy import check_taxonomic_rank  # isort:skip

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.8.1"
+version = "0.8.5"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -55,6 +55,8 @@ attrs = "^19.3.0"
 smart-open = "^2.0.0"
 paramiko = "^2.7.1"
 poetry-dynamic-versioning = "^0.8.1"
+pyarrow = "^0.17.1"
+xxhash = "^1.4.4"
 
 [tool.poetry.dev-dependencies]
 pytest-cov = "^2.8.1"

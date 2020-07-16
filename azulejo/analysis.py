@@ -6,23 +6,25 @@ from pathlib import Path
 
 # third-party imports
 import click
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from loguru import logger
-import matplotlib.pyplot as plt
 
+# first-party imports
+from loguru import logger
 
 # module imports
 from . import cli
 from . import click_loguru
-from .common import ALLFILE_SUFFIX
-from .common import ANYFILE_SUFFIX
-from .common import STATFILE_SUFFIX
 from .common import cluster_set_name
 from .common import homo_degree_dist_filename
 
 # Global constants
+NAME = "azulejo"
+STATFILE_SUFFIX = f"-{NAME}_stats.tsv"
+ANYFILE_SUFFIX = f"-{NAME}_ids-any.tsv"
+ALLFILE_SUFFIX = f"-{NAME}_ids-all.tsv"
 IDENT_LOG_MIN = -3
 IDENT_LOG_MAX = 0
 EPSILON = 0.000001
@@ -152,7 +154,7 @@ def analyze_clusters(
             axis_dict[match].plot(
                 divergence[stem],
                 div_dist[match][stem] - div_dist[match]["ref"],
-                label="%s" % (stem.replace(label + ".", "")),
+                label=f"{stem.replace(label + '.', '')}",
             )
             # uniques[stem]/1000.))
     if reference is None:
@@ -169,7 +171,10 @@ def analyze_clusters(
             )
             outfilestem = f"{label}_divergence_dist_vs{reference}."
         else:
-            title = f'{label} Differential Divergence Distribution on "{on_id}" vs. {reference}'
+            title = (
+                f'{label} Differential Divergence Distribution on "{on_id}"'
+                f" vs. {reference}"
+            )
             outfilestem = f"{label}_divergence_dist_on_{on_id}_vs_ref."
     if reference is None:
         fig.text(
@@ -196,7 +201,7 @@ def analyze_clusters(
         fig.text(
             0.5,
             0.91,
-            "%s in Cluster" % matches[0].capitalize(),
+            f"{matches[0].capitalize()} in Cluster",
             ha="center",
             va="center",
         )
@@ -228,7 +233,8 @@ def do_cuts(obs, high, low, label):
         if len(hicuts) == 0:
             hifilename = label + "_hicuts.tsv"
             logger.info(
-                "%d observations dropped by high-side cutoff of %.2f written to %s",
+                "%d observations dropped by high-side cutoff of %.2f written"
+                " to %s",
                 len(hicuts),
                 high,
                 hifilename,
@@ -245,7 +251,8 @@ def do_cuts(obs, high, low, label):
         if len(locuts) == 0:
             lofilename = label + "_locuts.tsv"
             logger.info(
-                "%d observations dropped by low-side cutoff of %.2f written to %s",
+                "%d observations dropped by low-side cutoff of %.2f written"
+                " to %s",
                 len(locuts),
                 low,
                 lofilename,
@@ -332,7 +339,7 @@ def outlier_length_dist(hi_cutoff, lo_cutoff, cluster_size, combinedfile):
 @click.argument("cluster_size")
 @click.argument("combinedfile")
 def length_std_dist(cluster_size, hi_cutoff, lo_cutoff, combinedfile):
-    """Plot length distribution of singletons in clusters."""
+    """Plot length distribution of cluster singletons."""
     cluster_size = int(cluster_size)
     if cluster_size <= 0:
         logger.error("Positive cluster size must be specified")
@@ -426,7 +433,8 @@ def plot_degree_dists(identity, hi_cutoff, lo_cutoff, setname, setsize):
     plt.xlabel("Cluster Size")
     plt.ylabel("% of Genes in Cluster")
     plt.title(
-        f"Cluster size distribution of {homo_genes} genes in {setsize} {setname} genomes"
+        f"Cluster size distribution of {homo_genes} genes in {setsize}"
+        f" {setname} genomes"
     )
     outfilename = f"cluster_size_dist.{FILETYPE}"
     logger.info(f"saving plot to {outfilename}")

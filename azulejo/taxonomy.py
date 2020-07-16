@@ -5,6 +5,8 @@ import sys
 
 # third-party imports
 import click
+
+# first-party imports
 from loguru import logger
 
 # module imports

@@ -1,25 +1,40 @@
 # -*- coding: utf-8 -*-
-"""Read a TOML taxonomic input table and read files from URLs."""
-# standard library imports\
+"""Sequence (FASTA) and genome (GFF) ingestion operations."""
+# standard library imports
 import contextlib
 import json
 import os
-import sys
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 # third-party imports
 import attr
+import click
+import dask.bag as db
+import gffpandas.gffpandas as gffpd
 import pandas as pd
-import smart_open
 import toml
-from pathvalidate import validate_filename
-from pathvalidate import ValidationError
+from dask.diagnostics import ProgressBar
+
+# first-party imports
+import smart_open
 from loguru import logger
+from pathvalidate import ValidationError
+from pathvalidate import validate_filename
 
 # module imports
+from . import cli
+from . import click_loguru
+from .common import FRAGMENTS_FILE
+from .common import PROTEINS_FILE
+from .common import PROTEOMES_FILE
+from .common import SAVED_INPUT_FILE
 from .common import dotpath_to_path
+from .common import sort_proteome_frame
+from .common import write_tsv_or_parquet
+from .core import cleanup_fasta
 from .taxonomy import rankname_to_number
 
 # global constants
@@ -33,6 +48,153 @@ COMPRESSION_EXTENSIONS = (
     "gz",
     "bz2",
 )
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click.option(
+    "-s/-l",
+    "--shorten_source/--no-shorten_source",
+    default=True,
+    is_flag=True,
+    show_default=True,
+    help="Remove invariant dotpaths in source IDs.",
+)
+@click.option(
+    "--parallel/--no-parallel",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Process in parallel.",
+)
+@click.argument("input_toml")
+def ingest_sequence_data(shorten_source, input_toml, parallel):
+    """Marshal protein and genome sequence information.
+
+    IDs must correspond between GFF and FASTA files and must be unique across
+    the entire set.
+    """
+    options = click_loguru.get_global_options()
+    input_obj = TaxonomicInputTable(Path(input_toml), write_table=False)
+    input_table = input_obj.input_table
+    set_path = Path(input_obj.setname)
+    arg_list = []
+    for i, row in input_table.iterrows():
+        arg_list.append((row["path"], row["fasta_url"], row["gff_url"],))
+    if parallel:
+        bag = db.from_sequence(arg_list)
+    else:
+        file_stats = []
+    if not options.quiet:
+        logger.info(f"Extracting FASTA/GFF info for {len(arg_list)} genomes:")
+        ProgressBar().register()
+    if parallel:
+        file_stats = bag.map(
+            read_fasta_and_gff, shorten_source=shorten_source
+        ).compute()
+    else:
+        for args in arg_list:
+            file_stats.append(
+                read_fasta_and_gff(args, shorten_source=shorten_source)
+            )
+    del arg_list
+    seq_frame = pd.DataFrame.from_dict([s[0] for s in file_stats]).set_index(
+        "path"
+    )
+    frag_frame = pd.DataFrame.from_dict([s[1] for s in file_stats]).set_index(
+        "path"
+    )
+    proteomes = pd.concat(
+        [input_table.set_index("path"), frag_frame, seq_frame], axis=1
+    )
+    proteomes.drop(["fasta_url", "gff_url"], axis=1, inplace=True)
+    proteomes = sort_proteome_frame(proteomes)
+    proteome_table_path = set_path / PROTEOMES_FILE
+    logger.info(
+        f'Writing table of proteomes to "{proteome_table_path}", edit it to'
+        " change preferences"
+    )
+    logger.info(
+        "This is also the time to put DNA fragments on a common naming basis."
+    )
+    write_tsv_or_parquet(proteomes, proteome_table_path)
+
+
+def read_fasta_and_gff(args, shorten_source=True):
+    """Read corresponding sequence and position files and construct consolidated tables."""
+    dotpath, fasta_url, gff_url = args
+    out_path = dotpath_to_path(dotpath)
+
+    with read_from_url(fasta_url) as fasta_fh:
+        unused_stem, unused_path, prop_frame, file_stats = cleanup_fasta(
+            out_path, fasta_fh, dotpath, write_fasta=False, write_stats=False
+        )
+    # logger.debug(f"Reading GFF file {gff_url}.")
+    with filepath_from_url(gff_url) as local_gff_file:
+        annotation = gffpd.read_gff3(local_gff_file)
+    features = annotation.filter_feature_of_type(
+        ["mRNA"]
+    ).attributes_to_columns()
+    del annotation
+    features.drop(
+        features.columns.drop(
+            ["seq_id", "start", "strand", "ID"]
+        ),  # drop EXCEPT these
+        axis=1,
+        inplace=True,
+    )  # drop non-essential columns
+    if shorten_source:
+        # drop identical sub-fields in seq_id to make them easier to map
+        split_sources = features["seq_id"].str.split(".", expand=True)
+        split_sources = split_sources.drop(
+            [
+                i
+                for i in split_sources.columns
+                if len(set(split_sources[i])) == 1
+            ],
+            axis=1,
+        )
+        sources = split_sources.agg(".".join, axis=1)
+        features["seq_id"] = sources
+    features = features.set_index("ID")
+    # Make a categorical column, frag_id, based on seq_id
+    features["frag_id"] = pd.Categorical(features["seq_id"])
+    features.drop(["seq_id"], axis=1, inplace=True)
+    # Drop any features not found in sequence file, e.g., zero-length
+    features = features[features.index.isin(prop_frame.index)]
+    # sort fragments by largest value
+    frag_counts = features["frag_id"].value_counts()
+    frag_frame = pd.DataFrame()
+    frag_frame["counts"] = frag_counts
+    frag_frame["idx"] = range(len(frag_frame))
+    frag_frame["frag_id"] = frag_frame.index
+    frag_frame["new_name"] = ""
+    frag_frame.set_index(["idx"], inplace=True)
+    frag_stats = {
+        "path": dotpath,
+        "frag.n": len(frag_frame),
+        "frag.max": frag_counts[0],
+    }
+    frag_count_path = out_path / FRAGMENTS_FILE
+    if not frag_count_path.exists():
+        # logger.debug(f"Writing fragment stats to file {frag_count_path}")
+        write_tsv_or_parquet(frag_frame, frag_count_path)
+    del frag_frame
+    features["frag_count"] = features["frag_id"].map(frag_counts)
+    features.sort_values(
+        by=["frag_count", "start"], ascending=[False, True], inplace=True
+    )
+    frag_id_range = []
+    for frag_id in frag_counts.index:
+        frag_id_range += list(range(frag_counts[frag_id]))
+    features["frag_pos"] = frag_id_range
+    del frag_id_range
+    features.drop(["frag_count"], axis=1, inplace=True)
+    # join GFF info to FASTA info
+    joined_path = out_path / PROTEINS_FILE
+    features = features.join(prop_frame)
+    write_tsv_or_parquet(features, joined_path)
+    return file_stats, frag_stats
 
 
 class TaxonomicInputTable:
@@ -76,14 +238,15 @@ class TaxonomicInputTable:
         del self._nodes
         self.input_table.index.name = "order"
         if write_table:
-            input_table_path = root_path / "proteomes.tsv"
+            input_table_path = root_path / PROTEOMES_FILE
             logger.debug(
-                f"Input table of {len(self.input_table)} genomes written to {input_table_path}"
+                f"Input table of {len(self.input_table)} genomes written to"
+                f" {input_table_path}"
             )
-            self.input_table.to_csv(input_table_path, sep="\t")
-        saved_input_path = root_path / "input.toml"
+            write_tsv_or_parquet(self.input_table, input_table_path)
+        saved_input_path = root_path / SAVED_INPUT_FILE
         if toml_path != saved_input_path:
-            shutil.copy2(toml_path, root_path / "input.toml")
+            shutil.copy2(toml_path, root_path / SAVED_INPUT_FILE)
 
     def _validate_name(self, name):
         """Check if a potential filename is valid or not."""
@@ -240,7 +403,6 @@ def filepath_from_url(url):
         yield url
     else:
         dirpath = tempfile.mkdtemp()
-        # logger.debug(f"Downloading/decompressing {url} to {dirpath}")
         filehandle = smart_open.open(url)
         dldata = filehandle.read()
 
