@@ -63,6 +63,13 @@ def check_compression(compression):
     help="Do not write index column.",
 )
 @click.option(
+    "--pretty",
+    default=False,
+    is_flag=True,
+    show_default=False,
+    help="Pretty-print output.",
+)
+@click.option(
     "--no_header",
     "-h",
     default=False,
@@ -93,6 +100,18 @@ def check_compression(compression):
     help="Write only the first N rows.",
 )
 @click.option(
+    "--max_rows",
+    default=None,
+    show_default=False,
+    help="Pretty-print N rows.",
+)
+@click.option(
+    "--max_cols",
+    default=None,
+    show_default=False,
+    help="Pretty-print N cols.",
+)
+@click.option(
     "--last_n",
     default=0,
     show_default=False,
@@ -111,11 +130,18 @@ def parquet_to_tsv(
     last_n,
     index_val,
     no_header,
+    pretty,
+    max_rows,
+    max_cols,
 ):
     """Reads parquet file, writes tsv."""
     parquetpath = Path(parquetfile)
     write_index = not no_index
     write_header = not no_header
+    if max_rows is not None:
+        max_rows = int(max_rows)
+    if max_cols is not None:
+        max_cols = int(max_cols)
     if tsvfile == ():
         tsvfile = sys.stdout
     if not parquetpath.exists():
@@ -149,17 +175,39 @@ def parquet_to_tsv(
                     )
                     sys.exit(1)
                 columns.append(col)
-            df.to_csv(
-                tsvfile,
-                sep="\t",
-                columns=columns,
-                index=write_index,
-                header=write_header,
-            )
+            if pretty:
+                with pd.option_context(
+                    "display.max_rows",
+                    max_rows,
+                    "display.max_columns",
+                    max_cols,
+                    "display.float_format",
+                    "{:,.2f}%".format,
+                ):
+                    print(df)
+            else:
+                df.to_csv(
+                    tsvfile,
+                    sep="\t",
+                    columns=columns,
+                    index=write_index,
+                    header=write_header,
+                )
         else:
-            df.to_csv(
-                tsvfile, sep="\t", index=write_index, header=write_header
-            )
+            if pretty:
+                with pd.option_context(
+                    "display.max_rows",
+                    max_rows,
+                    "display.max_columns",
+                    max_cols,
+                    "display.float_format",
+                    "{:,.2f}%".format,
+                ):
+                    print(df)
+            else:
+                df.to_csv(
+                    tsvfile, sep="\t", index=write_index, header=write_header
+                )
 
 
 @cli.command()

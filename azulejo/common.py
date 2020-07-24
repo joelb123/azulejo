@@ -13,7 +13,25 @@ from loguru import logger
 
 # global constants
 NAME = "azulejo"
-DEFAULT_PARQUET_COMPRESSION = None
+DEFAULT_PARQUET_COMPRESSION = "zstd"
+# Sizes and minimum read times with various compressions
+# for a file with one proteome on a system with M.2 SSD disk:
+#   "NONE": 43MB, 1.3s
+#   "ZSTD": 13M, 1.5s
+#    "LZ4": 23MB, 1.5s
+# "SNAPPY": 29 MB, 1.5s
+# "BROTLI": 13 MB, 1.6s
+#   "GZIP": 14 MB, 1.8 s
+#    "LZO": not supported in version tested
+#    'BZ2': not supported in version tested
+# In addition, the ingest process took 28.8s with None, and
+# 28.4 s with ZSTD.  Although 'NONE' is marginally faster to
+# read the whole file, the margin is low.  At 70% compression,
+# the performance of ZSTD can be expected to get better
+# on production systems with slower disks and systems for which
+# the cache is not warmed up as mine was for testing.
+# So I choose ZSTD for now.
+
 PARQUET_EXTENSIONS = ["parquet", "pq", "parq"]
 TSV_EXTENSIONS = ["tsv"]
 SAVED_INPUT_FILE = "input.toml"
@@ -26,12 +44,20 @@ CLUSTER_FILETYPE = "tsv"
 CLUSTERS_FILE = "clusters.parq"
 FRAGMENTS_FILE = "fragments.tsv"
 HASH_HIST_FILE = "hash_hist.tsv"
-HOMOLOGY_FILE = "proteins+homology.parq"
-MERGED_HASH_FILE = "merged_hashes.parq"
+HOMOLOGY_FILE = "proteins.hom.parq"
 PROTEOMES_FILE = "proteomes.tsv"
-PROTEOMOLOGY_FILE = "proteomes+homology.parq"
+PROTEOMOLOGY_FILE = "proteomes.hom.parq"
+PROTEOSYN_FILE = "proteomes.hom.syn.parq"
 PROTEINS_FILE = "proteins.parq"
-SYNTENY_FILE = "proteins+homology+synteny.parq"
+SYNTENY_FILE = "proteins.hom.syn.parq"
+
+# fragment-name defs
+PLASTID_STARTS = ["chromop", "chl", "mt", "mi", "rh", "mu", "le", "pl"]
+CHROMOSOME_SYNONYMS = ["chromosome", "chrom", "chro", "gs", "gm"]
+ALTERNATE_ABBREV = "alt"
+CHROMOSOME_ABBREV = "chr"
+SCAFFOLD_SYNONYMS = ["scaffold", "scaf", "sca"]
+SCAFFOLD_ABBREV = "sc"
 
 # shared functions
 
@@ -161,6 +187,7 @@ def group_key_filename(members):
 
 def sort_proteome_frame(df):
     """Sort a proteome frame by preference and frag.max and renumber."""
+    df = df.copy()
     if df.index.name == "path":
         df["path"] = df.index
     df.sort_values(

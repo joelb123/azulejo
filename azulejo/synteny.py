@@ -25,8 +25,8 @@ from . import cli
 from . import click_loguru
 from .common import HASH_HIST_FILE
 from .common import HOMOLOGY_FILE
-from .common import MERGED_HASH_FILE
 from .common import PROTEOMOLOGY_FILE
+from .common import PROTEOSYN_FILE
 from .common import SYNTENY_FILE
 from .common import dotpath_to_path
 from .common import read_tsv_or_parquet
@@ -103,128 +103,167 @@ class SyntenyBlockHasher(object):
     show_default=True,
     help="Allow repeats in block.",
 )
+@click.option(
+    "--parallel/--no-parallel",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Process in parallel.",
+)
 @click.argument("setname")
-def synteny_anchors(k, peatmer, setname):
+def synteny_anchors(k, peatmer, setname, parallel):
     """Calculate synteny anchors."""
     options = click_loguru.get_global_options()
     set_path = Path(setname)
     file_stats_path = set_path / PROTEOMOLOGY_FILE
-    proteomes = pd.read_csv(file_stats_path, index_col=0, sep="\t")
+    proteomes = read_tsv_or_parquet(file_stats_path)
     n_proteomes = len(proteomes)
-    if peatmer:
-        synteny_type = "p"
-    else:
-        synteny_type = "kr"
-    logger.info(
-        f"Calculating {synteny_type}-mer of length ${k} synteny blocks with "
-        f" for {n_proteomes} proteomes"
-    )
+    hasher = SyntenyBlockHasher(k=k, peatmer=peatmer)
+    hash_name = hasher.hash_name()
     hash_mb = DataMailboxes(
         n_boxes=n_proteomes,
         mb_dir_path=(set_path / "mailboxes" / "hash_merge"),
     )
     hash_mb.write_headers("hash\n")
+    arg_list = []
+    n_hashes_list = []
     for idx, row in proteomes.iterrows():
-        dotpath = row["path"]
-        outpath = dotpath_to_path(dotpath)
-        h = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
-        h["nan_group"] = ((h["cluster"].isnull()).astype(int).cumsum() + 1) * (
-            ~h["cluster"].isnull()
+        arg_list.append((idx, row["path"],))
+    if parallel:
+        bag = db.from_sequence(arg_list)
+    if not options.quiet:
+        logger.info(
+            f"Calculating synteny anchors using the {hash_name} function"
+            + f" for {n_proteomes} proteomes"
         )
-        hasher = SyntenyBlockHasher(k=k, peatmer=peatmer)
-        hash_name = hasher.hash_name()
-        synteny_frame_list = []
-        logger.debug(f"Calculating synteny blocks using {hash_name} .")
-        for unused_id_tuple, subframe in h.groupby(
-            by=["frag_id", "nan_group"]
-        ):
-            synteny_frame_list.append(hasher.calculate(subframe["cluster"]))
-        synteny_frame = pd.concat(synteny_frame_list, axis=0)
-        del synteny_frame_list
-        hash_series = synteny_frame[hash_name]
-        hash_counts = hash_series.value_counts()
-        synteny_frame["syn.selfcount"] = synteny_frame[hash_name].map(
-            hash_counts
-        )
-        write_tsv_or_parquet(synteny_frame, outpath / SYNTENY_FILE)
-        # Do histogram of hashes
-        hash_hist = pd.DataFrame(hash_counts.value_counts()).sort_index()
-        hash_hist["pct_hashes"] = (
-            hash_hist[hash_name] * 100.0 / len(synteny_frame)
-        )
-        write_tsv_or_parquet(outpath / HASH_HIST_FILE)
-        # Write out sorted list of hash values
-        unique_hashes = hash_series.unique().to_numpy().astype("uint32")
-        unique_hashes.sort()
-        with hash_mb.locked_open_for_write(idx) as fh:
-            np.savetxt(fh, unique_hashes, fmt="%d")
-    logger.info("Merging hashes")
+        ProgressBar().register()
+    if parallel:
+        n_hashes_list = bag.map(
+            calculate_synteny_hashes, mailboxes=hash_mb, hasher=hasher
+        ).compute()
+    else:
+        for args in arg_list:
+            n_hashes_list.append(
+                calculate_synteny_hashes(
+                    args, mailboxes=hash_mb, hasher=hasher
+                )
+            )
+    logger.info(f"Reducing {sum(n_hashes_list)} hashes via external merge")
     merger = ExternalMerge(
         file_path_func=hash_mb.path_to_mailbox, n_merge=n_proteomes
     )
     merger.init("hash")
     merged_hashes = merger.merge()
     hash_mb.delete()
-    write_tsv_or_parquet(merged_hashes, set_path / MERGED_HASH_FILE)
-    logger.info("Putting merged hashes into proteomes")
-    for idx, row in proteomes.iterrows():
-        dotpath = row["path"]
-        outpath = dotpath_to_path(dotpath)
-        syn = read_tsv_or_parquet(outpath / SYNTENY_FILE)
-        syn = syn.join(merged_hashes, on=hash_name)
-        homology = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
-        syn = pd.concat([homology, syn], axis=1)
-        syn["syn.id"] = ""
-        id_col_no = syn.columns.get_loc("syn.id")
-        ortho_col_no = syn.columns.get_loc("syn.ortho")
-        cluster_col_no = syn.columns.get_loc("cluster")
-        for ortho, subframe in syn.groupby(by=["syn.ortho"]):
-            for unused_i, row in subframe.iterrows():
-                footprint = row["syn.footprint"]
-                direction = row["syn.direction"]
-                cluster = None
-                extra_indexes = 0
-                if direction == 1:
-                    k_list = list(reversed(range(footprint)))
-                else:
-                    k_list = list(range(footprint))
-                prefix = row["syn.prefix"]
-                row_no = syn.index.get_loc(row.name)
-                for offset in range(footprint):
-                    if peatmer:
-                        cur_cluster = syn.iloc[row_no + offset, cluster_col_no]
-                        if cur_cluster != cluster:
-                            cluster = cur_cluster
-                            sub_id = k_list.pop()
-                    else:
-                        sub_id = k_list.pop()
-                    syn.iloc[
-                        row_no + offset, id_col_no
-                    ] = f"{ortho}.{int(prefix)}"
-                    syn.iloc[row_no + offset, ortho_col_no] = ortho
-        del (
-            syn[hash_name],
-            syn["syn.footprint"],
-            syn["cluster"],
-            syn["syn.prefix"],
+    ret_list = []
+    if not options.quiet:
+        logger.info(
+            f"Merging {len(merged_hashes)} synteny anchors into {n_proteomes} proteomes"
         )
-        write_tsv_or_parquet(
-            syn, outpath / SYNTENY_FILE,
-        )
-        in_synteny = (syn["syn.id"] != "").sum()
-        ambig = (syn["syn.selfcount"] != 1).sum()
-        synteny_pct = in_synteny * 100.0 / len(syn)
-        unambig_pct = (in_synteny - ambig) * 100.0 / len(syn)
-        synteny_stats = {
-            "path": dotpath,
-            "genes": len(syn),
-            "syntenic": in_synteny,
-            "synteny_ambig": ambig,
-            "synteny_pct": synteny_pct,
-            "unambig_pct": unambig_pct,
-        }
+        ProgressBar().register()
+    if parallel:
+        ret_list = bag.map(
+            merge_synteny_hashes,
+            merged_hashes=merged_hashes,
+            hash_name=hash_name,
+        ).compute()
+    else:
+        for args in arg_list:
+            ret_list.append(
+                merge_synteny_hashes(
+                    args, merged_hashes=merged_hashes, hash_name=hash_name
+                )
+            )
+    synteny_stats = pd.DataFrame.from_dict(ret_list)
+    synteny_stats = synteny_stats.set_index("idx").sort_index()
+    with pd.option_context(
+        "display.max_rows",
+        None,
+        "display.max_columns",
+        None,
+        "display.float_format",
+        "{:,.2f}%".format,
+    ):
         logger.info(synteny_stats)
-    logger.info("done with synteny")
+    del synteny_stats["path"]
+    proteomes = pd.concat([proteomes, synteny_stats], axis=1)
+    write_tsv_or_parquet(proteomes, set_path / PROTEOSYN_FILE)
+
+
+def calculate_synteny_hashes(args, mailboxes=None, hasher=None):
+    """Calculate synteny hashes for protein genes."""
+    idx, dotpath = args
+    outpath = dotpath_to_path(dotpath)
+    h = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
+    h["nan_group"] = ((h["cluster"].isnull()).astype(int).cumsum() + 1) * (
+        ~h["cluster"].isnull()
+    )
+    hash_name = hasher.hash_name()
+    synteny_frame_list = []
+    for unused_id_tuple, subframe in h.groupby(by=["frag.id", "nan_group"]):
+        synteny_frame_list.append(hasher.calculate(subframe["cluster"]))
+    synteny_frame = pd.concat(synteny_frame_list, axis=0)
+    del synteny_frame_list
+    hash_series = synteny_frame[hash_name]
+    hash_counts = hash_series.value_counts()
+    synteny_frame["syn.selfcount"] = synteny_frame[hash_name].map(hash_counts)
+    write_tsv_or_parquet(synteny_frame, outpath / SYNTENY_FILE)
+    # Do histogram of hashes
+    hash_hist = pd.DataFrame(hash_counts.value_counts()).sort_index()
+    hash_hist["pct_hashes"] = hash_hist[hash_name] * 100.0 / len(synteny_frame)
+    write_tsv_or_parquet(hash_hist, outpath / HASH_HIST_FILE)
+    # Write out sorted list of hash values
+    unique_hashes = hash_series.unique().to_numpy().astype("uint32")
+    unique_hashes.sort()
+    with mailboxes.locked_open_for_write(idx) as fh:
+        np.savetxt(fh, unique_hashes, fmt="%d")
+    return len(unique_hashes)
+
+
+def merge_synteny_hashes(args, merged_hashes=None, hash_name=None):
+    """Merge synteny hashes into proteomes."""
+    idx, dotpath = args
+    outpath = dotpath_to_path(dotpath)
+    syn = read_tsv_or_parquet(outpath / SYNTENY_FILE)
+    syn = syn.join(merged_hashes, on=hash_name)
+    homology = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
+    syn = pd.concat([homology, syn], axis=1)
+    syn["i"] = range(len(syn))
+    synteny_id_arr = pd.array([pd.NA] * len(syn), dtype=pd.Int32Dtype())
+    ortho_arr = pd.array([pd.NA] * len(syn), dtype=pd.Int32Dtype())
+    for ortho, subframe in syn.groupby(by=["syn.ortho"]):
+        for unused_i, row in subframe.iterrows():
+            footprint = row["syn.footprint"]
+            prefix = row["syn.prefix"]
+            row_no = row["i"]
+            synteny_id_arr[row_no : row_no + footprint] = prefix
+            ortho_arr[row_no : row_no + footprint] = ortho
+    syn["syn.id"] = synteny_id_arr
+    syn["syn.ortho"] = ortho_arr
+    del (
+        syn[hash_name],
+        syn["i"],
+        syn["syn.prefix"],
+    )
+    write_tsv_or_parquet(
+        syn, outpath / SYNTENY_FILE,
+    )
+    n_genes = len(syn)
+    in_synteny = n_genes - syn["syn.id"].isnull().sum()
+    n_assigned = n_genes - syn["cluster"].isnull().sum()
+    ambig = (syn["syn.selfcount"] != 1).sum()
+    synteny_pct = in_synteny * 100.0 / n_assigned
+    unambig_pct = (in_synteny - ambig) * 100.0 / n_assigned
+    synteny_stats = {
+        "idx": idx,
+        "path": dotpath,
+        "hom.assign": n_assigned,
+        "syn.assign": in_synteny,
+        "synt.ambig": ambig,
+        "syn.assgn_pct": synteny_pct,
+        "syn.unamb_pct": unambig_pct,
+    }
+    return synteny_stats
 
 
 def dagchainer_id_to_int(ident):

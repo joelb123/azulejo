@@ -9,6 +9,7 @@ from pathlib import Path
 # third-party imports
 import attr
 import numpy as np
+import numpy.ma as ma
 import pandas as pd
 
 

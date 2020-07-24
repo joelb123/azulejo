@@ -4,6 +4,7 @@
 import fcntl
 import json
 import os
+import sys
 from pathlib import Path
 
 # third-party imports
@@ -21,6 +22,7 @@ from . import cli
 from . import click_loguru
 from .common import CLUSTER_FILETYPE
 from .common import CLUSTERS_FILE
+from .common import FRAGMENTS_FILE
 from .common import HOMOLOGY_FILE
 from .common import PROTEINS_FILE
 from .common import PROTEOMES_FILE
@@ -29,6 +31,7 @@ from .common import dotpath_to_path
 from .common import group_key_filename
 from .common import parse_cluster_fasta
 from .common import read_tsv_or_parquet
+from .common import sort_proteome_frame
 from .common import write_tsv_or_parquet
 from .core import homology_cluster
 from .mailboxes import DataMailboxes
@@ -54,16 +57,24 @@ def do_homology(identity, setname, parallel):
     """Calculate homology clusters, MSAs, trees."""
     options = click_loguru.get_global_options()
     set_path = Path(setname)
-    file_stats_path = set_path / PROTEOMES_FILE
-    proteomes = read_tsv_or_parquet(file_stats_path)
+    proteomes_path = set_path / PROTEOMES_FILE
+    proteomes_in = read_tsv_or_parquet(proteomes_path)
+    proteomes = sort_proteome_frame(proteomes_in)
+    if not proteomes_in.equals(proteomes):
+        logger.info("proteomes sort order changed, writing new proteomes file")
+        write_tsv_or_parquet(proteomes, proteomes_path)
     n_proteomes = len(proteomes)
+    frags = read_tsv_or_parquet(set_path / FRAGMENTS_FILE)
+    frag_frames = {}
+    for dotpath, subframe in frags.groupby(by=["path"]):
+        frag_frames[dotpath] = subframe.copy().set_index("frag.orig_id")
     # write concatenated stats
     concat_fasta_path = set_path / "proteins.fa"
     if concat_fasta_path.exists():
         concat_fasta_path.unlink()
     arg_list = []
     for i, row in proteomes.iterrows():
-        arg_list.append((row, concat_fasta_path,))
+        arg_list.append((row, concat_fasta_path, frag_frames[row["path"]]))
     if not options.quiet:
         logger.info(f"Concatenating sequences for {len(arg_list)} proteomes:")
     for args in arg_list:
@@ -217,7 +228,7 @@ def do_homology(identity, setname, parallel):
 
 
 def write_concatenated_protein_fasta(args):
-    row, concat_fasta_path = args
+    row, concat_fasta_path, frags = args
     """Read peptide sequences from info file and write them out."""
     dotpath = row["path"]
     phylogeny_dict = {"idx": row.name, "path": dotpath}
@@ -225,6 +236,18 @@ def write_concatenated_protein_fasta(args):
         phylogeny_dict[n] = row[n]
     inpath = dotpath_to_path(dotpath) / PROTEINS_FILE
     prot_info = pd.read_parquet(inpath)
+    prot_info["frag.is_plas"] = prot_info["frag.id"].map(
+        lambda oid: frags.loc[oid]["frag.is_plas"]
+    )
+    prot_info["frag.is_scaf"] = prot_info["frag.id"].map(
+        lambda oid: frags.loc[oid]["frag.is_scaf"]
+    )
+    prot_info["frag.is_chr"] = prot_info["frag.id"].map(
+        lambda oid: frags.loc[oid]["frag.is_chr"]
+    )
+    prot_info["frag.id"] = prot_info["frag.id"].map(
+        lambda oid: frags.loc[oid]["frag.id"]
+    )
     for prop in phylogeny_dict:
         prot_info[prop] = phylogeny_dict[prop]
     info_to_fasta.callback(
@@ -238,7 +261,6 @@ def parse_cluster(fasta_path, file_dict=None, file_writer=None):
     outdir = fasta_path.parent
     prop_dict = parse_cluster_fasta(fasta_path)
     if len(prop_dict) < 2:
-        logger.warning(f"singleton cluster {fasta_path} removed")
         fasta_path.unlink()
         raise ValueError("Singleton Cluster")
     # calculate MSA and return guide tree
@@ -262,13 +284,14 @@ def parse_cluster(fasta_path, file_dict=None, file_writer=None):
         ]  # ,  "-cluster2", "neighborjoining"] #adds 20%
     muscle = sh.Command("muscle")
     muscle(muscle_args)
+    fasta_path.unlink()
     clusters = pd.DataFrame.from_dict(prop_dict).transpose()
     clusters["idx"] = clusters["path"].map(file_dict)
-    clusters.sort_values(by=["idx", "frag_id", "frag_pos"], inplace=True)
+    clusters.sort_values(by=["idx", "frag.id", "frag.pos"], inplace=True)
     clusters["adj_group"] = ""
     adjacency_group = 0
     was_adj = False
-    for unused_group_id, subframe in clusters.groupby(by=["idx", "frag_id"]):
+    for unused_group_id, subframe in clusters.groupby(by=["idx", "frag.id"]):
         if len(subframe) == 1:
             continue
         last_pos = -2
@@ -277,7 +300,7 @@ def parse_cluster(fasta_path, file_dict=None, file_writer=None):
             adjacency_group += 1
         was_adj = False
         for gene_id, row in subframe.iterrows():
-            if row["frag_pos"] == last_pos + 1:
+            if row["frag.pos"] == last_pos + 1:
                 if not was_adj:
                     clusters.loc[last_ID, "adj_group"] = str(adjacency_group)
                 was_adj = True
@@ -286,7 +309,7 @@ def parse_cluster(fasta_path, file_dict=None, file_writer=None):
                 if was_adj:
                     adjacency_group += 1
                     was_adj = False
-            last_pos = row["frag_pos"]
+            last_pos = row["frag.pos"]
             last_ID = gene_id
     if was_adj:
         adjacency_group += 1
@@ -323,7 +346,7 @@ def join_homology_to_proteome(args, mailbox_reader=None):
     proteins = pd.read_parquet(protein_parent / PROTEINS_FILE)
     n_proteins = len(proteins)
     with mailbox_reader(idx) as fh:
-        homology_frame = read_tsv_or_parquet(fh)
+        homology_frame = pd.read_csv(fh, sep="\t", index_col=0)
         clusters_in_proteome = len(homology_frame)
     homology_frame = homology_frame[["cluster", "adj_group"]]
     proteome_frame = pd.concat([proteins, homology_frame], axis=1)

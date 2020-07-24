@@ -14,6 +14,7 @@ import attr
 import click
 import dask.bag as db
 import gffpandas.gffpandas as gffpd
+import numpy as np
 import pandas as pd
 import toml
 from dask.diagnostics import ProgressBar
@@ -27,10 +28,16 @@ from pathvalidate import validate_filename
 # module imports
 from . import cli
 from . import click_loguru
+from .common import ALTERNATE_ABBREV
+from .common import CHROMOSOME_ABBREV
+from .common import CHROMOSOME_SYNONYMS
 from .common import FRAGMENTS_FILE
+from .common import PLASTID_STARTS
 from .common import PROTEINS_FILE
 from .common import PROTEOMES_FILE
 from .common import SAVED_INPUT_FILE
+from .common import SCAFFOLD_ABBREV
+from .common import SCAFFOLD_SYNONYMS
 from .common import dotpath_to_path
 from .common import sort_proteome_frame
 from .common import write_tsv_or_parquet
@@ -53,14 +60,6 @@ COMPRESSION_EXTENSIONS = (
 @cli.command()
 @click_loguru.init_logger()
 @click.option(
-    "-s/-l",
-    "--shorten_source/--no-shorten_source",
-    default=True,
-    is_flag=True,
-    show_default=True,
-    help="Remove invariant dotpaths in source IDs.",
-)
-@click.option(
     "--parallel/--no-parallel",
     is_flag=True,
     default=True,
@@ -68,7 +67,7 @@ COMPRESSION_EXTENSIONS = (
     help="Process in parallel.",
 )
 @click.argument("input_toml")
-def ingest_sequence_data(shorten_source, input_toml, parallel):
+def ingest_sequence_data(input_toml, parallel):
     """Marshal protein and genome sequence information.
 
     IDs must correspond between GFF and FASTA files and must be unique across
@@ -89,38 +88,51 @@ def ingest_sequence_data(shorten_source, input_toml, parallel):
         logger.info(f"Extracting FASTA/GFF info for {len(arg_list)} genomes:")
         ProgressBar().register()
     if parallel:
-        file_stats = bag.map(
-            read_fasta_and_gff, shorten_source=shorten_source
-        ).compute()
+        file_stats = bag.map(read_fasta_and_gff).compute()
     else:
         for args in arg_list:
-            file_stats.append(
-                read_fasta_and_gff(args, shorten_source=shorten_source)
-            )
+            file_stats.append(read_fasta_and_gff(args))
     del arg_list
-    seq_frame = pd.DataFrame.from_dict([s[0] for s in file_stats]).set_index(
+    seq_stats = pd.DataFrame.from_dict([s[0] for s in file_stats]).set_index(
         "path"
     )
-    frag_frame = pd.DataFrame.from_dict([s[1] for s in file_stats]).set_index(
+    frag_stats = pd.DataFrame.from_dict([s[1] for s in file_stats]).set_index(
         "path"
     )
     proteomes = pd.concat(
-        [input_table.set_index("path"), frag_frame, seq_frame], axis=1
+        [input_table.set_index("path"), frag_stats, seq_stats], axis=1
     )
     proteomes.drop(["fasta_url", "gff_url"], axis=1, inplace=True)
     proteomes = sort_proteome_frame(proteomes)
     proteome_table_path = set_path / PROTEOMES_FILE
     logger.info(
         f'Writing table of proteomes to "{proteome_table_path}", edit it to'
-        " change preferences"
-    )
-    logger.info(
-        "This is also the time to put DNA fragments on a common naming basis."
+        + " change preferences"
     )
     write_tsv_or_parquet(proteomes, proteome_table_path)
+    idx_start = 0
+    for df in [s[2] for s in file_stats]:
+        df.index = range(idx_start, idx_start + len(df))
+        idx_start += len(df)
+    frags = pd.concat([s[2] for s in file_stats], axis=0)
+    frags.index.name = "idx"
+    fragalyzer = FragmentCharacterizer()
+    frags = fragalyzer.assign_frag_properties(frags)
+    frags_path = set_path / FRAGMENTS_FILE
+    if not frags_path.exists():
+        logger.info(f'Writing "{frags_path}", edit it to rename fragments')
+        write_tsv_or_parquet(frags, frags_path)
+    else:
+        new_frags_path = set_path / ("new." + FRAGMENTS_FILE)
+        logger.info(f'A fragments file table already exists at "{frags_path}"')
+        logger.info(
+            f'A new file has been written at "{new_frags_path}"'
+            + "edit and rename it to rename fragments"
+        )
+        write_tsv_or_parquet(frags, new_frags_path)
 
 
-def read_fasta_and_gff(args, shorten_source=True):
+def read_fasta_and_gff(args):
     """Read corresponding sequence and position files and construct consolidated tables."""
     dotpath, fasta_url, gff_url = args
     out_path = dotpath_to_path(dotpath)
@@ -143,58 +155,163 @@ def read_fasta_and_gff(args, shorten_source=True):
         axis=1,
         inplace=True,
     )  # drop non-essential columns
-    if shorten_source:
-        # drop identical sub-fields in seq_id to make them easier to map
-        split_sources = features["seq_id"].str.split(".", expand=True)
-        split_sources = split_sources.drop(
-            [
-                i
-                for i in split_sources.columns
-                if len(set(split_sources[i])) == 1
-            ],
-            axis=1,
-        )
-        sources = split_sources.agg(".".join, axis=1)
-        features["seq_id"] = sources
     features = features.set_index("ID")
-    # Make a categorical column, frag_id, based on seq_id
-    features["frag_id"] = pd.Categorical(features["seq_id"])
-    features.drop(["seq_id"], axis=1, inplace=True)
+    features = features.rename(columns={"start": "frag.start"})
+    features.index.name = "prot.id"
+    # Make categoricals frag.id, frag.strand
+    features["frag.id"] = pd.Categorical(features["seq_id"])
+    features["frag.strand"] = pd.Categorical(features["strand"])
+    features.drop(["seq_id", "strand"], axis=1, inplace=True)
     # Drop any features not found in sequence file, e.g., zero-length
     features = features[features.index.isin(prop_frame.index)]
+    features = features.rename(columns={"start": "frag.start"})
     # sort fragments by largest value
-    frag_counts = features["frag_id"].value_counts()
-    frag_frame = pd.DataFrame()
-    frag_frame["counts"] = frag_counts
-    frag_frame["idx"] = range(len(frag_frame))
-    frag_frame["frag_id"] = frag_frame.index
-    frag_frame["new_name"] = ""
-    frag_frame.set_index(["idx"], inplace=True)
+    frag_counts = features["frag.id"].value_counts()
+    n_frags = len(frag_counts)
+    frags = pd.DataFrame(
+        {
+            "path": [dotpath] * n_frags,
+            "frag.len": frag_counts,
+            "frag.orig_id": frag_counts.index,
+        },
+        index=(frag_counts.index),
+    )
     frag_stats = {
         "path": dotpath,
-        "frag.n": len(frag_frame),
+        "frag.n": n_frags,
         "frag.max": frag_counts[0],
     }
-    frag_count_path = out_path / FRAGMENTS_FILE
-    if not frag_count_path.exists():
-        # logger.debug(f"Writing fragment stats to file {frag_count_path}")
-        write_tsv_or_parquet(frag_frame, frag_count_path)
-    del frag_frame
-    features["frag_count"] = features["frag_id"].map(frag_counts)
+    features["frag.count"] = features["frag.id"].map(frag_counts)
     features.sort_values(
-        by=["frag_count", "start"], ascending=[False, True], inplace=True
+        by=["frag.count", "frag.start"], ascending=[False, True], inplace=True
     )
     frag_id_range = []
     for frag_id in frag_counts.index:
         frag_id_range += list(range(frag_counts[frag_id]))
-    features["frag_pos"] = frag_id_range
+    features["frag.pos"] = frag_id_range
     del frag_id_range
-    features.drop(["frag_count"], axis=1, inplace=True)
+    features.drop(["frag.count"], axis=1, inplace=True)
     # join GFF info to FASTA info
     joined_path = out_path / PROTEINS_FILE
     features = features.join(prop_frame)
     write_tsv_or_parquet(features, joined_path)
-    return file_stats, frag_stats
+    return file_stats, frag_stats, frags
+
+
+@attr.s
+class FragmentCharacterizer:
+
+    """Rename and characterize fragments based on those names."""
+
+    extra_plastid_starts = attr.ib(default=[])
+    extra_chromosome_starts = attr.ib(default=[])
+    extra_scaffold_starts = attr.ib(default=[])
+
+    @attr.s
+    class UnknownsAsScaffolds(object):
+
+        """Keep track of unknown scaffolds."""
+
+        scaf_dict = attr.ib(default={})
+        n_scafs = attr.ib(default=0)
+        extra_plastid_starts = attr.ib(default=[])
+
+        def rename_unknowns(self, string):
+            """If the begginning of the id isn't recognized, rename as unique scaffold."""
+            for start in (
+                [SCAFFOLD_ABBREV, CHROMOSOME_ABBREV]
+                + PLASTID_STARTS
+                + self.extra_plastid_starts
+            ):
+                if string.startswith(start):
+                    return string
+            if string not in self.scaf_dict:
+                self.scaf_dict[string] = self.n_scafs
+                self.n_scafs += 1
+            return f"{ALTERNATE_ABBREV} {self.scaf_dict[string]}"
+
+    @attr.s
+    class PreserveUnique(object):
+
+        """Ensure uniqueness of a series is preserved."""
+
+        ser = attr.ib(default=None)
+
+        def ensure_still_unique(self, new_ser):
+            if new_ser.nunique() == self.ser.nunique():
+                self.ser = new_ser
+
+    def remove_leading_zeroes_in_field(self, string):
+        """If blank-separated fields are integer, remove the leading zero."""
+        split = string.split(" ")
+        for i, field in enumerate(split):
+            if field.isdigit():
+                split[i] = f"{int(field)}"
+        return " ".join(split)
+
+    def is_scaffold(self, ids):
+        """Assess whether fragment is likely a scaffold."""
+        return np.logical_or(
+            ids.str.contains(SCAFFOLD_ABBREV),
+            ids.str.startswith(ALTERNATE_ABBREV),
+        )
+
+    def is_chromosome(self, ids):
+        """Assess whether fragment is likely a chromosome."""
+        return np.logical_and(
+            ids.str.startswith(CHROMOSOME_ABBREV), ~self.is_scaffold(ids)
+        )
+
+    def is_plastid(self, ids):
+        """Assess whether fragment is likely a plastid."""
+        return np.logical_or.reduce(
+            [ids.str.startswith(s) for s in PLASTID_STARTS]
+        )
+
+    def cleanup_frag_ids(self, orig_ids):
+        """Try to automatically put genome fragments on a common basis."""
+        uniq = self.PreserveUnique(ser=orig_ids)
+        split_ids = orig_ids.str.split(".", expand=True)
+        split_ids = split_ids.drop(
+            [i for i in split_ids.columns if len(set(split_ids[i])) == 1],
+            axis=1,
+        )
+        uniq.ensure_still_unique(split_ids.agg(".".join, axis=1))
+        uniq.ensure_still_unique(uniq.ser.str.lower())
+        uniq.ensure_still_unique(uniq.ser.str.lower().str.replace("_", " "))
+        for synonym in CHROMOSOME_SYNONYMS:
+            uniq.ensure_still_unique(
+                uniq.ser.str.replace(synonym, CHROMOSOME_ABBREV)
+            )
+        uniq.ensure_still_unique(
+            uniq.ser.str.replace(CHROMOSOME_ABBREV, CHROMOSOME_ABBREV + " ")
+        )
+        for synonym in SCAFFOLD_SYNONYMS:
+            uniq.ensure_still_unique(
+                uniq.ser.str.replace(synonym, SCAFFOLD_ABBREV)
+            )
+        uniq.ensure_still_unique(
+            uniq.ser.str.replace(SCAFFOLD_ABBREV, SCAFFOLD_ABBREV + " ")
+        )
+        uniq.ensure_still_unique(uniq.ser.str.replace("  ", " "))
+        clean = uniq.ser.map(self.remove_leading_zeroes_in_field)
+        sc_namer = self.UnknownsAsScaffolds()
+        clean = clean.map(sc_namer.rename_unknowns)
+        orig_ids.index = clean
+        self.trans_dict = orig_ids.to_dict()
+        return clean
+
+    def assign_frag_properties(self, frags):
+        """Assign properties to fragments based on cleaned-up names."""
+        clean_list = []
+        for unused_path, subframe in frags.groupby(by=["path"]):
+            clean_list.append(self.cleanup_frag_ids(subframe["frag.orig_id"]))
+        clean_ids = pd.concat(clean_list).sort_index()
+        frags["frag.is_plas"] = self.is_plastid(clean_ids)
+        frags["frag.is_scaf"] = self.is_scaffold(clean_ids)
+        frags["frag.is_chr"] = self.is_chromosome(clean_ids)
+        frags["frag.id"] = clean_ids
+        return frags
 
 
 class TaxonomicInputTable:

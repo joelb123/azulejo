@@ -27,10 +27,10 @@ def test_local_data_ingestion(datadir_mgr):
             PI_GFF_FILE,
         ],
     ):
-        output = azulejo(["ingest-sequence-data", LOCAL_INPUT_FILE])
+        output = azulejo(["-q", "ingest-sequence-data", LOCAL_INPUT_FILE])
         print(output)
         assert Path("glycines/proteomes.tsv").exists()
-        assert Path("glycines/glyso/W05/fragments.tsv").exists()
+        assert Path("glycines/fragments.tsv").exists()
         assert Path("glycines/glyso/W05/proteins.parq").exists()
 
 
@@ -42,7 +42,7 @@ def test_net_data_ingestion(datadir_mgr):
         outscope="global",
         excludepaths=["logs/"],
     ):
-        output = azulejo(["ingest-sequence-data", NET_INPUT_FILE])
+        output = azulejo(["-q", "ingest-sequence-data", NET_INPUT_FILE])
         print(output)
-        assert Path("glycines/glyma/fragments.tsv").exists()
+        assert Path("glycines/fragments.tsv").exists()
         assert Path("glycines/glyma/proteins.parq").exists()
