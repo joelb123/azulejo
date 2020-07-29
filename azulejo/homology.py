@@ -4,7 +4,7 @@
 import fcntl
 import json
 import os
-import sys
+import shutil
 from pathlib import Path
 
 # third-party imports
@@ -27,9 +27,9 @@ from .common import HOMOLOGY_FILE
 from .common import PROTEINS_FILE
 from .common import PROTEOMES_FILE
 from .common import PROTEOMOLOGY_FILE
+from .common import TrimmableMemoryMap
 from .common import dotpath_to_path
 from .common import group_key_filename
-from .common import parse_cluster_fasta
 from .common import read_tsv_or_parquet
 from .common import sort_proteome_frame
 from .common import write_tsv_or_parquet
@@ -97,14 +97,17 @@ def do_homology(identity, setname, parallel):
         cluster_stats=False,
         outname="homology",
     )
+    log_path = Path("homology.log")
+    shutil.copy2(log_path, "logs/homology.log")
+    log_path.unlink()
     os.chdir(cwd)
-    logger.info(f"Stats of {n_clusters} clusters:")
-    logger.info(run_stats)
-    logger.info(f"\nCluster size histogram ({n_proteomes} proteomes):")
-    with pd.option_context(
-        "display.max_rows", None, "display.float_format", "{:,.2f}%".format
-    ):
-        logger.info(cluster_hist)
+    # logger.info(f"Stats of {n_clusters} clusters:")
+    # logger.info(run_stats)
+    # logger.info(f"\nCluster size histogram ({n_proteomes} proteomes):")
+    # with pd.option_context(
+    #     "display.max_rows", None, "display.float_format", "{:,.2f}%".format
+    # ):
+    #    logger.info(cluster_hist)
     del cluster_hist
     del run_stats
     concat_fasta_path.unlink()
@@ -113,7 +116,7 @@ def do_homology(identity, setname, parallel):
         mb_dir_path=(set_path / "mailboxes" / "clusters2proteomes"),
         file_extension="tsv",
     )
-    mb.write_headers("\tadj_group\tcluster\n")
+    mb.write_headers("\thom.cluster\thom.siz\n")
     cluster_paths = [
         set_path / "homology" / f"{i}.fa" for i in range(n_clusters)
     ]
@@ -255,12 +258,14 @@ def write_concatenated_protein_fasta(args):
     )
 
 
-def parse_cluster(fasta_path, file_dict=None, file_writer=None):
+def parse_cluster(
+    fasta_path, file_dict=None, file_writer=None, neighbor_joining=False
+):
     """Parse cluster FASTA headers to create cluster table.."""
     cluster_id = fasta_path.name[:-3]
     outdir = fasta_path.parent
-    prop_dict = parse_cluster_fasta(fasta_path)
-    if len(prop_dict) < 2:
+    clusters = parse_cluster_fasta(fasta_path)
+    if len(clusters) < 2:
         fasta_path.unlink()
         raise ValueError("Singleton Cluster")
     # calculate MSA and return guide tree
@@ -277,15 +282,16 @@ def parse_cluster(fasta_path, file_dict=None, file_writer=None):
         "-distance1",
         "kmer20_4",
     ]
-    if len(prop_dict) >= 4:
+    if len(clusters) >= 4:
         muscle_args += [
             "-tree2",
             f"{outdir}/{cluster_id}.nwk",
-        ]  # ,  "-cluster2", "neighborjoining"] #adds 20%
+        ]
+        if neighbor_joining:
+            muscle_args += ["-cluster2", "neighborjoining"]  # adds 20%
     muscle = sh.Command("muscle")
     muscle(muscle_args)
     fasta_path.unlink()
-    clusters = pd.DataFrame.from_dict(prop_dict).transpose()
     clusters["idx"] = clusters["path"].map(file_dict)
     clusters.sort_values(by=["idx", "frag.id", "frag.pos"], inplace=True)
     clusters["adj_group"] = ""
@@ -327,10 +333,11 @@ def parse_cluster(fasta_path, file_dict=None, file_writer=None):
     }
     for group_id, subframe in clusters.groupby(by=["idx"]):
         proteome_frame = subframe.copy()
-        proteome_frame["cluster"] = cluster_id
+        proteome_frame["hom.cluster"] = cluster_id
+        proteome_frame["hom.cl_size"] = len(idx_values)
         proteome_frame.drop(
             proteome_frame.columns.drop(
-                ["adj_group", "cluster"]
+                ["hom.cluster", "hom.cl_size"]
             ),  # drop EXCEPT these
             axis=1,
             inplace=True,
@@ -340,15 +347,46 @@ def parse_cluster(fasta_path, file_dict=None, file_writer=None):
     return int(cluster_id), cluster_dict
 
 
+def parse_cluster_fasta(filepath, trim_dict=True):
+    """Return FASTA headers as a dictionary of properties."""
+    next_pos = 0
+    properties_dict = {}
+    memory_map = TrimmableMemoryMap(filepath)
+    with memory_map.map() as mm:
+        size = memory_map.size
+        next_pos = mm.find(b">", next_pos)
+        while next_pos != -1 and next_pos < size:
+            eol_pos = mm.find(b"\n", next_pos)
+            if eol_pos == -1:
+                break
+            space_pos = mm.find(b" ", next_pos + 1, eol_pos)
+            if space_pos == -1:
+                raise ValueError(
+                    f"Header format is bad in {filepath} header"
+                    f" {len(properties_dict)+1}"
+                )
+            id = mm[next_pos + 1 : space_pos].decode("utf-8")
+            payload = json.loads(mm[space_pos + 1 : eol_pos])
+            properties_dict[id] = payload
+            if trim_dict:
+                size = memory_map.trim(space_pos, eol_pos)
+            next_pos = mm.find(b">", space_pos)
+    cluster = (
+        pd.DataFrame.from_dict(properties_dict).transpose().convert_dtypes()
+    )
+    return cluster
+
+
 def join_homology_to_proteome(args, mailbox_reader=None):
     """Read homology info from mailbox and join it to proteome file."""
     idx, protein_parent = args
     proteins = pd.read_parquet(protein_parent / PROTEINS_FILE)
     n_proteins = len(proteins)
     with mailbox_reader(idx) as fh:
-        homology_frame = pd.read_csv(fh, sep="\t", index_col=0)
+        homology_frame = pd.read_csv(
+            fh, sep="\t", index_col=0
+        ).convert_dtypes()
         clusters_in_proteome = len(homology_frame)
-    homology_frame = homology_frame[["cluster", "adj_group"]]
     proteome_frame = pd.concat([proteins, homology_frame], axis=1)
     write_tsv_or_parquet(proteome_frame, protein_parent / HOMOLOGY_FILE)
     return {
@@ -381,11 +419,9 @@ def info_to_fasta(infofile, fastafile, append, infoobj=None):
     with Path(fastafile).open(filemode) as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
         logger.debug(f"Writing to {fastafile} with mode {filemode}.")
+        seqs = infoobj["prot.seq"].copy()
+        del infoobj["prot.seq"]
         for gene_id, row in infoobj.iterrows():
-            row_dict = row.to_dict()
-            seq = row_dict["prot.seq"]
-            del row_dict["prot.seq"]
-            json_row = json.dumps(row_dict, separators=(",", ":"))
-            fh.write(f">{gene_id} {json_row}\n")
-            fh.write(f"{seq}\n")
+            fh.write(f">{gene_id} {row.to_json()}\n")
+            fh.write(f"{seqs[gene_id]}\n")
         fcntl.flock(fh, fcntl.LOCK_UN)

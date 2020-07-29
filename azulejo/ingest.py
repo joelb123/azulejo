@@ -31,6 +31,7 @@ from . import click_loguru
 from .common import ALTERNATE_ABBREV
 from .common import CHROMOSOME_ABBREV
 from .common import CHROMOSOME_SYNONYMS
+from .common import DIRECTIONAL_CATEGORY
 from .common import FRAGMENTS_FILE
 from .common import PLASTID_STARTS
 from .common import PROTEINS_FILE
@@ -156,15 +157,21 @@ def read_fasta_and_gff(args):
         inplace=True,
     )  # drop non-essential columns
     features = features.set_index("ID")
-    features = features.rename(columns={"start": "frag.start"})
+    features = features.rename(
+        columns={
+            "start": "frag.start",
+            "seq_id": "tmp.seq_id",
+            "strand": "tmp.strand",
+        }
+    )
     features.index.name = "prot.id"
-    # Make categoricals frag.id, frag.strand
-    features["frag.id"] = pd.Categorical(features["seq_id"])
-    features["frag.strand"] = pd.Categorical(features["strand"])
-    features.drop(["seq_id", "strand"], axis=1, inplace=True)
+    # Make categoricals
+    features["frag.id"] = pd.Categorical(features["tmp.seq_id"])
+    features["frag.direction"] = pd.Categorical(
+        features["tmp.strand"], dtype=DIRECTIONAL_CATEGORY
+    )
     # Drop any features not found in sequence file, e.g., zero-length
     features = features[features.index.isin(prop_frame.index)]
-    features = features.rename(columns={"start": "frag.start"})
     # sort fragments by largest value
     frag_counts = features["frag.id"].value_counts()
     n_frags = len(frag_counts)

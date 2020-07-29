@@ -18,7 +18,7 @@ from .common import NAME
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.8.5-post.1+646fe91"
+__version__ = "0.9.1"
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
@@ -55,9 +55,7 @@ def cli(warnings_as_errors, **unused_kwargs):
     License: BSD-3-Clause
     """
     if warnings_as_errors:
-        logger.warning(
-            "Runtime warnings (e.g., from pandas) will cause exceptions"
-        )
+        print("Runtime warnings (e.g., from pandas) will cause exceptions!")
         warnings.filterwarnings("error")
 
 

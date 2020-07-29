@@ -83,9 +83,9 @@ class ExternalMerge(object):
             header_value
         ] * self.n_merge
         self.value_vec = ma.masked_array(
-            [int(next(fh).rstrip()) for fh in self.fh_list],
-            mask=np.zeros(self.n_merge),
-        ).astype(np.uint32)
+            np.zeros(self.n_merge), mask=np.zeros(self.n_merge),
+        ).astype(np.uint64)
+        self._next_vals(np.arange(self.n_merge))
 
     def _next_vals(self, index_vec):
         """Return the value of the next iterated value."""
@@ -95,7 +95,12 @@ class ExternalMerge(object):
             except StopIteration:
                 self.value_vec.mask[index] = 1
 
-    def merge(self):
+    def _close_all(self):
+        """Close all filehandles."""
+        for i in range(self.n_merge):
+            self.fh_list[i].close()
+
+    def merge(self, count_key=None, ordinal_key=None):
         """Return list of merged values."""
         hashes = array.array("L")
         counts = array.array("h")
@@ -107,7 +112,14 @@ class ExternalMerge(object):
             if count > 1:
                 hashes.append(minimum)
                 counts.append(count)
-        merge_frame = pd.DataFrame(counts, columns=["syn.ortho"], index=hashes)
-        merge_frame.sort_values(by=["syn.ortho"], inplace=True)
-        merge_frame["syn.prefix"] = range(len(merge_frame))
+        self._close_all()
+        merge_frame = pd.DataFrame(
+            pd.array(counts, dtype=pd.UInt32Dtype()),
+            columns=[count_key],
+            index=hashes,
+        )
+        merge_frame.sort_values(by=[count_key], inplace=True)
+        merge_frame["tmp.base"] = pd.array(
+            range(len(merge_frame)), dtype=pd.UInt32Dtype()
+        )
         return merge_frame

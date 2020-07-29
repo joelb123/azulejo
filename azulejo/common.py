@@ -40,10 +40,10 @@ SAVED_INPUT_FILE = "input.toml"
 # TSV files, though readable/editable, do not give the written values back.
 # Parquet is also ~100X faster.
 4
-CLUSTER_FILETYPE = "tsv"
+CLUSTER_FILETYPE = "parq"
 CLUSTERS_FILE = "clusters.parq"
 FRAGMENTS_FILE = "fragments.tsv"
-HASH_HIST_FILE = "hash_hist.tsv"
+ANCHOR_HIST_FILE = "anchor_hist.tsv"
 HOMOLOGY_FILE = "proteins.hom.parq"
 PROTEOMES_FILE = "proteomes.tsv"
 PROTEOMOLOGY_FILE = "proteomes.hom.parq"
@@ -59,6 +59,7 @@ CHROMOSOME_ABBREV = "chr"
 SCAFFOLD_SYNONYMS = ["scaffold", "scaf", "sca"]
 SCAFFOLD_ABBREV = "sc"
 
+DIRECTIONAL_CATEGORY = pd.CategoricalDtype(categories=["-", "+"])
 # shared functions
 
 
@@ -112,6 +113,10 @@ class TrimmableMemoryMap:
                 self.map_obj.flush()
                 self.map_obj.close()
                 self.filehandle.truncate(self.size)
+                self.filehandle.close()
+            else:
+                self.map_obj.close()
+                self.filehandle.close()
 
 
 def dotpath_to_path(dotpath):
@@ -132,33 +137,6 @@ def fasta_records(filepath):
             count += 1
             next_pos = mm.find(angle_bracket, next_pos + 1)
     return count, size
-
-
-def parse_cluster_fasta(filepath, trim_dict=True):
-    """Return FASTA headers as a dictionary of properties."""
-    next_pos = 0
-    properties_dict = {}
-    memory_map = TrimmableMemoryMap(filepath)
-    with memory_map.map() as mm:
-        size = memory_map.size
-        next_pos = mm.find(b">", next_pos)
-        while next_pos != -1 and next_pos < size:
-            eol_pos = mm.find(b"\n", next_pos)
-            if eol_pos == -1:
-                break
-            space_pos = mm.find(b" ", next_pos + 1, eol_pos)
-            if space_pos == -1:
-                raise ValueError(
-                    f"Header format is bad in {filepath} header"
-                    f" {len(properties_dict)+1}"
-                )
-            id = mm[next_pos + 1 : space_pos].decode("utf-8")
-            payload = json.loads(mm[space_pos + 1 : eol_pos])
-            properties_dict[id] = payload
-            if trim_dict:
-                size = memory_map.trim(space_pos, eol_pos)
-            next_pos = mm.find(b">", space_pos)
-    return properties_dict
 
 
 def protein_file_stats_filename(setname):
@@ -198,12 +176,21 @@ def sort_proteome_frame(df):
     return df
 
 
+def remove_tmp_columns(df):
+    """Remove any columns in a data frame that begin with 'tmp.'."""
+    drop_cols = [col for col in df.columns if col.startswith("tmp.")]
+    if len(drop_cols) != 0:
+        return df.drop(drop_cols, axis=1)
+    return df
+
+
 def write_tsv_or_parquet(
     df,
     filepath,
     compression=DEFAULT_PARQUET_COMPRESSION,
-    float_format=None,
+    float_format="%.2f",
     desc=None,
+    remove_tmp=True,
 ):
     """Write either a TSV or a parquet file by file extension."""
     filepath = Path(filepath)
@@ -211,6 +198,8 @@ def write_tsv_or_parquet(
     if desc is not None:
         file_desc = f"{desc} file"
         logger.debug(f'Writing {file_desc} "{filepath}')
+    if remove_tmp:
+        df = remove_tmp_columns(df)
     if ext in PARQUET_EXTENSIONS:
         df.to_parquet(filepath, compression=compression)
     elif ext in TSV_EXTENSIONS:
@@ -228,9 +217,10 @@ def read_tsv_or_parquet(filepath):
         sys.exit(1)
     ext = filepath.suffix.lstrip(".")
     if ext in PARQUET_EXTENSIONS:
-        return pd.read_parquet(filepath)
+        return pd.read_parquet(filepath).convert_dtypes()
     elif ext in TSV_EXTENSIONS:
-        return pd.read_csv(filepath, sep="\t", index_col=0)
+        df = pd.read_csv(filepath, sep="\t", index_col=0)
+        return df.convert_dtypes()
     else:
         logger.error(f"Unrecognized file extensions {ext} in {filepath}")
         sys.exit(1)

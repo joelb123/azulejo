@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Synteny (genome order) operations."""
 # standard library imports
-import array
 import sys
 
 # from os.path import commonprefix as prefix
@@ -23,7 +22,8 @@ from loguru import logger
 # module imports
 from . import cli
 from . import click_loguru
-from .common import HASH_HIST_FILE
+from .common import ANCHOR_HIST_FILE
+from .common import DIRECTIONAL_CATEGORY
 from .common import HOMOLOGY_FILE
 from .common import PROTEOMOLOGY_FILE
 from .common import PROTEOSYN_FILE
@@ -42,54 +42,88 @@ class SyntenyBlockHasher(object):
 
     k = attr.ib(default=5)
     peatmer = attr.ib(default=True)
+    prefix = attr.ib(default="tmp")
 
-    def hash_name(self):
+    def hash_name(self, no_prefix=False):
         """Return the string name of the hash function."""
+        if no_prefix:
+            prefix_str = ""
+        else:
+            prefix_str = self.prefix + "."
         if self.peatmer:
-            return f"syn.hash.peatmer{self.k}"
-        return f"syn.hash.kmer{self.k}"
+            return f"{prefix_str}hash.peatmer{self.k}"
+        return f"{prefix_str}hash.kmer{self.k}"
+
+    def _hash_kmer(self, kmer):
+        """Return a hash of a kmer array."""
+        return xxhash.xxh32_intdigest(kmer.tobytes())
+
+    def shingle(self, cluster_series, base, direction, hash):
+        """Return a vector of anchor ID's. """
+        vec = cluster_series.to_numpy().astype(int)
+        steps = np.insert((vec[1:] != vec[:-1]).astype(int), 0, 0).cumsum()
+        try:
+            assert max(steps) == self.k - 1
+        except AssertionError:
+            logger.error(
+                f"Workaround for minor error in shingle at hash {hash}, base"
+                f" {base};"
+            )
+            logger.error(f"input homology string={vec}")
+            logger.error(f"max index = {max(steps)}, should be {self.k-1}")
+            steps[np.where(steps > self.k - 1)] = self.k - 1
+        if direction == "+":
+            return base + steps
+        return base + self.k - 1 - steps
 
     def calculate(self, cluster_series):
         """Return an array of synteny block hashes data."""
         # Maybe the best code I've ever written--JB
-        ids = []
-        directions = array.array("h")  # signed 16-byte
-        hashes = array.array("L")  # unsigned 32-bit
-        # Set up indirect indexing over cluster list
         vec = cluster_series.to_numpy().astype(int)
         if self.peatmer:
-            unequal_idxes = np.append(
-                np.where(vec[1:] != vec[:-1]), len(vec) - 1
-            )
-            runlengths = np.diff(np.append(-1, unequal_idxes))
+            uneq_idxs = np.append(np.where(vec[1:] != vec[:-1]), len(vec) - 1)
+            runlengths = np.diff(np.append(-1, uneq_idxs))
             positions = np.cumsum(np.append(0, runlengths))[:-1]
-            n_iter = len(positions) - self.k + 1
+            n_mers = len(positions) - self.k + 1
             footprints = pd.array(
-                [runlengths[i : i + self.k].sum() for i in range(n_iter)],
+                [runlengths[i : i + self.k].sum() for i in range(n_mers)],
                 dtype=pd.UInt32Dtype(),
             )
         else:
             n_elements = len(cluster_series)
-            n_iter = n_elements - self.k + 1
+            n_mers = n_elements - self.k + 1
             positions = np.arange(n_elements)
-            footprints = pd.array([self.k] * (n_iter), dtype=pd.UInt32Dtype())
-        for start in range(n_iter):
-            kmer = vec[positions[start : start + self.k]]
-            fwd_hash = xxhash.xxh32_intdigest(kmer.tobytes())
-            rev_hash = xxhash.xxh32_intdigest(np.flip(kmer.tobytes()))
-            if fwd_hash <= rev_hash:
-                hashes.append(fwd_hash)
-                directions.append(1)
-            else:
-                hashes.append(rev_hash)
-                directions.append(-1)
-            ids.append(cluster_series.index[start])
-        hash_arr = pd.array(hashes, dtype=pd.UInt32Dtype())
-        directions_ser = pd.Categorical(directions)
+            footprints = pd.array([self.k] * (n_mers), dtype=pd.UInt32Dtype())
+        if n_mers < 1:
+            return None
+        # Calculate k-mers over indirect index
+        kmer_mat = np.array(
+            [vec[positions[i : i + self.k]] for i in range(n_mers)]
+        )
+        fwd_rev_hashes = np.array(
+            [
+                np.apply_along_axis(self._hash_kmer, 1, kmer_mat),
+                np.apply_along_axis(
+                    self._hash_kmer, 1, np.flip(kmer_mat, axis=1)
+                ),
+            ]
+        )
+        plus_minus = np.array([["+"] * n_mers, ["-"] * n_mers])
+        directions = np.take_along_axis(
+            plus_minus,
+            np.expand_dims(fwd_rev_hashes.argmin(axis=0), axis=0),
+            axis=0,
+        )[0]
         return pd.DataFrame(
-            [directions_ser, footprints, hash_arr],
-            columns=["syn.direction", "syn.footprint", self.hash_name(),],
-            index=ids,
+            [
+                pd.Categorical(directions, dtype=DIRECTIONAL_CATEGORY),
+                footprints,
+                pd.array(
+                    np.amin(fwd_rev_hashes, axis=0), dtype=pd.Int64Dtype()
+                ),
+            ],
+            columns=["tmp.direction", "tmp.footprint", self.hash_name()],
+            index=cluster_series.index[positions[:n_mers]],
         )
 
 
@@ -119,7 +153,6 @@ def synteny_anchors(k, peatmer, setname, parallel):
     proteomes = read_tsv_or_parquet(file_stats_path)
     n_proteomes = len(proteomes)
     hasher = SyntenyBlockHasher(k=k, peatmer=peatmer)
-    hash_name = hasher.hash_name()
     hash_mb = DataMailboxes(
         n_boxes=n_proteomes,
         mb_dir_path=(set_path / "mailboxes" / "hash_merge"),
@@ -133,7 +166,8 @@ def synteny_anchors(k, peatmer, setname, parallel):
         bag = db.from_sequence(arg_list)
     if not options.quiet:
         logger.info(
-            f"Calculating synteny anchors using the {hash_name} function"
+            "Calculating synteny anchors using the"
+            f" {hasher.hash_name(no_prefix=True)} function"
             + f" for {n_proteomes} proteomes"
         )
         ProgressBar().register()
@@ -153,25 +187,27 @@ def synteny_anchors(k, peatmer, setname, parallel):
         file_path_func=hash_mb.path_to_mailbox, n_merge=n_proteomes
     )
     merger.init("hash")
-    merged_hashes = merger.merge()
+    merged_hashes = merger.merge(
+        count_key="tmp.ortho_count", ordinal_key="tmp.base"
+    )
+    merged_hashes["tmp.ortho_count"] *= k
     hash_mb.delete()
     ret_list = []
     if not options.quiet:
         logger.info(
-            f"Merging {len(merged_hashes)} synteny anchors into {n_proteomes} proteomes"
+            f"Merging {len(merged_hashes)} synteny anchors into {n_proteomes}"
+            " proteomes"
         )
         ProgressBar().register()
     if parallel:
         ret_list = bag.map(
-            merge_synteny_hashes,
-            merged_hashes=merged_hashes,
-            hash_name=hash_name,
+            merge_synteny_hashes, merged_hashes=merged_hashes, hasher=hasher,
         ).compute()
     else:
         for args in arg_list:
             ret_list.append(
                 merge_synteny_hashes(
-                    args, merged_hashes=merged_hashes, hash_name=hash_name
+                    args, merged_hashes=merged_hashes, hasher=hasher
                 )
             )
     synteny_stats = pd.DataFrame.from_dict(ret_list)
@@ -194,72 +230,117 @@ def calculate_synteny_hashes(args, mailboxes=None, hasher=None):
     """Calculate synteny hashes for protein genes."""
     idx, dotpath = args
     outpath = dotpath_to_path(dotpath)
-    h = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
-    h["nan_group"] = ((h["cluster"].isnull()).astype(int).cumsum() + 1) * (
-        ~h["cluster"].isnull()
-    )
+    hom = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
+    hom["tmp.nan_group"] = (
+        (hom["hom.cluster"].isnull()).astype(int).cumsum() + 1
+    ) * (~hom["hom.cluster"].isnull())
+    hom.replace(to_replace={"tmp.nan_group": 0}, value=pd.NA, inplace=True)
     hash_name = hasher.hash_name()
-    synteny_frame_list = []
-    for unused_id_tuple, subframe in h.groupby(by=["frag.id", "nan_group"]):
-        synteny_frame_list.append(hasher.calculate(subframe["cluster"]))
-    synteny_frame = pd.concat(synteny_frame_list, axis=0)
-    del synteny_frame_list
-    hash_series = synteny_frame[hash_name]
-    hash_counts = hash_series.value_counts()
-    synteny_frame["syn.selfcount"] = synteny_frame[hash_name].map(hash_counts)
-    write_tsv_or_parquet(synteny_frame, outpath / SYNTENY_FILE)
-    # Do histogram of hashes
-    hash_hist = pd.DataFrame(hash_counts.value_counts()).sort_index()
-    hash_hist["pct_hashes"] = hash_hist[hash_name] * 100.0 / len(synteny_frame)
-    write_tsv_or_parquet(hash_hist, outpath / HASH_HIST_FILE)
+    syn_list = []
+    for unused_id_tuple, subframe in hom.groupby(
+        by=["frag.id", "tmp.nan_group"]
+    ):
+        syn_list.append(hasher.calculate(subframe["hom.cluster"]))
+    syn = pd.concat([df for df in syn_list if df is not None], axis=0)
+    del syn_list
+    syn["tmp.frag.id"] = syn.index.map(hom["frag.id"])
+    syn["tmp.i"] = pd.array(range(len(syn)), dtype=pd.UInt32Dtype())
+    hash_counts = syn[hash_name].value_counts()
+    syn["tmp.self_count"] = pd.array(
+        syn[hash_name].map(hash_counts), dtype=pd.UInt32Dtype()
+    )
+    frag_count_arr = pd.array([pd.NA] * len(syn), dtype=pd.UInt32Dtype())
+    hash_is_null = syn[hash_name].isnull()
+    for unused_frag, subframe in syn.groupby(by=["tmp.frag.id"]):
+        try:
+            frag_hash_counts = subframe[hash_name].value_counts()
+        except ValueError:
+            continue
+        for unused_i, row in subframe.iterrows():
+            row_no = row["tmp.i"]
+            if not hash_is_null[row_no]:
+                hash_val = row[hash_name]
+                frag_count_arr[row_no] = frag_hash_counts[hash_val]
+    syn["tmp.frag_count"] = frag_count_arr
+    del syn["tmp.i"]
+    write_tsv_or_parquet(syn, outpath / SYNTENY_FILE, remove_tmp=False)
     # Write out sorted list of hash values
-    unique_hashes = hash_series.unique().to_numpy().astype("uint32")
+    unique_hashes = syn[hash_name].unique().to_numpy()
     unique_hashes.sort()
     with mailboxes.locked_open_for_write(idx) as fh:
         np.savetxt(fh, unique_hashes, fmt="%d")
     return len(unique_hashes)
 
 
-def merge_synteny_hashes(args, merged_hashes=None, hash_name=None):
+def merge_synteny_hashes(args, merged_hashes=None, hasher=None):
     """Merge synteny hashes into proteomes."""
+    hash_name = hasher.hash_name()
+    plain_hash_name = hasher.hash_name(no_prefix=True)
     idx, dotpath = args
     outpath = dotpath_to_path(dotpath)
     syn = read_tsv_or_parquet(outpath / SYNTENY_FILE)
     syn = syn.join(merged_hashes, on=hash_name)
     homology = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
     syn = pd.concat([homology, syn], axis=1)
-    syn["i"] = range(len(syn))
-    synteny_id_arr = pd.array([pd.NA] * len(syn), dtype=pd.Int32Dtype())
-    ortho_arr = pd.array([pd.NA] * len(syn), dtype=pd.Int32Dtype())
-    for ortho, subframe in syn.groupby(by=["syn.ortho"]):
+    print(f"doing {dotpath}")
+    n_prots = len(syn)
+    syn["tmp.i"] = range(len(syn))
+    shingled_vars = {
+        plain_hash_name: np.array([np.nan] * n_prots),
+        "direction": np.array([""] * n_prots),
+        "self_count": np.array([np.nan] * n_prots),
+        "footprint": np.array([np.nan] * n_prots),
+        "frag_count": np.array([np.nan] * n_prots),
+        "ortho_count": np.array([np.nan] * n_prots),
+    }
+    anchor_blocks = np.array([np.nan] * n_prots)
+    for hash_val, subframe in syn.groupby(by=["tmp.base"]):
         for unused_i, row in subframe.iterrows():
-            footprint = row["syn.footprint"]
-            prefix = row["syn.prefix"]
-            row_no = row["i"]
-            synteny_id_arr[row_no : row_no + footprint] = prefix
-            ortho_arr[row_no : row_no + footprint] = ortho
-    syn["syn.id"] = synteny_id_arr
-    syn["syn.ortho"] = ortho_arr
-    del (
-        syn[hash_name],
-        syn["i"],
-        syn["syn.prefix"],
+            footprint = row["tmp.footprint"]
+            row_no = row["tmp.i"]
+            anchor_vec = hasher.shingle(
+                syn["hom.cluster"][row_no : row_no + footprint],
+                row["tmp.base"],
+                row["tmp.direction"],
+                row[hash_name],
+            )
+            anchor_blocks[row_no : row_no + footprint] = anchor_vec
+            for key in shingled_vars:
+                shingled_vars[key][row_no : row_no + footprint] = row[
+                    "tmp." + key
+                ]
+    syn["syn.anchor_id"] = pd.array(anchor_blocks, dtype=pd.UInt32Dtype())
+    syn["syn.direction"] = pd.Categorical(
+        shingled_vars["direction"], dtype=DIRECTIONAL_CATEGORY
     )
+    syn["syn." + plain_hash_name] = pd.array(
+        shingled_vars[plain_hash_name], dtype=pd.Int64Dtype()
+    )
+    del shingled_vars["direction"], shingled_vars[plain_hash_name]
+    for key in shingled_vars:
+        syn["syn." + key] = pd.array(
+            shingled_vars[key], dtype=pd.UInt32Dtype()
+        )
     write_tsv_or_parquet(
         syn, outpath / SYNTENY_FILE,
     )
-    n_genes = len(syn)
-    in_synteny = n_genes - syn["syn.id"].isnull().sum()
-    n_assigned = n_genes - syn["cluster"].isnull().sum()
-    ambig = (syn["syn.selfcount"] != 1).sum()
+    in_synteny = n_prots - syn["syn.anchor_id"].isnull().sum()
+    # n_assigned = n_genes - syn["hom.cluster"].isnull().sum()
+    n_assigned = 1
+    # Do histogram of blocks
+    # anchor_hist = pd.DataFrame(anchor_counts.value_counts()).sort_index()
+    # anchor_hist = anchor_hist.rename(columns={"syn.anchor_id": "self_count"})
+    # anchor_hist["pct_anchors"] = anchor_hist["self_count"] * anchor_hist.index * 100.0 / n_assigned
+    # write_tsv_or_parquet(anchor_hist, outpath / ANCHOR_HIST_FILE)
+    ambig = (syn["tmp.self_count"] != 1).sum()
     synteny_pct = in_synteny * 100.0 / n_assigned
     unambig_pct = (in_synteny - ambig) * 100.0 / n_assigned
     synteny_stats = {
         "idx": idx,
         "path": dotpath,
         "hom.assign": n_assigned,
-        "syn.assign": in_synteny,
-        "synt.ambig": ambig,
+        "syn.anchors": in_synteny,
+        "syn.ambig": ambig,
         "syn.assgn_pct": synteny_pct,
         "syn.unamb_pct": unambig_pct,
     }
@@ -317,27 +398,21 @@ def dagchainer_synteny(setname):
     synteny_hash_name = "dagchainer"
     set_path = Path(setname)
     logger.debug(f"Reading {synteny_hash_name} synteny file.")
-    synteny_frame = pd.read_csv(
-        cluster_path, sep="\t", header=None, names=["cluster", "id"]
+    syn = pd.read_csv(
+        cluster_path, sep="\t", header=None, names=["hom.cluster", "id"]
     )
-    synteny_frame["synteny_id"] = synteny_frame["cluster"].map(
-        dagchainer_id_to_int
-    )
-    synteny_frame = synteny_frame.drop(["cluster"], axis=1)
-    cluster_counts = synteny_frame["synteny_id"].value_counts()
-    synteny_frame["synteny_count"] = synteny_frame["synteny_id"].map(
-        cluster_counts
-    )
-    synteny_frame = synteny_frame.sort_values(
-        by=["synteny_count", "synteny_id"]
-    )
-    synteny_frame = synteny_frame.set_index(["id"])
+    syn["synteny_id"] = syn["hom.cluster"].map(dagchainer_id_to_int)
+    syn = syn.drop(["hom.cluster"], axis=1)
+    cluster_counts = syn["synteny_id"].value_counts()
+    syn["synteny_count"] = syn["synteny_id"].map(cluster_counts)
+    syn = syn.sort_values(by=["synteny_count", "synteny_id"])
+    syn = syn.set_index(["id"])
     files_frame, frame_dict = read_files(setname)
     set_keys = list(files_frame["stem"])
 
     def id_to_synteny_property(ident, column):
         try:
-            return int(synteny_frame.loc[ident, column])
+            return int(syn.loc[ident, column])
         except KeyError:
             return 0
 

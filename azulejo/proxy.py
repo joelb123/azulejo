@@ -211,7 +211,7 @@ def calculate_proxy_genes(setname, synteny_type, prefs):
             proxy_frame = proxy_frame.append(frame_dict[stem])
     del files_frame
     proxy_frame = proxy_frame.sort_values(
-        by=["cluster_size", "cluster", "synteny_count", "synteny_id"]
+        by=["cluster_size", "hom.cluster", "synteny_count", "synteny_id"]
     )
     proxy_filename = f"{setname}-{synteny_type}-{PROXY_ENDING}"
     logger.debug(f"Writing initial proxy file {proxy_filename}.")
@@ -220,7 +220,7 @@ def calculate_proxy_genes(setname, synteny_type, prefs):
     logger.debug("Downselecting homology clusters.")
     downselector = ProxySelector(proxy_frame, prefs)
     for unused_cluster, homology_cluster in proxy_frame.groupby(
-        by=["cluster"]
+        by=["hom.cluster"]
     ):  # pylint: disable=unused-variable
         downselector.cluster_selector(homology_cluster)
     downselected = downselector.downselect_frame()

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.8.5-post.1+646fe91"
+version = "0.9.0"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -41,7 +41,7 @@ click = "^7.1.2"
 dask = {extras = ["bag"], version = "^2.15.0"}
 matplotlib = "^3.2.1"
 numpy = "^1.18.3"
-pandas = "^1.0.3"
+pandas = "^1.1.0"
 seaborn = "^0.10.1"
 click_plugins = "^1.1.1"
 sh = "^1.13.1"

@@ -42,11 +42,11 @@ def check_compression(compression):
 @cli.command()
 @click_loguru.init_logger(logfile=False)
 @click.option(
-    "--column_names",
+    "--columns",
     default=False,
     is_flag=True,
     show_default=False,
-    help="Print the names of columns.",
+    help="Print names/dtypes of columns.",
 )
 @click.option(
     "--index_name",
@@ -78,7 +78,7 @@ def check_compression(compression):
     help="Do not write the header.",
 )
 @click.option(
-    "--column",
+    "--col",
     "-c",
     default=None,
     multiple=True,
@@ -94,7 +94,7 @@ def check_compression(compression):
     help="Write only the row with this index value.",
 )
 @click.option(
-    "--first_n",
+    "--head",
     default=0,
     show_default=False,
     help="Write only the first N rows.",
@@ -112,7 +112,7 @@ def check_compression(compression):
     help="Pretty-print N cols.",
 )
 @click.option(
-    "--last_n",
+    "--tail",
     default=0,
     show_default=False,
     help="Write only the last N rows.",
@@ -122,12 +122,12 @@ def check_compression(compression):
 def parquet_to_tsv(
     parquetfile,
     tsvfile,
-    column_names,
+    columns,
     index_name,
-    column,
+    col,
     no_index,
-    first_n,
-    last_n,
+    head,
+    tail,
     index_val,
     no_header,
     pretty,
@@ -156,25 +156,22 @@ def parquet_to_tsv(
                 sys.exit(1)
             index_values.append(val)
         df = df[df.index.isin(index_values)]
-    elif first_n > 0:
-        df = df[:first_n]
-    elif last_n > 0:
-        df = df[last_n:]
-    if column_names:
-        for column in df.columns:
-            print(column)
+    elif head > 0:
+        df = df[:head]
+    elif tail > 0:
+        df = df[tail:]
+    if columns:
+        print(df.dtypes)
     elif index_name:
         print(df.index.name)
     else:
-        if column != ():
-            columns = []
-            for col in column:
-                if col not in df.columns:
-                    logger.error(
-                        f'name "{column}" not found in list of columns '
-                    )
+        if col != ():
+            col_list = []
+            for c in col:
+                if c not in df.columns:
+                    logger.error(f'name "{c}" not found in list of columns ')
                     sys.exit(1)
-                columns.append(col)
+                col_list.append(col)
             if pretty:
                 with pd.option_context(
                     "display.max_rows",
@@ -189,7 +186,7 @@ def parquet_to_tsv(
                 df.to_csv(
                     tsvfile,
                     sep="\t",
-                    columns=columns,
+                    columns=col_list,
                     index=write_index,
                     header=write_header,
                 )

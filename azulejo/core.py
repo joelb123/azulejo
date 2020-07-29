@@ -358,7 +358,7 @@ def homology_cluster(
     allfilepath = dirpath / f"{outname}-allhist.tsv"
     idpath = dirpath / f"{outname}-ids.tsv"
     if identity == 0.0:
-        identity_string = "minimum"
+        identity_string = "Minimum"
     else:
         identity_string = f"{prettyprint_float(identity *100, 2)}%"
     logger.info(f'{identity_string} sequence identity cluster "{outname}":')
@@ -452,7 +452,7 @@ def homology_cluster(
             )
         file_frame.drop(["name"], axis=1, inplace=True)
         file_frame.set_index("idx", inplace=True)
-        write_tsv_or_parquet(file_frame, "clusters.tsv")
+        # write_tsv_or_parquet(file_frame, "clusters.tsv")
         # cluster histogram
         cluster_hist = pd.DataFrame(file_frame["seqs"].value_counts())
         cluster_hist.rename(columns={"seqs": "clusters"}, inplace=True)
@@ -486,10 +486,10 @@ def homology_cluster(
     # Write out list of clusters and ids.
     #
     id_frame = pd.DataFrame.from_dict(
-        {"id": ids, "cluster": clusters, "siz": sizes}
+        {"id": ids, "hom.cluster": clusters, "siz": sizes}
     )
     id_frame.sort_values("siz", ascending=False, inplace=True)
-    id_frame = id_frame.reindex(["cluster", "siz", "id",], axis=1)
+    id_frame = id_frame.reindex(["hom.cluster", "siz", "id",], axis=1)
     id_frame.reset_index(inplace=True)
     id_frame.drop(["index"], axis=1, inplace=True)
     id_frame.to_csv(idpath, sep="\t")
@@ -637,7 +637,7 @@ def clusters_to_histograms(infile):
     clusters = pd.read_csv(dirpath / infile, sep="\t", index_col=0)
     cluster_counter = Counter()
     for unused_cluster_id, group in clusters.groupby(
-        ["cluster"]
+        ["hom.cluster"]
     ):  # pylint: disable=unused-variable
         cluster_counter.update({len(group): 1})
     logger.info(f"Writing to {histfilepath}.")
@@ -839,7 +839,7 @@ def prepare_protein_files(
 def add_singletons(infile, recordfile):
     """Add singleton clusters to cluster file."""
     clusters = pd.read_csv(
-        infile, header=None, names=["cluster", "id"], sep="\t"
+        infile, header=None, names=["hom.cluster", "id"], sep="\t"
     )
     records = pd.read_csv(recordfile, sep="\t")
     id_set = set(records["id"])
@@ -854,10 +854,12 @@ def add_singletons(infile, recordfile):
     sizes = []
     lengths = []
     n_clusters = 0
-    grouping = clusters.groupby("cluster").size().sort_values(ascending=False)
+    grouping = (
+        clusters.groupby("hom.cluster").size().sort_values(ascending=False)
+    )
     for idx in grouping.index:
         size = grouping.loc[idx]
-        cluster = clusters.loc[(clusters["cluster"] == idx)]
+        cluster = clusters.loc[(clusters["hom.cluster"] == idx)]
         for gene_id in cluster["id"]:
             id_set.remove(gene_id)
             ids.append(gene_id)
@@ -874,7 +876,7 @@ def add_singletons(infile, recordfile):
         n_clusters += 1
     cluster_frame = pd.DataFrame(
         list(zip(cluster_ids, ids, sizes, lengths)),
-        columns=["cluster", "id", "siz", "len"],
+        columns=["hom.cluster", "id", "siz", "len"],
     )
     cluster_frame.to_csv(outfile, sep="\t")
 
@@ -887,10 +889,12 @@ def adjacency_to_graph(infile):
     gmlfilepath = "synteny.gml"
     clusters = pd.read_csv(infile, sep="\t", index_col=0)
     graph = nx.Graph()
-    grouping = clusters.groupby("cluster").size().sort_values(ascending=False)
+    grouping = (
+        clusters.groupby("hom.cluster").size().sort_values(ascending=False)
+    )
     for idx in grouping.index:
         # size = grouping.loc[idx]
-        cluster = clusters.loc[(clusters["cluster"] == idx)]
+        cluster = clusters.loc[(clusters["hom.cluster"] == idx)]
         ids = list(cluster["id"])
         #
         # Do graph components
@@ -919,7 +923,7 @@ def compute_subclusters(cluster, cluster_size_dict=None):
     subcl_frame["cont"] = subcl_frame["sub_siz"] == [
         cluster_size_dict[id] for id in subcl_frame["homo_id"]
     ]
-    subcl_frame.loc[subcl_frame["cont"], "link"] = np.nan
+    subcl_frame.loc[subcl_frame["cont"], "link"] = pd.NA
     subcl_frame.sort_values(
         ["sub_siz", "std", "mean_len"],
         ascending=[False, True, False],
@@ -928,7 +932,7 @@ def compute_subclusters(cluster, cluster_size_dict=None):
     subcl_frame["sub"] = list(range(len(subcl_frame)))
     subcl_frame.index = list(range(len(subcl_frame)))
     # normalized length is NaN for first element
-    subcl_frame["norm"] = [np.nan] + list(
+    subcl_frame["norm"] = [pd.NA] + list(
         subcl_frame["mean_len"][1:] / subcl_frame["mean_len"][0]
     )
     subcl_dict = subcl_frame.set_index("homo_id").to_dict("index")
@@ -982,7 +986,7 @@ def combine_clusters(first_n, clust_size, synfile, homofile, parallel):
     if not options.quiet and clust_size:
         logger.info(f"Only clusters of size {clust_size} will be used.")
     syn["link"] = [homo_id_dict[id] for id in syn["id"]]
-    for unused_cluster_id, group in syn.groupby(["cluster"]):
+    for unused_cluster_id, group in syn.groupby(["hom.cluster"]):
         cluster = group.copy()  # copy, so mutable
         clsize = cluster["siz"].iloc[0]
         if clust_size and (clsize != clust_size):
@@ -1008,7 +1012,7 @@ def combine_clusters(first_n, clust_size, synfile, homofile, parallel):
             cluster_list.append(compute_subclusters(clust, cluster_size_dict))
     logger.debug(timer.elapsed("concatenating/writing clusters"))
     out_frame = pd.concat(cluster_list)
-    out_frame.sort_values(["cluster", "sub"], inplace=True)
+    out_frame.sort_values(["hom.cluster", "sub"], inplace=True)
     out_frame.index = list(range(len(out_frame)))
     for column in ["sub", "sub_siz"]:
         out_frame[column] = out_frame[column].astype(int)
@@ -1019,7 +1023,7 @@ def combine_clusters(first_n, clust_size, synfile, homofile, parallel):
         "combined.tsv",
         sep="\t",
         columns=[
-            "cluster",
+            "hom.cluster",
             "siz",
             "sub",
             "sub_siz",
@@ -1034,7 +1038,9 @@ def combine_clusters(first_n, clust_size, synfile, homofile, parallel):
         index=False,
     )
     logger.debug(timer.elapsed("computing stats"))
-    n_fully_contained = len(set(out_frame[out_frame["cont"] == 1]["cluster"]))
+    n_fully_contained = len(
+        set(out_frame[out_frame["cont"] == 1]["hom.cluster"])
+    )
     contained_pct = n_fully_contained * 100.0 / cluster_count
     logger.info(
         f"{n_fully_contained} of {cluster_count}"
