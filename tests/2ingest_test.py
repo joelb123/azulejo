@@ -33,7 +33,7 @@ def test_local_data_ingestion(datadir_mgr):
         print(output)
         assert Path("glycines/proteomes.tsv").exists()
         assert Path("glycines/fragments.tsv").exists()
-        assert Path("glycines/glyso/W05/proteins.parq").exists()
+        assert Path("glycines/glyso/W05/proteins-unrenamed.parq").exists()
 
 
 def test_net_data_ingestion(datadir_mgr):
@@ -47,4 +47,4 @@ def test_net_data_ingestion(datadir_mgr):
         output = azulejo(["-q", "-e", "ingest-sequence-data", NET_INPUT_FILE])
         print(output)
         assert Path("glycines/fragments.tsv").exists()
-        assert Path("glycines/glyma/proteins.parq").exists()
+        assert Path("glycines/glyma/proteins-unrenamed.parq").exists()

@@ -34,7 +34,7 @@ from .common import CHROMOSOME_SYNONYMS
 from .common import DIRECTIONAL_CATEGORY
 from .common import FRAGMENTS_FILE
 from .common import PLASTID_STARTS
-from .common import PROTEINS_FILE
+from .common import UNRENAMED_PROTEINS_FILE
 from .common import PROTEOMES_FILE
 from .common import SAVED_INPUT_FILE
 from .common import SCAFFOLD_ABBREV
@@ -56,6 +56,8 @@ COMPRESSION_EXTENSIONS = (
     "gz",
     "bz2",
 )
+
+MINIMUM_PROTEINS = 100
 
 
 @cli.command()
@@ -105,6 +107,20 @@ def ingest_sequence_data(input_toml, parallel):
     )
     proteomes.drop(["fasta_url", "gff_url"], axis=1, inplace=True)
     proteomes = sort_proteome_frame(proteomes)
+    if not options.quiet:
+        with pd.option_context(
+            "display.max_rows", None, "display.float_format", "{:,.2f}%".format
+        ):
+            print(
+                proteomes.drop(
+                    [
+                        col
+                        for col in proteomes.columns
+                        if col.startswith("phy")
+                    ],
+                    axis=1,
+                )
+            )
     proteome_table_path = set_path / PROTEOMES_FILE
     logger.info(
         f'Writing table of proteomes to "{proteome_table_path}", edit it to'
@@ -142,12 +158,19 @@ def read_fasta_and_gff(args):
         unused_stem, unused_path, prop_frame, file_stats = cleanup_fasta(
             out_path, fasta_fh, dotpath, write_fasta=False, write_stats=False
         )
-    # logger.debug(f"Reading GFF file {gff_url}.")
+    if len(prop_frame) < MINIMUM_PROTEINS:
+        logger.error(f"For FASTA file at URL'{fasta_url}")
+        logger.error(f"Number of proteins read {len(prop_frame)} is too small")
+        sys.exit(1)
     with filepath_from_url(gff_url) as local_gff_file:
         annotation = gffpd.read_gff3(local_gff_file)
     features = annotation.filter_feature_of_type(
         ["mRNA"]
     ).attributes_to_columns()
+    if len(features) < MINIMUM_PROTEINS:
+        logger.error(f"For GFF file at URL'{fasta_url}")
+        logger.error(f"Number of records read {len(features)} is too small")
+        sys.exit(1)
     del annotation
     features.drop(
         features.columns.drop(
@@ -199,8 +222,18 @@ def read_fasta_and_gff(args):
     del frag_id_range
     features.drop(["frag.count"], axis=1, inplace=True)
     # join GFF info to FASTA info
-    joined_path = out_path / PROTEINS_FILE
+    joined_path = out_path / UNRENAMED_PROTEINS_FILE
     features = features.join(prop_frame)
+    # Make unsigned integer 32
+    for int_key in ["frag.start", "frag.pos", "prot.len", "prot.n_ambig"]:
+        features[int_key] = pd.array(features[int_key], dtype=pd.UInt32Dtype())
+    for bool_key in ["prot.m_start", "prot.no_stop"]:
+        features[int_key] = pd.array(
+            features[int_key], dtype=pd.BooleanDtype()
+        )
+    features["prot.seq"] = pd.array(
+        features["prot.seq"], dtype=pd.StringDtype()
+    )
     write_tsv_or_parquet(features, joined_path)
     return file_stats, frag_stats, frags
 
@@ -314,9 +347,15 @@ class FragmentCharacterizer:
         for unused_path, subframe in frags.groupby(by=["path"]):
             clean_list.append(self.cleanup_frag_ids(subframe["frag.orig_id"]))
         clean_ids = pd.concat(clean_list).sort_index()
-        frags["frag.is_plas"] = self.is_plastid(clean_ids)
-        frags["frag.is_scaf"] = self.is_scaffold(clean_ids)
-        frags["frag.is_chr"] = self.is_chromosome(clean_ids)
+        frags["frag.is_plas"] = pd.array(
+            self.is_plastid(clean_ids), dtype="boolean"
+        )
+        frags["frag.is_scaf"] = pd.array(
+            self.is_scaffold(clean_ids), dtype="boolean"
+        )
+        frags["frag.is_chr"] = pd.array(
+            self.is_chromosome(clean_ids), dtype="boolean"
+        )
         frags["frag.id"] = clean_ids
         return frags
 

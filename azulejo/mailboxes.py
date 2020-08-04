@@ -23,12 +23,25 @@ class DataMailboxes:
     file_extension = attr.ib(default=None)
 
     def write_headers(self, header):
-        """Initialize the mailboxes, optionally writing header."""
+        """Initialize the mailboxes, writing a free-form header."""
         self.mb_dir_path.mkdir(parents=True, exist_ok=True)
         for i in range(self.n_boxes):
             mb_path = self.path_to_mailbox(i)
             with mb_path.open("w") as fh:
                 fh.write(header)
+
+    def write_tsv_headers(self, columns, index_name=None):
+        """Initialize the mailboxes, writing a tab-separated header."""
+        if index_name is None:
+            start = "\t"
+        else:
+            start = f"{index_name}\t"
+        colstring = "\t".join(columns)
+        self.mb_dir_path.mkdir(parents=True, exist_ok=True)
+        for i in range(self.n_boxes):
+            mb_path = self.path_to_mailbox(i)
+            with mb_path.open("w") as fh:
+                fh.write(f"{start}{colstring}\n")
 
     @contextlib.contextmanager
     def locked_open_for_write(self, box_no):

@@ -13,24 +13,25 @@ from loguru import logger
 
 # global constants
 NAME = "azulejo"
-DEFAULT_PARQUET_COMPRESSION = "zstd"
+DEFAULT_PARQUET_COMPRESSION = "ZSTD"
 # Sizes and minimum read times with various compressions
-# for a file with one proteome on a system with M.2 SSD disk:
-#   "NONE": 43MB, 1.3s
-#   "ZSTD": 13M, 1.5s
-#    "LZ4": 23MB, 1.5s
-# "SNAPPY": 29 MB, 1.5s
-# "BROTLI": 13 MB, 1.6s
-#   "GZIP": 14 MB, 1.8 s
-#    "LZO": not supported in version tested
-#    'BZ2': not supported in version tested
+# for a file with one proteome on a system with M.2 SSD disk
+# under pyarrow 1.0.0 into pandas 1.1.0:
+#   "NONE": 43MB, 1.8s
+#   "ZSTD": 13M, 1.8s
+# "SNAPPY": 29 MB, 1.8s
+# "BROTLI": 13 MB, 1.9s
+#    "LZ4": 23MB, (disabled under pyarrow 1.0.0, was about like brotli under 0.17)
+#   "GZIP": 14 MB, 2.1 s
+#    "LZO": not supported
+#    "BZ2": not supported
 # In addition, the ingest process took 28.8s with None, and
-# 28.4 s with ZSTD.  Although 'NONE' is marginally faster to
-# read the whole file, the margin is low.  At 70% compression,
-# the performance of ZSTD can be expected to get better
-# on production systems with slower disks and systems for which
-# the cache is not warmed up as mine was for testing.
-# So I choose ZSTD for now.
+# 28.4 s with ZSTD, probably due to writing less data.
+# With its 70% compression factor,  ZSTD can be expected to
+# perform even better relative to uncompressed and snappy
+# on production systems with slower disks for which
+# cache is not warmed up (as mine was in this test).
+# So ZSTD seems a clear choice for now.
 
 PARQUET_EXTENSIONS = ["parquet", "pq", "parq"]
 TSV_EXTENSIONS = ["tsv"]
@@ -49,6 +50,7 @@ PROTEOMES_FILE = "proteomes.tsv"
 PROTEOMOLOGY_FILE = "proteomes.hom.parq"
 PROTEOSYN_FILE = "proteomes.hom.syn.parq"
 PROTEINS_FILE = "proteins.parq"
+UNRENAMED_PROTEINS_FILE = "proteins-unrenamed.parq"
 SYNTENY_FILE = "proteins.hom.syn.parq"
 
 # fragment-name defs
