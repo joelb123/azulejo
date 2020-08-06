@@ -211,16 +211,17 @@ def read_fasta_and_gff(args):
         "frag.n": n_frags,
         "frag.max": frag_counts[0],
     }
-    features["frag.count"] = features["frag.id"].map(frag_counts)
+    features["frag.prot_count"] = features["frag.id"].map(frag_counts)
     features.sort_values(
-        by=["frag.count", "frag.start"], ascending=[False, True], inplace=True
+        by=["frag.prot_count", "frag.id", "frag.start"],
+        ascending=[False, False, True],
+        inplace=True,
     )
     frag_id_range = []
     for frag_id in frag_counts.index:
         frag_id_range += list(range(frag_counts[frag_id]))
     features["frag.pos"] = frag_id_range
     del frag_id_range
-    features.drop(["frag.count"], axis=1, inplace=True)
     # join GFF info to FASTA info
     joined_path = out_path / UNRENAMED_PROTEINS_FILE
     features = features.join(prop_frame)

@@ -4,6 +4,7 @@
 import array
 import contextlib
 import fcntl
+import sys
 from pathlib import Path
 
 # third-party imports
@@ -11,6 +12,9 @@ import attr
 import numpy as np
 import numpy.ma as ma
 import pandas as pd
+
+# global constant
+MAX_LINE_LEN = 144
 
 
 @attr.s
@@ -98,13 +102,22 @@ class ExternalMerge(object):
         self.value_vec = ma.masked_array(
             np.zeros(self.n_merge), mask=np.zeros(self.n_merge),
         ).astype(np.uint64)
+        self.payloads = np.array(
+            [""] * self.n_merge, dtype=f"<U{MAX_LINE_LEN}"
+        )
         self._next_vals(np.arange(self.n_merge))
 
     def _next_vals(self, index_vec):
         """Return the value of the next iterated value."""
         for index in index_vec:
             try:
-                self.value_vec[index] = int(next(self.fh_list[index]))
+                splitline = next(self.fh_list[index]).split("\t")
+                self.value_vec[index] = int(splitline[0])
+                payload = "\t".join(splitline[1:]).strip()
+                if len(payload) > MAX_LINE_LEN:
+                    print(f"payload line too long in file index{index}")
+                    sys.exit(1)
+                self.payloads[index] = payload
             except StopIteration:
                 self.value_vec.mask[index] = 1
 
@@ -113,26 +126,19 @@ class ExternalMerge(object):
         for i in range(self.n_merge):
             self.fh_list[i].close()
 
-    def merge(self, count_key=None, ordinal_key=None):
-        """Return list of merged values."""
-        hashes = array.array("L")
-        counts = array.array("h")
+    def merge(self, merge_obj, count_key=None):
+        """Call merge_obj.merge_func for each merge, return merge_obj.results()."""
         while (~self.value_vec.mask).sum() > 1:
             minimum = np.amin(self.value_vec)
-            where_min = np.where(self.value_vec == minimum)[0]
+            min_vec = self.value_vec == minimum
+            where_min = np.where(min_vec)[0]
             self._next_vals(where_min)
             count = len(where_min)
             if count > 1:
-                hashes.append(minimum)
-                counts.append(count)
+                merge_obj.merge_func(
+                    minimum,
+                    count,
+                    ma.masked_array(self.payloads, mask=~min_vec),
+                )
         self._close_all()
-        merge_frame = pd.DataFrame(
-            pd.array(counts, dtype=pd.UInt32Dtype()),
-            columns=[count_key],
-            index=hashes,
-        )
-        merge_frame.sort_values(by=[count_key], inplace=True)
-        merge_frame["tmp.base"] = pd.array(
-            range(len(merge_frame)), dtype=pd.UInt32Dtype()
-        )
-        return merge_frame
+        return merge_obj.results()

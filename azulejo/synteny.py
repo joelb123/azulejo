@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Synteny (genome order) operations."""
 # standard library imports
+import array
 import sys
 
 # from os.path import commonprefix as prefix
@@ -10,13 +11,13 @@ from pathlib import Path
 import attr
 import click
 import dask.bag as db
+import networkx as nx
 import numpy as np
 import pandas as pd
-from dask.diagnostics import ProgressBar
-
-# first-party imports
 import sh
 import xxhash
+from dask.diagnostics import ProgressBar
+from itertools import combinations
 from loguru import logger
 
 # module imports
@@ -43,6 +44,8 @@ CLUSTER_COLS = [
     "syn.direction",
     "syn.ortho_count",
 ]
+
+MERGE_COLS = ["tmp.self_count", "frag.idx"]
 
 
 @attr.s
@@ -137,6 +140,97 @@ class SyntenyBlockHasher(object):
         )
 
 
+@attr.s
+class SimpleMerger(object):
+
+    """Counts instance of merges."""
+
+    count_key = attr.ib(default="value")
+    ordinal_key = attr.ib(default="count")
+    values = array.array("L")
+    counts = array.array("h")
+
+    def merge_func(self, value, count, unused_payload_vec):
+        """Return list of merged values."""
+        self.values.append(value)
+        self.counts.append(count)
+
+    def results(self):
+        merge_frame = pd.DataFrame(
+            pd.array(self.counts, dtype=pd.UInt32Dtype()),
+            columns=[self.count_key],
+            index=self.values,
+        )
+        merge_frame.sort_values(by=[self.count_key], inplace=True)
+        merge_frame[self.ordinal_key] = pd.array(
+            range(len(merge_frame)), dtype=pd.UInt32Dtype()
+        )
+        return merge_frame
+
+
+@attr.s
+class AmbiguousMerger(object):
+
+    """Counts instance of merges."""
+
+    graph_path = attr.ib(default=Path("synteny.gml"))
+    count_key = attr.ib(default="value")
+    ordinal_key = attr.ib(default="count")
+    ambig_key = attr.ib(default="ambig")
+    values = array.array("L")
+    counts = array.array("h")
+    ambig = array.array("h")
+    graph = nx.Graph()
+
+    def _unpack_payloads(self, vec):
+        """Unpack TSV ints in payload"""
+        wheres = np.where(~vec.mask)[0]
+        values = np.array(
+            [[int(i) for i in s.split("\t")] for s in vec.compressed()]
+        ).transpose()
+        return wheres, values
+
+    def merge_func(self, value, count, payload_vec):
+        """Return list of merged values."""
+        self.values.append(value)
+        self.counts.append(count)
+        wheres, arr = self._unpack_payloads(payload_vec)
+        self.ambig.append(arr[0].max())
+        self._adjacency_to_graph([f"{i}" for i in arr[1]], value)
+
+    def _adjacency_to_graph(self, nodes, edgename):
+        """Turn adjacency data into GML graph file."""
+        self.graph.add_nodes_from(nodes)
+        edges = combinations(nodes, 2)
+        self.graph.add_edges_from(edges, label=f"{edgename}")
+
+    def results(self):
+        merge_frame = pd.DataFrame(
+            {self.count_key: self.counts, self.ambig_key: self.ambig},
+            index=self.values,
+            dtype=pd.UInt32Dtype(),
+        )
+        merge_frame.sort_values(
+            by=[self.ambig_key, self.count_key], inplace=True
+        )
+        unambig_frame = merge_frame[merge_frame[self.ambig_key] == 1].copy()
+        unambig_frame[self.ordinal_key] = pd.array(
+            range(len(unambig_frame)), dtype=pd.UInt32Dtype()
+        )
+        del unambig_frame[self.ambig_key]
+        ambig_frame = merge_frame[merge_frame[self.ambig_key] > 1].copy()
+        ambig_frame = ambig_frame.rename(
+            columns={self.count_key: self.count_key + ".ambig"}
+        )
+        ambig_frame[self.ordinal_key + ".ambig"] = pd.array(
+            range(len(ambig_frame)), dtype=pd.UInt32Dtype()
+        )
+        del merge_frame
+        logger.info(f"Writing fragment synteny graph to {self.graph_path}")
+        nx.write_gml(self.graph, self.graph_path)
+        return unambig_frame, ambig_frame, self.graph
+
+
 @cli.command()
 @click_loguru.init_logger()
 @click.option("-k", default=5, help="Synteny block length.", show_default=True)
@@ -205,22 +299,28 @@ def synteny_anchors(k, peatmer, setname, parallel):
         file_path_func=hash_mb.path_to_mailbox, n_merge=n_proteomes
     )
     merger.init("hash")
-    merged_hashes = merger.merge(
-        count_key="tmp.ortho_count", ordinal_key="tmp.base"
+    merge_counter = AmbiguousMerger(
+        count_key="tmp.ortho_count",
+        ordinal_key="tmp.base",
+        ambig_key="tmp.max_ambig",
+        graph_path=set_path / "synteny.gml",
     )
-    merged_hashes["tmp.base"] *= k
+    unambig_hashes, ambig_hashes, graph = merger.merge(merge_counter)
+    unambig_hashes["tmp.base"] *= k
+    ambig_hashes["tmp.base.ambig"] *= k
     hash_mb.delete()
     ret_list = []
     if not options.quiet:
         logger.info(
-            f"Merging {len(merged_hashes)} synteny anchors into {n_proteomes}"
+            f"Merging {len(unambig_hashes)} synteny anchors into {n_proteomes}"
             " proteomes"
         )
         ProgressBar().register()
     if parallel:
         ret_list = bag.map(
             merge_synteny_hashes,
-            merged_hashes=merged_hashes,
+            unambig_hashes=unambig_hashes,
+            ambig_hashes=ambig_hashes,
             hasher=hasher,
             n_proteomes=n_proteomes,
             file_writer=cluster_mb.locked_open_for_write,
@@ -230,7 +330,8 @@ def synteny_anchors(k, peatmer, setname, parallel):
             ret_list.append(
                 merge_synteny_hashes(
                     args,
-                    merged_hashes=merged_hashes,
+                    unambig_hashes=unambig_hashes,
+                    ambig_hashes=ambig_hashes,
                     hasher=hasher,
                     n_proteomes=n_proteomes,
                     file_writer=cluster_mb.locked_open_for_write,
@@ -364,16 +465,23 @@ def calculate_synteny_hashes(args, mailboxes=None, hasher=None):
     syn["tmp.frag_count"] = frag_count_arr
     del syn["tmp.i"]
     write_tsv_or_parquet(syn, outpath / SYNTENY_FILE, remove_tmp=False)
-    # Write out sorted list of hash values
-    unique_hashes = syn[hash_name].unique().to_numpy()
-    unique_hashes.sort()
+    syn["frag.idx"] = hom["frag.idx"]
+    unique_hashes = syn[[hash_name] + MERGE_COLS].drop_duplicates(
+        subset=[hash_name]
+    )
+    unique_hashes = unique_hashes.set_index(hash_name).sort_index()
     with mailboxes.locked_open_for_write(idx) as fh:
-        np.savetxt(fh, unique_hashes, fmt="%d")
+        unique_hashes.to_csv(fh, header=False, sep="\t")
     return len(unique_hashes)
 
 
 def merge_synteny_hashes(
-    args, merged_hashes=None, hasher=None, n_proteomes=None, file_writer=None
+    args,
+    unambig_hashes=None,
+    ambig_hashes=None,
+    hasher=None,
+    n_proteomes=None,
+    file_writer=None,
 ):
     """Merge synteny hashes into proteomes."""
     hash_name = hasher.hash_name()
@@ -381,7 +489,8 @@ def merge_synteny_hashes(
     idx, dotpath = args
     outpath = dotpath_to_path(dotpath)
     syn = read_tsv_or_parquet(outpath / SYNTENY_FILE)
-    syn = syn.join(merged_hashes, on=hash_name)
+    syn = syn.join(unambig_hashes, on=hash_name)
+    syn = syn.join(ambig_hashes, on=hash_name)
     homology = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
     syn = pd.concat([homology, syn], axis=1)
     n_proteins = len(syn)

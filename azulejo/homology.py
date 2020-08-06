@@ -74,6 +74,7 @@ def do_homology(identity, setname, parallel):
     n_proteomes = len(proteomes)
     # read and update fragment ID's
     frags = read_tsv_or_parquet(set_path / FRAGMENTS_FILE)
+    frags["frag.idx"] = frags.index
     frag_frames = {}
     for dotpath, subframe in frags.groupby(by=["path"]):
         frag_frames[dotpath] = subframe.copy().set_index("frag.orig_id")
@@ -251,6 +252,9 @@ def write_concatenated_protein_fasta(args):
         phylogeny_dict[n] = row[n]
     inpath = dotpath_to_path(dotpath)
     prot_info = read_tsv_or_parquet(inpath / UNRENAMED_PROTEINS_FILE)
+    prot_info["frag.idx"] = prot_info["frag.id"].map(
+        lambda oid: frags.loc[oid]["frag.idx"]
+    )
     prot_info["frag.is_plas"] = prot_info["frag.id"].map(
         lambda oid: frags.loc[oid]["frag.is_plas"]
     )
