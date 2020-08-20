@@ -486,7 +486,11 @@ def homology_cluster(
     # Write out list of clusters and ids.
     #
     id_frame = pd.DataFrame.from_dict(
-        {"id": ids, "hom.cluster": clusters, "siz": sizes}
+        {
+            "id": ids,
+            "hom.cluster": pd.array(clusters, dtype=pd.UInt32Dtype()),
+            "siz": sizes,
+        }
     )
     id_frame.sort_values("siz", ascending=False, inplace=True)
     id_frame = id_frame.reindex(["hom.cluster", "siz", "id",], axis=1)

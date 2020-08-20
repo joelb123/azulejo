@@ -50,7 +50,6 @@ PROTEOMES_FILE = "proteomes.tsv"
 PROTEOMOLOGY_FILE = "proteomes.hom.parq"
 PROTEOSYN_FILE = "proteomes.hom.syn.parq"
 PROTEINS_FILE = "proteins.parq"
-UNRENAMED_PROTEINS_FILE = "proteins-unrenamed.parq"
 SYNTENY_FILE = "proteins.hom.syn.parq"
 
 # fragment-name defs
@@ -193,6 +192,7 @@ def write_tsv_or_parquet(
     float_format="%.2f",
     desc=None,
     remove_tmp=True,
+    sort_cols=True,
 ):
     """Write either a TSV or a parquet file by file extension."""
     filepath = Path(filepath)
@@ -202,6 +202,8 @@ def write_tsv_or_parquet(
         logger.debug(f'Writing {file_desc} "{filepath}')
     if remove_tmp:
         df = remove_tmp_columns(df)
+    if sort_cols:
+        df = df[sorted(df.columns)]
     if ext in PARQUET_EXTENSIONS:
         df.to_parquet(filepath, compression=compression)
     elif ext in TSV_EXTENSIONS:

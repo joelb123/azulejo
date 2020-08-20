@@ -101,7 +101,7 @@ class ExternalMerge(object):
         ] * self.n_merge
         self.value_vec = ma.masked_array(
             np.zeros(self.n_merge), mask=np.zeros(self.n_merge),
-        ).astype(np.uint64)
+        ).astype(np.uint32)
         self.payloads = np.array(
             [""] * self.n_merge, dtype=f"<U{MAX_LINE_LEN}"
         )

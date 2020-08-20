@@ -160,51 +160,31 @@ def parquet_to_tsv(
         df = df[:head]
     elif tail > 0:
         df = df[tail:]
-    if columns:
+    if col != ():
+        col_list = []
+        for c in col:
+            if c not in df.columns:
+                logger.error(f'name "{c}" not found in list of columns ')
+                sys.exit(1)
+            col_list.append(c)
+        print(col_list)
+        df = df[col_list]
+    if pretty:
+        with pd.option_context(
+            "display.max_rows",
+            max_rows,
+            "display.max_columns",
+            max_cols,
+            "display.float_format",
+            "{:,.2f}%".format,
+        ):
+            print(df)
+    elif columns:
         print(df.dtypes)
     elif index_name:
         print(df.index.name)
     else:
-        if col != ():
-            col_list = []
-            for c in col:
-                if c not in df.columns:
-                    logger.error(f'name "{c}" not found in list of columns ')
-                    sys.exit(1)
-                col_list.append(col)
-            if pretty:
-                with pd.option_context(
-                    "display.max_rows",
-                    max_rows,
-                    "display.max_columns",
-                    max_cols,
-                    "display.float_format",
-                    "{:,.2f}%".format,
-                ):
-                    print(df)
-            else:
-                df.to_csv(
-                    tsvfile,
-                    sep="\t",
-                    columns=col_list,
-                    index=write_index,
-                    header=write_header,
-                )
-        else:
-            if pretty:
-                with pd.option_context(
-                    "display.max_rows",
-                    max_rows,
-                    "display.max_columns",
-                    max_cols,
-                    "display.float_format",
-                    "{:,.2f}%".format,
-                ):
-                    print(df)
-            else:
-                df.to_csv(
-                    tsvfile, sep="\t", index=write_index, header=write_header
-                )
+        df.to_csv(tsvfile, sep="\t", index=write_index, header=write_header)
 
 
 @cli.command()

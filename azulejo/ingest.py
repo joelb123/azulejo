@@ -34,7 +34,7 @@ from .common import CHROMOSOME_SYNONYMS
 from .common import DIRECTIONAL_CATEGORY
 from .common import FRAGMENTS_FILE
 from .common import PLASTID_STARTS
-from .common import UNRENAMED_PROTEINS_FILE
+from .common import PROTEINS_FILE
 from .common import PROTEOMES_FILE
 from .common import SAVED_INPUT_FILE
 from .common import SCAFFOLD_ABBREV
@@ -122,10 +122,8 @@ def ingest_sequence_data(input_toml, parallel):
                 )
             )
     proteome_table_path = set_path / PROTEOMES_FILE
-    logger.info(
-        f'Writing table of proteomes to "{proteome_table_path}", edit it to'
-        + " change preferences"
-    )
+    logger.info(f'Writing table of proteomes to "{proteome_table_path}')
+    logger.info("edit it to change preferences")
     write_tsv_or_parquet(proteomes, proteome_table_path)
     idx_start = 0
     for df in [s[2] for s in file_stats]:
@@ -211,7 +209,9 @@ def read_fasta_and_gff(args):
         "frag.n": n_frags,
         "frag.max": frag_counts[0],
     }
-    features["frag.prot_count"] = features["frag.id"].map(frag_counts)
+    features["frag.prot_count"] = pd.array(
+        features["frag.id"].map(frag_counts), dtype=pd.UInt32Dtype()
+    )
     features.sort_values(
         by=["frag.prot_count", "frag.id", "frag.start"],
         ascending=[False, False, True],
@@ -223,7 +223,7 @@ def read_fasta_and_gff(args):
     features["frag.pos"] = frag_id_range
     del frag_id_range
     # join GFF info to FASTA info
-    joined_path = out_path / UNRENAMED_PROTEINS_FILE
+    joined_path = out_path / PROTEINS_FILE
     features = features.join(prop_frame)
     # Make unsigned integer 32
     for int_key in ["frag.start", "frag.pos", "prot.len", "prot.n_ambig"]:
@@ -235,7 +235,7 @@ def read_fasta_and_gff(args):
     features["prot.seq"] = pd.array(
         features["prot.seq"], dtype=pd.StringDtype()
     )
-    write_tsv_or_parquet(features, joined_path)
+    write_tsv_or_parquet(features, joined_path, sort_cols=False)
     return file_stats, frag_stats, frags
 
 

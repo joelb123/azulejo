@@ -29,7 +29,6 @@ from .common import HOMOLOGY_FILE
 from .common import PROTEINS_FILE
 from .common import PROTEOMES_FILE
 from .common import PROTEOMOLOGY_FILE
-from .common import UNRENAMED_PROTEINS_FILE
 from .common import TrimmableMemoryMap
 from .common import dotpath_to_path
 from .common import group_key_filename
@@ -74,7 +73,7 @@ def do_homology(identity, setname, parallel):
     n_proteomes = len(proteomes)
     # read and update fragment ID's
     frags = read_tsv_or_parquet(set_path / FRAGMENTS_FILE)
-    frags["frag.idx"] = frags.index
+    frags["frag.idx"] = pd.array(frags.index, dtype=pd.UInt32Dtype())
     frag_frames = {}
     for dotpath, subframe in frags.groupby(by=["path"]):
         frag_frames[dotpath] = subframe.copy().set_index("frag.orig_id")
@@ -251,7 +250,7 @@ def write_concatenated_protein_fasta(args):
     for n in [name for name in row.index if name.startswith("phy.")]:
         phylogeny_dict[n] = row[n]
     inpath = dotpath_to_path(dotpath)
-    prot_info = read_tsv_or_parquet(inpath / UNRENAMED_PROTEINS_FILE)
+    prot_info = read_tsv_or_parquet(inpath / PROTEINS_FILE)
     prot_info["frag.idx"] = prot_info["frag.id"].map(
         lambda oid: frags.loc[oid]["frag.idx"]
     )
@@ -268,7 +267,7 @@ def write_concatenated_protein_fasta(args):
         lambda oid: frags.loc[oid]["frag.id"]
     )
     # Write out updated protein info
-    write_tsv_or_parquet(prot_info, inpath / PROTEINS_FILE)
+    write_tsv_or_parquet(prot_info, inpath / HOMOLOGY_FILE)
     # include phylogeny info in per-sequence info
     for prop in phylogeny_dict:
         prot_info[prop] = phylogeny_dict[prop]
@@ -408,7 +407,7 @@ def parse_cluster_fasta(filepath, trim_dict=True):
 def join_homology_to_proteome(args, mailbox_reader=None):
     """Read homology info from mailbox and join it to proteome file."""
     idx, protein_parent = args
-    proteins = pd.read_parquet(protein_parent / PROTEINS_FILE)
+    proteins = pd.read_parquet(protein_parent / HOMOLOGY_FILE)
     n_proteins = len(proteins)
     with mailbox_reader(idx) as fh:
         homology_frame = pd.read_csv(
@@ -416,6 +415,18 @@ def join_homology_to_proteome(args, mailbox_reader=None):
         ).convert_dtypes()
         clusters_in_proteome = len(homology_frame)
     proteome_frame = pd.concat([proteins, homology_frame], axis=1)
+    proteome_frame = proteome_frame.astype(
+        {
+            "hom.cluster": pd.UInt32Dtype(),
+            "hom.cl_size": pd.UInt32Dtype(),
+            "prot.m_start": pd.BooleanDtype(),
+            "frag.idx": pd.UInt32Dtype(),
+            "prot.no_stop": pd.BooleanDtype(),
+            "frag.is_plas": pd.BooleanDtype(),
+            "frag.is_scaf": pd.BooleanDtype(),
+            "frag.is_chr": pd.BooleanDtype(),
+        }
+    )
     write_tsv_or_parquet(proteome_frame, protein_parent / HOMOLOGY_FILE)
     return {
         "prot.idx": idx,
