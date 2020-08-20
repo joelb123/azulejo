@@ -18,7 +18,7 @@ from .common import NAME
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.2-post.1+618579f"
+__version__ = "0.9.3"
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
