@@ -86,6 +86,14 @@ def check_compression(compression):
     help="Write only the named column.",
 )
 @click.option(
+    "--writefile",
+    "-w",
+    default=False,
+    is_flag=True,
+    show_default=True,
+    help="Write to a TSV file.",
+)
+@click.option(
     "--index_val",
     "-i",
     default=None,
@@ -133,6 +141,7 @@ def parquet_to_tsv(
     pretty,
     max_rows,
     max_cols,
+    writefile,
 ):
     """Reads parquet file, writes tsv."""
     parquetpath = Path(parquetfile)
@@ -144,6 +153,8 @@ def parquet_to_tsv(
         max_cols = int(max_cols)
     if tsvfile == ():
         tsvfile = sys.stdout
+    if writefile:
+        tsvfile = parquetpath.stem + ".tsv"
     if not parquetpath.exists():
         logger.error(f'parquet file "{parquetpath} does not exist.')
         sys.exit(1)

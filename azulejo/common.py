@@ -2,7 +2,6 @@
 """Constants and functions in common across modules."""
 # standard library imports
 import contextlib
-import json
 import mmap
 import sys
 from pathlib import Path
@@ -228,3 +227,17 @@ def read_tsv_or_parquet(filepath):
     else:
         logger.error(f"Unrecognized file extensions {ext} in {filepath}")
         sys.exit(1)
+
+
+def log_and_add_to_stats(stats, new_stats):
+    with pd.option_context(
+        "display.max_rows",
+        None,
+        "display.max_columns",
+        None,
+        "display.float_format",
+        "{:,.1f}%".format,
+    ):
+        logger.info(new_stats)
+    overlap_cols = list(set(stats.columns) & set(new_stats.columns))
+    return pd.concat([stats, new_stats.drop(columns=overlap_cols)], axis=1)

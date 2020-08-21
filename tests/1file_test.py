@@ -12,7 +12,7 @@ from azulejo.ingest import TaxonomicInputTable
 
 # global constants
 DOWNLOAD_URL = "https://v1.legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
-RAW_FASTA_FILE = "glyso.W05.gnm1.ann1.T47J.protein.faa"
+RAW_FASTA_FILE = "glyso.W05.gnm1.ann1.T47J.protein_primaryTranscript.faa"
 RAW_GFF_FILE = "glyso.W05.gnm1.ann1.T47J.gene_models_main.gff3"
 INPUT_FILE = "glyma+glyso.toml"
 

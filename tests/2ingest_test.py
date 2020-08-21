@@ -8,7 +8,7 @@ import sh
 
 # global constants
 azulejo = sh.Command("azulejo")
-W05_FASTA_FILE = "glyso.W05.gnm1.ann1.T47J.protein.faa"
+W05_FASTA_FILE = "glyso.W05.gnm1.ann1.T47J.protein_primaryTranscript.faa"
 W05_GFF_FILE = "glyso.W05.gnm1.ann1.T47J.gene_models_main.gff3"
 PI_FASTA_FILE = "glycines/glyso/PI483463/glyso.PI483463.faa"
 PI_GFF_FILE = "glycines/glyso/PI483463/glyso.PI483463.gff"
@@ -33,7 +33,7 @@ def test_local_data_ingestion(datadir_mgr):
         print(output)
         assert Path("glycines/proteomes.tsv").exists()
         assert Path("glycines/fragments.tsv").exists()
-        assert Path("glycines/glyso/W05/proteins-unrenamed.parq").exists()
+        assert Path("glycines/glyso/W05/proteins.parq").exists()
 
 
 def test_net_data_ingestion(datadir_mgr):
@@ -47,4 +47,4 @@ def test_net_data_ingestion(datadir_mgr):
         output = azulejo(["-q", "-e", "ingest-sequence-data", NET_INPUT_FILE])
         print(output)
         assert Path("glycines/fragments.tsv").exists()
-        assert Path("glycines/glyma/proteins-unrenamed.parq").exists()
+        assert Path("glycines/glyma/proteins.parq").exists()

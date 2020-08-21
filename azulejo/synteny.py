@@ -31,6 +31,7 @@ from .common import PROTEOMOLOGY_FILE
 from .common import PROTEOSYN_FILE
 from .common import SYNTENY_FILE
 from .common import dotpath_to_path
+from .common import log_and_add_to_stats
 from .common import read_tsv_or_parquet
 from .common import remove_tmp_columns
 from .common import write_tsv_or_parquet
@@ -41,8 +42,8 @@ from .mailboxes import ExternalMerge
 CLUSTER_COLS = [
     "syn.anchor_id",
 ]
-
 MERGE_COLS = ["syn.hash.self_count", "frag.idx"]
+DEFAULT_K = 3
 
 
 @attr.s
@@ -151,20 +152,24 @@ class AmbiguousMerger(object):
         count_key="value",
         ordinal_key="count",
         ambig_key="ambig",
-        unambig_start=0,
-        ambig_start=0,
+        start_base=0,
+        k=None,
+        graph=None,
     ):
         """Create arrays as instance attributes."""
         self.graph_path = graph_path
         self.count_key = count_key
         self.ordinal_key = ordinal_key
-        self.unambig_start = unambig_start
-        self.ambig_start = ambig_start
+        self.start_base = start_base
         self.ambig_key = ambig_key
         self.values = array.array("L")
         self.counts = array.array("h")
         self.ambig = array.array("h")
-        self.graph = nx.Graph()
+        if graph is None:
+            self.graph = nx.Graph()
+        else:
+            self.graph = graph
+        self.k = k
 
     def _unpack_payloads(self, vec):
         """Unpack TSV ints in payload"""
@@ -200,18 +205,29 @@ class AmbiguousMerger(object):
             by=[self.ambig_key, self.count_key], inplace=True
         )
         unambig_frame = merge_frame[merge_frame[self.ambig_key] == 1].copy()
-        unambig_frame[self.ordinal_key] = pd.array(
-            range(self.unambig_start, self.unambig_start + len(unambig_frame)),
-            dtype=pd.UInt32Dtype(),
+        n_unambig = len(unambig_frame)
+        unambig_frame[self.ordinal_key] = (
+            pd.array(
+                range(self.start_base, self.start_base + n_unambig),
+                dtype=pd.UInt32Dtype(),
+            )
+            * self.k
         )
         del unambig_frame[self.ambig_key]
+
         ambig_frame = merge_frame[merge_frame[self.ambig_key] > 1].copy()
         ambig_frame = ambig_frame.rename(
             columns={self.count_key: self.count_key + ".ambig"}
         )
-        ambig_frame[self.ordinal_key + ".ambig"] = pd.array(
-            range(self.ambig_start, self.ambig_start + len(ambig_frame)),
-            dtype=pd.UInt32Dtype(),
+        ambig_frame[self.ordinal_key + ".ambig"] = (
+            pd.array(
+                range(
+                    self.start_base + n_unambig,
+                    self.start_base + len(ambig_frame) + n_unambig,
+                ),
+                dtype=pd.UInt32Dtype(),
+            )
+            * self.k
         )
         del merge_frame
         nx.write_gml(self.graph, self.graph_path)
@@ -220,13 +236,22 @@ class AmbiguousMerger(object):
 
 @cli.command()
 @click_loguru.init_logger()
-@click.option("-k", default=5, help="Synteny block length.", show_default=True)
+@click.option(
+    "-k", default=DEFAULT_K, help="Synteny block length.", show_default=True
+)
 @click.option(
     "--peatmer/--kmer",
     default=True,
     is_flag=True,
     show_default=True,
     help="Allow repeats in block.",
+)
+@click.option(
+    "--greedy/--no-greedy",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Assign ambiguous hashes to longest frag.",
 )
 @click.option(
     "--parallel/--no-parallel",
@@ -236,8 +261,11 @@ class AmbiguousMerger(object):
     help="Process in parallel.",
 )
 @click.argument("setname")
-def synteny_anchors(k, peatmer, setname, parallel):
+def synteny_anchors(k, peatmer, setname, parallel, greedy):
     """Calculate synteny anchors."""
+    if k < 2:
+        logger.error("k must be at least 2.")
+        sys.exit(1)
     options = click_loguru.get_global_options()
     set_path = Path(setname)
     file_stats_path = set_path / PROTEOMOLOGY_FILE
@@ -252,7 +280,7 @@ def synteny_anchors(k, peatmer, setname, parallel):
     )
     hash_mb.write_headers("hash\n")
     arg_list = []
-    n_hashes_list = []
+    hash_stats_list = []
     for idx, row in proteomes.iterrows():
         arg_list.append((idx, row["path"],))
     if parallel:
@@ -264,17 +292,21 @@ def synteny_anchors(k, peatmer, setname, parallel):
         )
         ProgressBar().register()
     if parallel:
-        n_hashes_list = bag.map(
+        hash_stats_list = bag.map(
             calculate_synteny_hashes, mailboxes=hash_mb, hasher=hasher
         ).compute()
     else:
         for args in arg_list:
-            n_hashes_list.append(
+            hash_stats_list.append(
                 calculate_synteny_hashes(
                     args, mailboxes=hash_mb, hasher=hasher
                 )
             )
-    logger.info(f"Reducing {sum(n_hashes_list)} hashes via external merge")
+    hash_stats = (
+        pd.DataFrame.from_dict(hash_stats_list).set_index("idx").sort_index()
+    )
+    proteomes = log_and_add_to_stats(proteomes, hash_stats)
+    del hash_stats_list, hash_stats
     merger = ExternalMerge(
         file_path_func=hash_mb.path_to_mailbox, n_merge=n_proteomes
     )
@@ -284,12 +316,12 @@ def synteny_anchors(k, peatmer, setname, parallel):
         ordinal_key="tmp.base",
         ambig_key="tmp.max_ambig",
         graph_path=set_path / "synteny.gml",
+        k=k,
     )
-    unambig_hashes, ambig_hashes, graph = merger.merge(merge_counter)
-    unambig_hashes["tmp.base"] *= k
-    last_unambig = unambig_hashes["tmp.base"].max() + k
-    ambig_hashes["tmp.base.ambig"] *= k
-    last_ambig = ambig_hashes["tmp.base.ambig"].max() + k
+    unambig_hashes, ambig_hashes, fragment_synteny_graph = merger.merge(
+        merge_counter
+    )
+    last_anchor_base = len(unambig_hashes) + len(ambig_hashes) + 1
     hash_mb.delete()
     del merger, merge_counter
     ambig_mb = DataMailboxes(
@@ -297,16 +329,16 @@ def synteny_anchors(k, peatmer, setname, parallel):
         mb_dir_path=(set_path / "mailboxes" / "ambig_merge"),
     )
     ambig_mb.write_headers("hash\n")
-    ret_list = []
+    synteny_stats_list = []
     if not options.quiet:
         logger.info(
             f"Merging {len(unambig_hashes)} unambiguous "
-            + f"and {len(ambig_hashes)} ambiguous synteny anchors into "
+            + f"and disambiguating {len(ambig_hashes)} synteny anchors into "
             + f"{n_proteomes} proteomes"
         )
         ProgressBar().register()
     if parallel:
-        ret_list = bag.map(
+        synteny_stats_list = bag.map(
             merge_unambig_hashes,
             unambig_hashes=unambig_hashes,
             ambig_hashes=ambig_hashes,
@@ -315,7 +347,7 @@ def synteny_anchors(k, peatmer, setname, parallel):
         ).compute()
     else:
         for args in arg_list:
-            ret_list.append(
+            synteny_stats_list.append(
                 merge_unambig_hashes(
                     args,
                     unambig_hashes=unambig_hashes,
@@ -324,26 +356,16 @@ def synteny_anchors(k, peatmer, setname, parallel):
                     ambig_mb=ambig_mb,
                 )
             )
-    synteny_stats = pd.DataFrame.from_dict(ret_list)
-    synteny_stats = synteny_stats.set_index("idx").sort_index()
-    with pd.option_context(
-        "display.max_rows",
-        None,
-        "display.max_columns",
-        None,
-        "display.float_format",
-        "{:,.1f}%".format,
-        "display.large_repr",
-        "truncate",
-    ):
-        logger.info(synteny_stats)
-    del synteny_stats["path"], synteny_stats["hom.clusters"]
-    del unambig_hashes, ambig_hashes
-    proteomes = pd.concat([proteomes, synteny_stats], axis=1)
-    del synteny_stats
+    synteny_stats = (
+        pd.DataFrame.from_dict(synteny_stats_list)
+        .set_index("idx")
+        .sort_index()
+    )
+    proteomes = log_and_add_to_stats(proteomes, synteny_stats)
+    del synteny_stats_list, synteny_stats, unambig_hashes
     #
     logger.info(
-        f"Reducinging {proteomes['tmp.anchors.pending'].sum()} disambiguation hashes"
+        f"Reducing {proteomes['tmp.hashes.pending_disambig'].max()} disambiguation hashes"
         + " via external merge"
     )
     disambig_merger = ExternalMerge(
@@ -355,17 +377,15 @@ def synteny_anchors(k, peatmer, setname, parallel):
         ordinal_key="tmp.disambig.base",
         ambig_key="tmp.disambig.max_ambig",
         graph_path=set_path / "synteny-disambig.gml",
-        unambig_start=last_unambig,
-        ambig_start=last_ambig,
+        start_base=last_anchor_base,
+        k=k,
+        graph=fragment_synteny_graph,
     )
-    disambig_hashes, still_ambig_hashes, graph = disambig_merger.merge(
-        disambig_merge_counter
-    )
-    disambig_hashes["tmp.disambig.base"] *= k
-    still_ambig_hashes["tmp.disambig.base.ambig"] += (
-        disambig_hashes["tmp.disambig.base"].max() + k
-    )
-    still_ambig_hashes["tmp.disambig.base.ambig"] *= k
+    (
+        disambig_hashes,
+        still_ambig_hashes,
+        fragment_synteny_graph,
+    ) = disambig_merger.merge(disambig_merge_counter)
     ambig_mb.delete()
     #
     cluster_mb = DataMailboxes(
@@ -376,48 +396,50 @@ def synteny_anchors(k, peatmer, setname, parallel):
     cluster_mb.write_tsv_headers(CLUSTER_COLS)
     if parallel:
         bag = db.from_sequence(arg_list)
-    ret_list = []
+    disambig_stats_list = []
     if not options.quiet:
+        if greedy:
+            greedy_txt = "Greedy-merging"
+        else:
+            greedy_txt = "Merging"
         logger.info(
-            f"Merging {len(disambig_hashes)} disambiguated "
+            f"{greedy_txt} {len(disambig_hashes)} disambiguated "
             + f"and {len(still_ambig_hashes)} partly-ambiguous synteny anchors into {n_proteomes}"
             " proteomes"
         )
         ProgressBar().register()
     if parallel:
-        ret_list = bag.map(
+        disambig_stats_list = bag.map(
             merge_disambig_hashes,
             disambig_hashes=disambig_hashes,
             still_ambig_hashes=still_ambig_hashes,
+            ambig_hashes=ambig_hashes,
             hasher=hasher,
             n_proteomes=n_proteomes,
             cluster_writer=cluster_mb.locked_open_for_write,
+            greedy=greedy,
         ).compute()
     else:
         for args in arg_list:
-            ret_list.append(
+            disambig_stats_list.append(
                 merge_disambig_hashes(
                     args,
                     disambig_hashes=disambig_hashes,
                     still_ambig_hashes=still_ambig_hashes,
+                    ambig_hashes=ambig_hashes,
                     hasher=hasher,
                     n_proteomes=n_proteomes,
                     cluster_writer=cluster_mb.locked_open_for_write,
+                    greedy=greedy,
                 )
             )
-    disambig_stats = pd.DataFrame.from_dict(ret_list)
-    disambig_stats = disambig_stats.set_index("idx").sort_index()
-    with pd.option_context(
-        "display.max_rows",
-        None,
-        "display.max_columns",
-        None,
-        "display.float_format",
-        "{:,.1f}%".format,
-    ):
-        logger.info(disambig_stats)
-    del disambig_stats["path"], disambig_stats["hom.clusters"]
-    proteomes = pd.concat([proteomes, disambig_stats], axis=1)
+    disambig_stats = (
+        pd.DataFrame.from_dict(disambig_stats_list)
+        .set_index("idx")
+        .sort_index()
+    )
+    proteomes = log_and_add_to_stats(proteomes, disambig_stats)
+    del disambig_stats_list, disambig_stats
     write_tsv_or_parquet(proteomes, set_path / PROTEOSYN_FILE)
     # merge anchor info into clusters
     arg_list = [(i,) for i in range(n_clusters)]
@@ -459,8 +481,12 @@ def synteny_anchors(k, peatmer, setname, parallel):
         proteomes["in_synteny"].sum() * 100.0 / proteomes["size"].sum()
     )
     mean_clust_synteny = proteomes["synteny_pct"].mean()
-    logger.info(f"Mean anchor coverage on genes: {mean_gene_synteny: .1f}%")
-    logger.info(f"Mean anchor coverage on clusters: {mean_clust_synteny:.1f}%")
+    logger.info(
+        f"Mean anchor coverage: {mean_gene_synteny: .1f}% (on proteins)"
+    )
+    logger.info(
+        f"Mean cluster anchor coverage: {mean_clust_synteny:.1f}% (on clusters)"
+    )
 
 
 def concat_without_overlap(df1, df2):
@@ -518,7 +544,17 @@ def calculate_synteny_hashes(args, mailboxes=None, hasher=None):
     unique_hashes = unique_hashes.set_index(hash_name).sort_index()
     with mailboxes.locked_open_for_write(idx) as fh:
         unique_hashes.to_csv(fh, header=False, sep="\t")
-    return len(unique_hashes)
+    in_hash = syn[hash_name].notna().sum()
+    n_assigned = syn["hom.cluster"].notna().sum()
+    hash_pct = in_hash * 100.0 / n_assigned
+    hash_stats = {
+        "idx": idx,
+        "path": dotpath,
+        "hom.clusters": n_assigned,
+        "syn.hashes": in_hash,
+        "syn.hash_pct": hash_pct,
+    }
+    return hash_stats
 
 
 def merge_unambig_hashes(
@@ -555,9 +591,7 @@ def merge_unambig_hashes(
     )
     disambig_fr = disambig_fr.dropna(how="all")
     syn = syn.join(disambig_fr)
-    write_tsv_or_parquet(
-        syn, outpath / SYNTENY_FILE,
-    )
+    write_tsv_or_parquet(syn, outpath / SYNTENY_FILE, remove_tmp=False)
     upstream_hashes = (
         syn[["syn.disambig_upstr"] + MERGE_COLS]
         .dropna(how="any")
@@ -575,17 +609,23 @@ def merge_unambig_hashes(
     with ambig_mb.locked_open_for_write(idx) as fh:
         unique_hashes.to_csv(fh, header=False, sep="\t")
     # Do some synteny stats
+    in_hash = syn[hash_name].notna().sum()
+    n_unambig = syn["tmp.base"].notna().sum()
+    n_ambig = syn["tmp.base.ambig"].notna().sum()
+    unambig_pct = n_unambig * 100.0 / in_hash
+    ambig_pct = n_ambig * 100.0 / in_hash
     in_synteny = syn["syn.anchor_id"].notna().sum()
-    n_assigned = syn["hom.cluster"].notna().sum()
-    synteny_pct = in_synteny * 100.0 / n_assigned
+    synteny_pct = in_synteny * 100.0 / in_synteny
     synteny_stats = {
         "idx": idx,
         "path": dotpath,
-        "hom.clusters": n_assigned,
-        "syn.prot.unambig": in_synteny,
-        "syn.prot.unambig_pct": synteny_pct,
-        "tmp.anchors.ambig": len(ambig_hashes),
-        "tmp.anchors.pending": len(disambig_fr),
+        "syn.hashes.n": in_hash,
+        "syn.hashes.unambig": n_unambig,
+        "syn.hashes.unambig_pct": unambig_pct,
+        "syn.hashes.ambig": n_ambig,
+        "syn.hashes.ambig_pct": ambig_pct,
+        "tmp.prot.in_synteny": in_synteny,
+        "tmp.hashes.pending_disambig": len(disambig_fr),
     }
     return synteny_stats
 
@@ -605,9 +645,11 @@ def merge_disambig_hashes(
     args,
     disambig_hashes=None,
     still_ambig_hashes=None,
+    ambig_hashes=None,
     hasher=None,
     n_proteomes=None,
     cluster_writer=None,
+    greedy=False,
 ):
     """Merge disambiguated synteny hashes into proteomes per-proteome."""
     plain_hash_name = hasher.hash_name(no_prefix=True)
@@ -637,31 +679,52 @@ def merge_disambig_hashes(
     del syn["syn.hash.disambig.ortho_count"]
     n_proteins = len(syn)
     syn["tmp.i"] = range(len(syn))
-    anchor_fills = np.array([np.nan] * n_proteins)
+    # Do disambiguated fills
+    disambig_fills = np.array([np.nan] * n_proteins)
     for hash_val, subframe in syn.groupby(by=["tmp.disambig.base"]):
         for unused_i, row in subframe.iterrows():
             footprint = row["syn.hash.footprint"]
             row_no = row["tmp.i"]
-            anchor_fills[row_no : row_no + footprint] = hasher.shingle(
+            disambig_fills[row_no : row_no + footprint] = hasher.shingle(
                 syn["hom.cluster"][row_no : row_no + footprint],
                 row["tmp.disambig.base"],
                 row["syn.hash.direction"],
                 row[hash_name],
             )
     syn["syn.anchor_id"] = syn["syn.anchor_id"].fillna(
-        pd.Series(anchor_fills, index=syn.index)
+        pd.Series(disambig_fills, index=syn.index)
     )
-    # deal with still-disambig some other time
-    del (
-        syn["syn.hash.disambig.ortho_count.ambig"],
-        syn["syn.hash.ortho_count.ambig"],
+    n_disambiguated = (syn["syn.anchor_id"] == disambig_fills).sum()
+    # Deal with ambiguous hashes by adding non-ambiguous examples
+    nonambig_fills = np.array([np.nan] * n_proteins)
+    for hash_val, subframe in syn.groupby(by=["tmp.base.ambig"]):
+        if not greedy and len(subframe) > 1:
+            continue
+        for unused_i, row in subframe.iterrows():
+            footprint = row["syn.hash.footprint"]
+            row_no = row["tmp.i"]
+            nonambig_fills[row_no : row_no + footprint] = hasher.shingle(
+                syn["hom.cluster"][row_no : row_no + footprint],
+                row["tmp.base.ambig"],
+                row["syn.hash.direction"],
+                row[hash_name],
+            )
+            break
+    syn["syn.anchor_id"] = syn["syn.anchor_id"].fillna(
+        pd.Series(nonambig_fills, index=syn.index)
     )
-    del syn["syn.hash.frag_count"]
-    del (
-        syn["syn.hash.footprint"],
-        syn["syn.hash.direction"],
-        syn["syn.hash.self_count"],
-    )
+    n_nonambig = (syn["syn.anchor_id"] == nonambig_fills).sum()
+    # Delete temporary columns
+    non_needed_cols = [
+        "tmp.i",
+        "syn.hash.disambig.ortho_count.ambig",
+        "syn.hash.ortho_count.ambig",
+        "syn.hash.frag_count",
+        "syn.hash.footprint",
+        "syn.hash.direction",
+        "syn.hash.self_count",
+    ]
+    syn = syn.drop(columns=non_needed_cols)
     write_tsv_or_parquet(
         syn, outpath / SYNTENY_FILE,
     )
@@ -679,20 +742,22 @@ def merge_disambig_hashes(
         anchor_hist["hash.self_count"] * anchor_hist.index * 100.0 / n_assigned
     )
     write_tsv_or_parquet(anchor_hist, outpath / ANCHOR_HIST_FILE)
+    # Do histogram of anchors
     in_synteny = syn["syn.anchor_id"].notna().sum()
     n_assigned = syn["hom.cluster"].notna().sum()
-    # Do histogram of blocks
     avg_ortho = syn["syn.hash.ortho_count"].mean()
     synteny_pct = in_synteny * 100.0 / n_assigned
-    ambig_pct = (n_assigned - in_synteny) * 100.0 / n_assigned
+    unassigned_pct = (n_assigned - in_synteny) * 100.0 / n_assigned
     synteny_stats = {
         "idx": idx,
         "path": dotpath,
         "hom.clusters": n_assigned,
         "syn.anchors": in_synteny,
         "syn.pct": synteny_pct,
-        "syn.ambig": n_assigned - in_synteny,
-        "syn.ambig_pct": ambig_pct,
+        "syn.disambig": n_disambiguated,
+        "syn.nonambig": n_nonambig,
+        "syn.uassigned": n_assigned - in_synteny,
+        "syn.unassigned_pct": unassigned_pct,
         "syn.fom": avg_ortho * 100.0 / n_proteomes,
     }
     return synteny_stats

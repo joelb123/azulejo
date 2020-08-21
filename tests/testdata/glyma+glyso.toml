@@ -41,7 +41,7 @@ fasta = "glyma.Wm82.gnm4.ann1.T8TQ.protein_primaryTranscript.faa.gz"
 rank = "strain"
 preference = 0
 gff = "glyso.W05.gnm1.ann1.T47J.gene_models_main.gff3"
-fasta = "glyso.W05.gnm1.ann1.T47J.protein.faa"
+fasta = "glyso.W05.gnm1.ann1.T47J.protein_primaryTranscript.faa"
 origin = "Henan Province, China"
 comments = """
 Glycine soja accession W05 is a salt-tolerant wild soybean whose genome has been
