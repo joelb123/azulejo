@@ -175,7 +175,7 @@ def do_homology(identity, setname, parallel):
             continue
         if n_members == n_proteomes:
             continue
-        member_counts = pd.DataFrame(subframe["members"].value_counts())
+        member_counts = pd.DataFrame(subframe["n_members"].value_counts())
         member_counts["key"] = range(len(member_counts))
         for newcol in range(n_members):
             member_counts[f"memb{newcol}"] = ""
@@ -190,8 +190,8 @@ def do_homology(identity, setname, parallel):
         write_tsv_or_parquet(
             member_counts, set_path / group_key_filename(n_members)
         )
-    clusters["members"] = clusters["members"].map(grouping_dict)
-    clusters = clusters.rename(columns={"members": "group_key"})
+    clusters["n_members"] = clusters["n_members"].map(grouping_dict)
+    clusters = clusters.rename(columns={"n_members": "group_key"})
     n_adj = clusters["n_adj"].sum()
     adj_pct = n_adj * 100.0 / n_clust_genes
     n_adj_clust = sum(clusters["adj_groups"] != 0)
@@ -351,7 +351,7 @@ def parse_cluster(
     cluster_dict = {
         "size": len(clusters),
         "n_memb": len(idx_values),
-        "members": str(idx_list),
+        "n_members": str(idx_list),
         "n_adj": n_adj,
         "adj_groups": adj_gr_count,
     }

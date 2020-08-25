@@ -42,6 +42,7 @@ SAVED_INPUT_FILE = "input.toml"
 4
 CLUSTER_FILETYPE = "parq"
 CLUSTERS_FILE = "clusters.parq"
+CLUSTERSYN_FILE = "clusters.syn.parq"
 FRAGMENTS_FILE = "fragments.tsv"
 ANCHOR_HIST_FILE = "anchor_hist.tsv"
 HOMOLOGY_FILE = "proteins.hom.parq"
@@ -60,7 +61,107 @@ SCAFFOLD_SYNONYMS = ["scaffold", "scaf", "sca"]
 SCAFFOLD_ABBREV = "sc"
 
 DIRECTIONAL_CATEGORY = pd.CategoricalDtype(categories=["-", "+"])
+DTYPE_DICT = {
+    "adj_group": pd.UInt32Dtype(),
+    "adj_groups": pd.UInt32Dtype(),
+    "clusters": pd.UInt32Dtype(),
+    "frag.direction": DIRECTIONAL_CATEGORY,
+    "frag.id": pd.CategoricalDtype(),
+    "frag.idx": pd.UInt32Dtype(),
+    "frag.is_chr": pd.BooleanDtype(),
+    "frag.is_plas": pd.BooleanDtype(),
+    "frag.is_scaf": pd.BooleanDtype(),
+    "frag.len": pd.UInt64Dtype(),
+    "frag.max": pd.UInt32Dtype(),
+    "frag.orig_id": pd.StringDtype(),
+    "frag.pos": pd.UInt32Dtype(),
+    "frag.prot_count": pd.UInt32Dtype(),
+    "frag.start": pd.UInt64Dtype(),
+    "group_key": pd.UInt32Dtype(),
+    "hom.clusters": pd.UInt32Dtype(),
+    "hom.cluster": pd.UInt32Dtype(),
+    "hom.cl_size": pd.UInt32Dtype(),
+    "in_synteny": pd.UInt32Dtype(),
+    "max_frags_per_anch": pd.UInt32Dtype(),
+    "path": pd.CategoricalDtype(),
+    "phy.*": pd.CategoricalDtype(),
+    "preference": pd.StringDtype(),
+    "res.ambg": pd.UInt32Dtype(),
+    "res.fix": pd.UInt32Dtype(),
+    "res.rmv": pd.UInt32Dtype(),
+    "prot.idx": pd.UInt32Dtype(),
+    "prot.len": pd.UInt32Dtype(),
+    "prot.m_start": pd.BooleanDtype(),
+    "prot.n_ambig": pd.BooleanDtype(),
+    "prot.no_stop": pd.BooleanDtype(),
+    "prot.seq": pd.StringDtype(),
+    "seqs.nostrt": pd.UInt32Dtype(),
+    "seqs.rmv": pd.UInt32Dtype(),
+    "seqs.stp": pd.UInt32Dtype(),
+    "size": pd.UInt32Dtype(),
+    "syn.anchors": pd.UInt32Dtype(),
+    "syn.disambig": pd.UInt32Dtype(),
+    "syn.disambig_downstr": pd.UInt32Dtype(),
+    "syn.disambig_upstr": pd.UInt32Dtype(),
+    "syn.fom": "float64",
+    "syn.hash_pct": "float64",
+    "syn.hash.footprint": pd.UInt32Dtype(),
+    "syn.hash.direction": DIRECTIONAL_CATEGORY,
+    "syn.hash.ortho_count": pd.UInt32Dtype(),
+    "syn.hash.ortho_count.ambig": pd.UInt32Dtype(),
+    "syn.hash.self_count": pd.UInt32Dtype(),
+    "syn.hashes.ambig": pd.UInt32Dtype(),
+    "syn.hashes.disambig": pd.UInt32Dtype(),
+    "syn.hashes.nonambig": pd.UInt32Dtype(),
+    "syn.hashes.unambig": pd.UInt32Dtype(),
+    "syn.hashes.unassigned": pd.UInt32Dtype(),
+    "syn.anchor_id": pd.UInt32Dtype(),
+    "val": "float64",
+    # patterns are matched after checking for exact matches
+    "patterns": [
+        {"start": "phy.", "type": pd.CategoricalDtype()},
+        {"start": "pct_", "end": "_pct", "type": "float64"},
+        {"start": "memb", "type": pd.StringDtype()},
+        {"start": "n_", "end": ".n", "type": pd.UInt32Dtype()},
+        {"start": "syn.hash.peatmer", "type": pd.UInt32Dtype()},
+        {"start": "syn.hash.kmer", "type": pd.UInt32Dtype()},
+    ],
+}
 # shared functions
+
+
+def enforce_canonical_dtypes(df):
+    """Enforce that dtypes of columns meet expectations."""
+    for col in df.columns:
+        if col.startswith("tmp."):
+            continue
+        column_type = df[col].dtype
+        should_be_type = None
+        if col in DTYPE_DICT:
+            should_be_type = DTYPE_DICT[col]
+        else:
+            for pattern_dict in DTYPE_DICT["patterns"]:
+                if "start" in pattern_dict:
+                    if col.startswith(pattern_dict["start"]):
+                        should_be_type = pattern_dict["type"]
+                        break
+                if "end" in pattern_dict:
+                    if col.endswith(pattern_dict["end"]):
+                        should_be_type = pattern_dict["type"]
+                        break
+            if should_be_type is None:
+                logger.warning(f"Unknown column type for {col}")
+                continue
+        try:
+            is_correct_type = column_type == should_be_type
+        except TypeError:
+            is_correct_type = False
+        if not is_correct_type:
+            try:
+                df[col] = df[col].astype(should_be_type)
+            except ValueError:
+                logger.warning(f"Cannot cast {col} to {should_be_type}")
+    return df
 
 
 def cluster_set_name(stem, identity):
@@ -192,6 +293,7 @@ def write_tsv_or_parquet(
     desc=None,
     remove_tmp=True,
     sort_cols=True,
+    enforce_types=True,
 ):
     """Write either a TSV or a parquet file by file extension."""
     filepath = Path(filepath)
@@ -201,6 +303,8 @@ def write_tsv_or_parquet(
         logger.debug(f'Writing {file_desc} "{filepath}')
     if remove_tmp:
         df = remove_tmp_columns(df)
+    if enforce_types:
+        df = enforce_canonical_dtypes(df)
     if sort_cols:
         df = df[sorted(df.columns)]
     if ext in PARQUET_EXTENSIONS:
@@ -220,10 +324,10 @@ def read_tsv_or_parquet(filepath):
         sys.exit(1)
     ext = filepath.suffix.lstrip(".")
     if ext in PARQUET_EXTENSIONS:
-        return pd.read_parquet(filepath).convert_dtypes()
+        return pd.read_parquet(filepath)
     elif ext in TSV_EXTENSIONS:
-        df = pd.read_csv(filepath, sep="\t", index_col=0)
-        return df.convert_dtypes()
+        df = pd.read_csv(filepath, sep="\t", index_col=0).convert_dtypes()
+        return enforce_canonical_dtypes(df)
     else:
         logger.error(f"Unrecognized file extensions {ext} in {filepath}")
         sys.exit(1)

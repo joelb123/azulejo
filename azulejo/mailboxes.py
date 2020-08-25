@@ -126,13 +126,12 @@ class ExternalMerge(object):
         for i in range(self.n_merge):
             self.fh_list[i].close()
 
-    def merge(self, merge_obj, count_key=None):
+    def merge(self, merge_obj):
         """Call merge_obj.merge_func for each merge, return merge_obj.results()."""
         while (~self.value_vec.mask).sum() > 1:
             minimum = np.amin(self.value_vec)
             min_vec = self.value_vec == minimum
             where_min = np.where(min_vec)[0]
-            self._next_vals(where_min)
             count = len(where_min)
             if count > 1:
                 merge_obj.merge_func(
@@ -140,5 +139,6 @@ class ExternalMerge(object):
                     count,
                     ma.masked_array(self.payloads, mask=~min_vec),
                 )
+            self._next_vals(where_min)
         self._close_all()
         return merge_obj.results()

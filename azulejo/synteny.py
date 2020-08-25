@@ -8,16 +8,12 @@ import sys
 from pathlib import Path
 
 # third-party imports
-import attr
 import click
 import dask.bag as db
-import networkx as nx
 import numpy as np
 import pandas as pd
 import sh
-import xxhash
 from dask.diagnostics import ProgressBar
-from itertools import combinations
 from loguru import logger
 
 # module imports
@@ -25,7 +21,7 @@ from . import cli
 from . import click_loguru
 from .common import ANCHOR_HIST_FILE
 from .common import CLUSTERS_FILE
-from .common import DIRECTIONAL_CATEGORY
+from .common import CLUSTERSYN_FILE
 from .common import HOMOLOGY_FILE
 from .common import PROTEOMOLOGY_FILE
 from .common import PROTEOSYN_FILE
@@ -33,205 +29,19 @@ from .common import SYNTENY_FILE
 from .common import dotpath_to_path
 from .common import log_and_add_to_stats
 from .common import read_tsv_or_parquet
-from .common import remove_tmp_columns
 from .common import write_tsv_or_parquet
 from .mailboxes import DataMailboxes
 from .mailboxes import ExternalMerge
+from .merger import AmbiguousMerger
+from .hash import SyntenyBlockHasher
 
 # global constants
 CLUSTER_COLS = [
     "syn.anchor_id",
 ]
 MERGE_COLS = ["syn.hash.self_count", "frag.idx"]
-DEFAULT_K = 3
-
-
-@attr.s
-class SyntenyBlockHasher(object):
-
-    """Synteny-block hashes via reversible-peatmer method."""
-
-    k = attr.ib(default=5)
-    peatmer = attr.ib(default=True)
-    prefix = attr.ib(default="syn")
-
-    def hash_name(self, no_prefix=False):
-        """Return the string name of the hash function."""
-        if no_prefix:
-            prefix_str = ""
-        else:
-            prefix_str = self.prefix + "."
-        if self.peatmer:
-            return f"{prefix_str}hash.peatmer{self.k}"
-        return f"{prefix_str}hash.kmer{self.k}"
-
-    def _hash_kmer(self, kmer):
-        """Return a hash of a kmer array."""
-        return xxhash.xxh32_intdigest(kmer.tobytes())
-
-    def shingle(self, cluster_series, base, direction, hash):
-        """Return a vector of anchor ID's. """
-        vec = cluster_series.to_numpy().astype(int)
-        steps = np.insert((vec[1:] != vec[:-1]).astype(int), 0, 0).cumsum()
-        try:
-            assert max(steps) == self.k - 1
-        except AssertionError:
-            logger.error(
-                f"Working around minor error in shingling hash {hash}, base"
-                f" {base};"
-            )
-            logger.error(f"input homology string={vec}")
-            logger.error(f"max index = {max(steps)}, should be {self.k-1}")
-            steps[np.where(steps > self.k - 1)] = self.k - 1
-        if direction == "+":
-            return base + steps
-        return base + self.k - 1 - steps
-
-    def calculate(self, cluster_series):
-        """Return an array of synteny block hashes data."""
-        # Maybe the best code I've ever written--JB
-        vec = cluster_series.to_numpy().astype(int)
-        if self.peatmer:
-            uneq_idxs = np.append(np.where(vec[1:] != vec[:-1]), len(vec) - 1)
-            runlengths = np.diff(np.append(-1, uneq_idxs))
-            positions = np.cumsum(np.append(0, runlengths))[:-1]
-            n_mers = len(positions) - self.k + 1
-            footprints = pd.array(
-                [runlengths[i : i + self.k].sum() for i in range(n_mers)],
-                dtype=pd.UInt32Dtype(),
-            )
-        else:
-            n_elements = len(cluster_series)
-            n_mers = n_elements - self.k + 1
-            positions = np.arange(n_elements)
-            footprints = pd.array([self.k] * (n_mers), dtype=pd.UInt32Dtype())
-        if n_mers < 1:
-            return None
-        # Calculate k-mers over indirect index
-        kmer_mat = np.array(
-            [vec[positions[i : i + self.k]] for i in range(n_mers)]
-        )
-        fwd_rev_hashes = np.array(
-            [
-                np.apply_along_axis(self._hash_kmer, 1, kmer_mat),
-                np.apply_along_axis(
-                    self._hash_kmer, 1, np.flip(kmer_mat, axis=1)
-                ),
-            ]
-        )
-        plus_minus = np.array([["+"] * n_mers, ["-"] * n_mers])
-        directions = np.take_along_axis(
-            plus_minus,
-            np.expand_dims(fwd_rev_hashes.argmin(axis=0), axis=0),
-            axis=0,
-        )[0]
-        return pd.DataFrame(
-            [
-                pd.Categorical(directions, dtype=DIRECTIONAL_CATEGORY),
-                footprints,
-                pd.array(
-                    np.amin(fwd_rev_hashes, axis=0), dtype=pd.UInt32Dtype()
-                ),
-            ],
-            columns=[
-                "syn.hash.direction",
-                "syn.hash.footprint",
-                self.hash_name(),
-            ],
-            index=cluster_series.index[positions[:n_mers]],
-        )
-
-
-class AmbiguousMerger(object):
-
-    """Counts instance of merges."""
-
-    def __init__(
-        self,
-        graph_path=Path("synteny.gml"),
-        count_key="value",
-        ordinal_key="count",
-        ambig_key="ambig",
-        start_base=0,
-        k=None,
-        graph=None,
-    ):
-        """Create arrays as instance attributes."""
-        self.graph_path = graph_path
-        self.count_key = count_key
-        self.ordinal_key = ordinal_key
-        self.start_base = start_base
-        self.ambig_key = ambig_key
-        self.values = array.array("L")
-        self.counts = array.array("h")
-        self.ambig = array.array("h")
-        if graph is None:
-            self.graph = nx.Graph()
-        else:
-            self.graph = graph
-        self.k = k
-
-    def _unpack_payloads(self, vec):
-        """Unpack TSV ints in payload"""
-        wheres = np.where(~vec.mask)[0]
-        values = np.array(
-            [[int(i) for i in s.split("\t")] for s in vec.compressed()]
-        ).transpose()
-        return wheres, values
-
-    def merge_func(self, value, count, payload_vec):
-        """Return list of merged values."""
-        self.values.append(value)
-        self.counts.append(count)
-        wheres, arr = self._unpack_payloads(payload_vec)
-        max_ambig = arr[0].max()
-        self.ambig.append(max_ambig)
-        if max_ambig == 1:
-            self._adjacency_to_graph([f"{i}" for i in arr[1]], value)
-
-    def _adjacency_to_graph(self, nodes, edgename):
-        """Turn adjacency data into GML graph file."""
-        self.graph.add_nodes_from(nodes)
-        edges = combinations(nodes, 2)
-        self.graph.add_edges_from(edges, label=f"{edgename}")
-
-    def results(self):
-        merge_frame = pd.DataFrame(
-            {self.count_key: self.counts, self.ambig_key: self.ambig},
-            index=self.values,
-            dtype=pd.UInt32Dtype(),
-        )
-        merge_frame.sort_values(
-            by=[self.ambig_key, self.count_key], inplace=True
-        )
-        unambig_frame = merge_frame[merge_frame[self.ambig_key] == 1].copy()
-        n_unambig = len(unambig_frame)
-        unambig_frame[self.ordinal_key] = (
-            pd.array(
-                range(self.start_base, self.start_base + n_unambig),
-                dtype=pd.UInt32Dtype(),
-            )
-            * self.k
-        )
-        del unambig_frame[self.ambig_key]
-
-        ambig_frame = merge_frame[merge_frame[self.ambig_key] > 1].copy()
-        ambig_frame = ambig_frame.rename(
-            columns={self.count_key: self.count_key + ".ambig"}
-        )
-        ambig_frame[self.ordinal_key + ".ambig"] = (
-            pd.array(
-                range(
-                    self.start_base + n_unambig,
-                    self.start_base + len(ambig_frame) + n_unambig,
-                ),
-                dtype=pd.UInt32Dtype(),
-            )
-            * self.k
-        )
-        del merge_frame
-        nx.write_gml(self.graph, self.graph_path)
-        return unambig_frame, ambig_frame, self.graph
+REMERGE_COLS = ["tmp.disambig.self_count", "frag.idx"]
+DEFAULT_K = 2
 
 
 @cli.command()
@@ -254,6 +64,20 @@ class AmbiguousMerger(object):
     help="Assign ambiguous hashes to longest frag.",
 )
 @click.option(
+    "--nonambig/--no-nonambig",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Fill with non-ambiguous hashes.",
+)
+@click.option(
+    "--shingle/--no-shingle",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Shingle non-ambiguous hashes over k-mer.",
+)
+@click.option(
     "--parallel/--no-parallel",
     is_flag=True,
     default=True,
@@ -261,7 +85,7 @@ class AmbiguousMerger(object):
     help="Process in parallel.",
 )
 @click.argument("setname")
-def synteny_anchors(k, peatmer, setname, parallel, greedy):
+def synteny_anchors(k, peatmer, setname, parallel, greedy, nonambig, shingle):
     """Calculate synteny anchors."""
     if k < 2:
         logger.error("k must be at least 2.")
@@ -322,6 +146,14 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
         merge_counter
     )
     last_anchor_base = len(unambig_hashes) + len(ambig_hashes) + 1
+    logger.info(
+        f"Unambiguous anchor IDs in range {unambig_hashes['tmp.base'].min()}"
+        + f" to {unambig_hashes['tmp.base'].max()+k}"
+    )
+    logger.info(
+        f"Ambiguous anchor IDs in range {ambig_hashes['tmp.base.ambig'].min()}"
+        + f" to {ambig_hashes['tmp.base.ambig'].max()+k}"
+    )
     hash_mb.delete()
     del merger, merge_counter
     ambig_mb = DataMailboxes(
@@ -344,6 +176,7 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
             ambig_hashes=ambig_hashes,
             hasher=hasher,
             ambig_mb=ambig_mb,
+            shingle=shingle,
         ).compute()
     else:
         for args in arg_list:
@@ -354,6 +187,7 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
                     ambig_hashes=ambig_hashes,
                     hasher=hasher,
                     ambig_mb=ambig_mb,
+                    shingle=shingle,
                 )
             )
     synteny_stats = (
@@ -365,7 +199,7 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
     del synteny_stats_list, synteny_stats, unambig_hashes
     #
     logger.info(
-        f"Reducing {proteomes['tmp.hashes.pending_disambig'].max()} disambiguation hashes"
+        f"Reducing {proteomes['tmp.hashes.pending_disambig'].sum()} disambiguation hashes"
         + " via external merge"
     )
     disambig_merger = ExternalMerge(
@@ -376,7 +210,7 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
         count_key="syn.hash.disambig.ortho_count",
         ordinal_key="tmp.disambig.base",
         ambig_key="tmp.disambig.max_ambig",
-        graph_path=set_path / "synteny-disambig.gml",
+        graph_path=set_path / "synteny.gml",
         start_base=last_anchor_base,
         k=k,
         graph=fragment_synteny_graph,
@@ -386,6 +220,11 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
         still_ambig_hashes,
         fragment_synteny_graph,
     ) = disambig_merger.merge(disambig_merge_counter)
+
+    logger.info(
+        f"Disambiguated anchor IDs in range {disambig_hashes['tmp.disambig.base'].min()}"
+        + f" to {disambig_hashes['tmp.disambig.base'].max()+k}"
+    )
     ambig_mb.delete()
     #
     cluster_mb = DataMailboxes(
@@ -404,20 +243,25 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
             greedy_txt = "Merging"
         logger.info(
             f"{greedy_txt} {len(disambig_hashes)} disambiguated "
-            + f"and {len(still_ambig_hashes)} partly-ambiguous synteny anchors into {n_proteomes}"
+            + f"and {len(still_ambig_hashes)} still-ambiguous synteny anchors into {n_proteomes}"
             " proteomes"
         )
+        if nonambig:
+            logger.info(
+                "Non-ambiguous instances of ambiguous hashes will be used to fill."
+            )
         ProgressBar().register()
     if parallel:
         disambig_stats_list = bag.map(
             merge_disambig_hashes,
             disambig_hashes=disambig_hashes,
             still_ambig_hashes=still_ambig_hashes,
-            ambig_hashes=ambig_hashes,
             hasher=hasher,
             n_proteomes=n_proteomes,
             cluster_writer=cluster_mb.locked_open_for_write,
             greedy=greedy,
+            nonambig=nonambig,
+            shingle=shingle,
         ).compute()
     else:
         for args in arg_list:
@@ -426,11 +270,12 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
                     args,
                     disambig_hashes=disambig_hashes,
                     still_ambig_hashes=still_ambig_hashes,
-                    ambig_hashes=ambig_hashes,
                     hasher=hasher,
                     n_proteomes=n_proteomes,
                     cluster_writer=cluster_mb.locked_open_for_write,
                     greedy=greedy,
+                    nonambig=nonambig,
+                    shingle=shingle,
                 )
             )
     disambig_stats = (
@@ -469,13 +314,9 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
     anchor_frame = pd.DataFrame.from_dict(anchor_stats)
     anchor_frame.set_index(["clust_id"], inplace=True)
     anchor_frame.sort_index(inplace=True)
-    # with pd.option_context(
-    #    "display.max_rows", None, "display.float_format", "{:,.2f}%".format
-    # ):
-    #    logger.info(anchor_frame)
     proteomes = concat_without_overlap(clusters, anchor_frame)
     write_tsv_or_parquet(
-        proteomes, set_path / CLUSTERS_FILE, float_format="%5.2f"
+        proteomes, set_path / CLUSTERSYN_FILE, float_format="%5.2f"
     )
     mean_gene_synteny = (
         proteomes["in_synteny"].sum() * 100.0 / proteomes["size"].sum()
@@ -490,7 +331,7 @@ def synteny_anchors(k, peatmer, setname, parallel, greedy):
 
 
 def concat_without_overlap(df1, df2):
-    """Concatenate two frames on columns, deleting any overlapping columns first."""
+    """Concatenate df2 on top of df1."""
     overlapping = set(df1.columns).intersection(df2.columns)
     if len(overlapping) > 0:
         df1 = df1.drop(columns=overlapping)
@@ -498,7 +339,7 @@ def concat_without_overlap(df1, df2):
 
 
 def calculate_synteny_hashes(args, mailboxes=None, hasher=None):
-    """Calculate synteny hashes for proteins per-fragment."""
+    """Calculate synteny hashes for proteins per-genome."""
     idx, dotpath = args
     outpath = dotpath_to_path(dotpath)
     hom = read_tsv_or_parquet(outpath / HOMOLOGY_FILE)
@@ -517,23 +358,10 @@ def calculate_synteny_hashes(args, mailboxes=None, hasher=None):
     )
     del syn_list
     syn["tmp.i"] = pd.array(range(len(syn)), dtype=pd.UInt32Dtype())
-    hash_counts = syn[hash_name].value_counts()
     syn["syn.hash.self_count"] = pd.array(
-        syn[hash_name].map(hash_counts), dtype=pd.UInt32Dtype()
+        syn[hash_name].map(syn[hash_name].value_counts()),
+        dtype=pd.UInt32Dtype(),
     )
-    hash_frag_count_arr = pd.array([pd.NA] * len(syn), dtype=pd.UInt32Dtype())
-    hash_is_null = syn[hash_name].isnull()
-    for unused_frag, subframe in syn.groupby(by=["frag.id"]):
-        try:
-            frag_hash_counts = subframe[hash_name].value_counts()
-        except ValueError:
-            continue
-        for unused_i, row in subframe.iterrows():
-            row_no = row["tmp.i"]
-            if not hash_is_null[row_no]:
-                hash_val = row[hash_name]
-                hash_frag_count_arr[row_no] = frag_hash_counts[hash_val]
-    syn["syn.hash.frag_count"] = hash_frag_count_arr
     del syn["tmp.i"]
     write_tsv_or_parquet(syn, outpath / SYNTENY_FILE, remove_tmp=False)
     unique_hashes = (
@@ -551,14 +379,19 @@ def calculate_synteny_hashes(args, mailboxes=None, hasher=None):
         "idx": idx,
         "path": dotpath,
         "hom.clusters": n_assigned,
-        "syn.hashes": in_hash,
+        "syn.hashes.n": in_hash,
         "syn.hash_pct": hash_pct,
     }
     return hash_stats
 
 
 def merge_unambig_hashes(
-    args, unambig_hashes=None, ambig_hashes=None, hasher=None, ambig_mb=None,
+    args,
+    unambig_hashes=None,
+    ambig_hashes=None,
+    hasher=None,
+    ambig_mb=None,
+    shingle=True,
 ):
     """Merge unambiguous synteny hashes into proteomes per-proteome."""
     hash_name = hasher.hash_name()
@@ -569,36 +402,51 @@ def merge_unambig_hashes(
     syn = join_on_col_with_NA(syn, ambig_hashes, hash_name)
     n_proteins = len(syn)
     syn["tmp.i"] = pd.array(range(len(syn)), dtype=pd.UInt32Dtype())
-    anchor_blocks = np.array([np.nan] * n_proteins)
-    for hash_val, subframe in syn.groupby(by=["tmp.base"]):
-        # Note that base values are ordered with lower ortho counts first
-        for unused_i, row in subframe.iterrows():
-            footprint = row["syn.hash.footprint"]
-            row_no = row["tmp.i"]
-            anchor_blocks[row_no : row_no + footprint] = hasher.shingle(
-                syn["hom.cluster"][row_no : row_no + footprint],
-                row["tmp.base"],
-                row["syn.hash.direction"],
-                row[hash_name],
-            )
-    syn["syn.anchor_id"] = pd.array(anchor_blocks, dtype=pd.UInt32Dtype())
+    if shingle:
+        anchor_blocks = np.array([np.nan] * n_proteins)
+        for hash_val, subframe in syn.groupby(by=["tmp.base"]):
+            # Note that base values are ordered with lower ortho counts first
+            for unused_i, row in subframe.iterrows():
+                footprint = row["syn.hash.footprint"]
+                row_no = row["tmp.i"]
+                anchor_blocks[row_no : row_no + footprint] = hasher.shingle(
+                    syn["hom.cluster"][row_no : row_no + footprint],
+                    row["tmp.base"],
+                    row["syn.hash.direction"],
+                    row[hash_name],
+                )
+        syn["syn.anchor_id"] = pd.array(anchor_blocks, dtype=pd.UInt32Dtype())
+    else:
+        syn["syn.anchor_id"] = syn["tmp.base"]
     # Calculate disambiguation hashes and write them out for merge
     disambig_frame_list = []
     for unused_frag, subframe in syn.groupby(by=["frag.id"]):
-        disambig_frame_list.append(calculate_disambig_hashes(subframe))
+        disambig_frame_list.append(hasher.calculate_disambig_hashes(subframe))
     disambig_fr = pd.concat(
         [df for df in disambig_frame_list if df is not None]
     )
     disambig_fr = disambig_fr.dropna(how="all")
     syn = syn.join(disambig_fr)
     write_tsv_or_parquet(syn, outpath / SYNTENY_FILE, remove_tmp=False)
+    syn["tmp.disambig.self_count"] = pd.array(
+        syn["syn.disambig_upstr"].map(
+            syn["syn.disambig_upstr"].value_counts()
+        ),
+        dtype=pd.UInt32Dtype(),
+    )
     upstream_hashes = (
-        syn[["syn.disambig_upstr"] + MERGE_COLS]
+        syn[["syn.disambig_upstr"] + REMERGE_COLS]
         .dropna(how="any")
         .rename(columns={"syn.disambig_upstr": "hash"})
     )
+    syn["tmp.disambig.self_count"] = pd.array(
+        syn["syn.disambig_downstr"].map(
+            syn["syn.disambig_downstr"].value_counts()
+        ),
+        dtype=pd.UInt32Dtype(),
+    )
     downstream_hashes = (
-        syn[["syn.disambig_downstr"] + MERGE_COLS]
+        syn[["syn.disambig_downstr"] + REMERGE_COLS]
         .dropna(how="any")
         .rename(columns={"syn.disambig_downstr": "hash"})
     )
@@ -615,7 +463,6 @@ def merge_unambig_hashes(
     unambig_pct = n_unambig * 100.0 / in_hash
     ambig_pct = n_ambig * 100.0 / in_hash
     in_synteny = syn["syn.anchor_id"].notna().sum()
-    synteny_pct = in_synteny * 100.0 / in_synteny
     synteny_stats = {
         "idx": idx,
         "path": dotpath,
@@ -645,11 +492,12 @@ def merge_disambig_hashes(
     args,
     disambig_hashes=None,
     still_ambig_hashes=None,
-    ambig_hashes=None,
     hasher=None,
     n_proteomes=None,
     cluster_writer=None,
     greedy=False,
+    nonambig=False,
+    shingle=True,
 ):
     """Merge disambiguated synteny hashes into proteomes per-proteome."""
     plain_hash_name = hasher.hash_name(no_prefix=True)
@@ -680,49 +528,56 @@ def merge_disambig_hashes(
     n_proteins = len(syn)
     syn["tmp.i"] = range(len(syn))
     # Do disambiguated fills
-    disambig_fills = np.array([np.nan] * n_proteins)
-    for hash_val, subframe in syn.groupby(by=["tmp.disambig.base"]):
-        for unused_i, row in subframe.iterrows():
-            footprint = row["syn.hash.footprint"]
-            row_no = row["tmp.i"]
-            disambig_fills[row_no : row_no + footprint] = hasher.shingle(
-                syn["hom.cluster"][row_no : row_no + footprint],
-                row["tmp.disambig.base"],
-                row["syn.hash.direction"],
-                row[hash_name],
-            )
-    syn["syn.anchor_id"] = syn["syn.anchor_id"].fillna(
-        pd.Series(disambig_fills, index=syn.index)
-    )
-    n_disambiguated = (syn["syn.anchor_id"] == disambig_fills).sum()
+    if shingle:
+        disambig_fills = np.array([np.nan] * n_proteins)
+        for hash_val, subframe in syn.groupby(by=["tmp.disambig.base"]):
+            for unused_i, row in subframe.iterrows():
+                footprint = row["syn.hash.footprint"]
+                row_no = row["tmp.i"]
+                disambig_fills[row_no : row_no + footprint] = hasher.shingle(
+                    syn["hom.cluster"][row_no : row_no + footprint],
+                    row["tmp.disambig.base"],
+                    row["syn.hash.direction"],
+                    row[hash_name],
+                )
+        disambig_ser = pd.Series(disambig_fills, index=syn.index)
+        syn["syn.anchor_id"] = syn["syn.anchor_id"].fillna(
+            pd.Series(disambig_fills, index=syn.index)
+        )
+    else:
+        disambig_ser = syn["tmp.disambig.base"]
+    syn["syn.anchor_id"] = syn["syn.anchor_id"].fillna(disambig_ser)
+    n_disambiguated = (syn["syn.anchor_id"] == disambig_ser).sum()
     # Deal with ambiguous hashes by adding non-ambiguous examples
-    nonambig_fills = np.array([np.nan] * n_proteins)
-    for hash_val, subframe in syn.groupby(by=["tmp.base.ambig"]):
-        if not greedy and len(subframe) > 1:
-            continue
-        for unused_i, row in subframe.iterrows():
-            footprint = row["syn.hash.footprint"]
-            row_no = row["tmp.i"]
-            nonambig_fills[row_no : row_no + footprint] = hasher.shingle(
-                syn["hom.cluster"][row_no : row_no + footprint],
-                row["tmp.base.ambig"],
-                row["syn.hash.direction"],
-                row[hash_name],
-            )
-            break
-    syn["syn.anchor_id"] = syn["syn.anchor_id"].fillna(
-        pd.Series(nonambig_fills, index=syn.index)
-    )
-    n_nonambig = (syn["syn.anchor_id"] == nonambig_fills).sum()
+    if nonambig:
+        nonambig_fills = np.array([np.nan] * n_proteins)
+        for hash_val, subframe in syn.groupby(by=["tmp.base.ambig"]):
+            if not greedy and len(subframe) > 1:
+                continue
+            for unused_i, row in subframe.iterrows():
+                footprint = row["syn.hash.footprint"]
+                row_no = row["tmp.i"]
+                nonambig_fills[row_no : row_no + footprint] = hasher.shingle(
+                    syn["hom.cluster"][row_no : row_no + footprint],
+                    row["tmp.base.ambig"],
+                    row["syn.hash.direction"],
+                    row[hash_name],
+                )
+                break
+        syn["syn.anchor_id"] = syn["syn.anchor_id"].fillna(
+            pd.Series(nonambig_fills, index=syn.index)
+        )
+        n_nonambig = (syn["syn.anchor_id"] == nonambig_fills).sum()
+    else:
+        n_nonambig = 0
     # Delete temporary columns
     non_needed_cols = [
         "tmp.i",
         "syn.hash.disambig.ortho_count.ambig",
         "syn.hash.ortho_count.ambig",
-        "syn.hash.frag_count",
         "syn.hash.footprint",
-        "syn.hash.direction",
-        "syn.hash.self_count",
+        # "syn.hash.direction",
+        # "syn.hash.self_count",
     ]
     syn = syn.drop(columns=non_needed_cols)
     write_tsv_or_parquet(
@@ -741,6 +596,7 @@ def merge_disambig_hashes(
     anchor_hist["pct_anchors"] = (
         anchor_hist["hash.self_count"] * anchor_hist.index * 100.0 / n_assigned
     )
+    del anchor_hist["hash.self_count"]
     write_tsv_or_parquet(anchor_hist, outpath / ANCHOR_HIST_FILE)
     # Do histogram of anchors
     in_synteny = syn["syn.anchor_id"].notna().sum()
@@ -753,74 +609,14 @@ def merge_disambig_hashes(
         "path": dotpath,
         "hom.clusters": n_assigned,
         "syn.anchors": in_synteny,
-        "syn.pct": synteny_pct,
-        "syn.disambig": n_disambiguated,
-        "syn.nonambig": n_nonambig,
-        "syn.uassigned": n_assigned - in_synteny,
-        "syn.unassigned_pct": unassigned_pct,
+        "syn.in_pct": synteny_pct,
+        "syn.hashes.disambig": n_disambiguated,
+        "syn.hashes.nonambig": n_nonambig,
+        "syn.hashes.unassigned": n_assigned - in_synteny,
+        "syn.hashes.unassigned_pct": unassigned_pct,
         "syn.fom": avg_ortho * 100.0 / n_proteomes,
     }
     return synteny_stats
-
-
-def calculate_disambig_hashes(df):
-    """Calculate disambiguation hashes per-fragment."""
-    hash2_fr = df[["syn.anchor_id", "tmp.base.ambig"]].copy()
-    hash2_fr = hash2_fr.rename(columns={"syn.anchor_id": "tmp.anchor_id"})
-    hash2_fr["tmp.upstream"] = fill_na_with_last_valid(df["syn.anchor_id"])
-    hash2_fr["tmp.downstream"] = fill_na_with_last_valid(
-        df["syn.anchor_id"], flip=True
-    )
-    hash2_fr["tmp.i"] = range(len(hash2_fr))
-    upstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
-    downstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
-    hash2_fr["syn.disambig_upstr"] = pd.NA
-    hash2_fr["syn.disambig_downstr"] = pd.NA
-    for unused_id, row in hash2_fr.iterrows():
-        row_no = row["tmp.i"]
-        ambig_base = row["tmp.base.ambig"]
-        upstream_unambig = row["tmp.upstream"]
-        downstream_unambig = row["tmp.downstream"]
-        if pd.notna(ambig_base):
-            if pd.notna(upstream_unambig):
-                upstream_hash[row_no] = xxhash.xxh32_intdigest(
-                    np.array([upstream_unambig, ambig_base]).tobytes()
-                )
-            if pd.notna(downstream_unambig):
-                downstream_hash[row_no] = xxhash.xxh32_intdigest(
-                    np.array([ambig_base, downstream_unambig]).tobytes()
-                )
-    hash2_fr["syn.disambig_upstr"] = upstream_hash
-    hash2_fr["syn.disambig_downstr"] = downstream_hash
-    hash2_fr = remove_tmp_columns(hash2_fr)
-    return hash2_fr
-
-
-def fill_na_with_last_valid(ser, flip=False):
-    """Input a series with NA values, returns a series with those values filled."""
-    vec = ser.isnull().to_numpy()
-    if flip:
-        vec = np.flip(vec)
-    uneq_idxs = np.append(np.where(vec[1:] != vec[:-1]), len(vec) - 1)
-    if len(uneq_idxs) == 0:
-        return ser
-    runlengths = np.diff(np.append(-1, uneq_idxs))
-    positions = np.cumsum(np.append(0, runlengths))[:-1]
-    first_null_idxs = np.where(vec[positions])
-    first_null_pos = positions[first_null_idxs]
-    null_runs = runlengths[first_null_idxs]
-    if flip:
-        fill_vals = np.append(pd.NA, np.flip(ser.to_numpy()))[first_null_pos]
-    else:
-        fill_vals = np.append(pd.NA, ser.to_numpy())[first_null_pos]
-    out_arr = pd.array([pd.NA] * len(ser), dtype=pd.UInt32Dtype(),)
-    for i, pos in enumerate(first_null_pos):
-        for j in range(null_runs[i]):
-            out_arr[pos + j] = fill_vals[i]
-    if flip:
-        out_arr = np.flip(out_arr)
-    out_ser = pd.Series(out_arr, index=ser.index)
-    return out_ser
 
 
 def join_synteny_to_clusters(args, cluster_parent=None, mailbox_reader=None):
@@ -832,27 +628,26 @@ def join_synteny_to_clusters(args, cluster_parent=None, mailbox_reader=None):
     with mailbox_reader(idx) as fh:
         synteny_frame = pd.read_csv(fh, sep="\t", index_col=0).convert_dtypes()
         in_synteny = len(synteny_frame)
-    # delete columns from previous merge
-    for col in synteny_frame.columns:
-        if col in cluster.columns:
-            del cluster[col]
+    # cluster files are unusual in that I don't bother to version them,
+    # so overlapping info has to be deleted each time
     clust_syn = concat_without_overlap(cluster, synteny_frame)
     write_tsv_or_parquet(clust_syn, cluster_path)
+    anchor_count = clust_syn["syn.anchor_id"].value_counts()
+    anchor_frag_counts = [0]
+    for unused_id_tuple, subframe in clust_syn.groupby(
+        by=["syn.anchor_id", "path"]
+    ):
+        if len(subframe) == 1:
+            anchor_frag_counts.append(1)
+        else:
+            anchor_frag_counts.append(len(subframe["frag.idx"].value_counts()))
     return {
         "clust_id": idx,
         "in_synteny": in_synteny,
+        "n_anchors": len(anchor_count),
+        "max_frags_per_anch": max(anchor_frag_counts),
         "synteny_pct": in_synteny * 100.0 / n_cluster,
     }
-
-
-def dagchainer_id_to_int(ident):
-    """Accept DAGchainer ids such as "cl1" and returns an integer."""
-    if not ident.startswith("cl"):
-        raise ValueError(f"Invalid ID {ident}.")
-    id_val = ident[2:]
-    if not id_val.isnumeric():
-        raise ValueError(f"Non-numeric ID value in {ident}.")
-    return int(id_val)
 
 
 @cli.command()
@@ -927,3 +722,13 @@ def dagchainer_synteny(setname):
             f"Writing {synteny_hash_name} synteny frame {synteny_name}."
         )
         homology_frame.to_csv(set_path / synteny_name, sep="\t")
+
+
+def dagchainer_id_to_int(ident):
+    """Accept DAGchainer ids such as "cl1" and returns an integer."""
+    if not ident.startswith("cl"):
+        raise ValueError(f"Invalid ID {ident}.")
+    id_val = ident[2:]
+    if not id_val.isnumeric():
+        raise ValueError(f"Non-numeric ID value in {ident}.")
+    return int(id_val)
