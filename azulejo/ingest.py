@@ -62,21 +62,16 @@ MINIMUM_PROTEINS = 100
 
 @cli.command()
 @click_loguru.init_logger()
-@click.option(
-    "--parallel/--no-parallel",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Process in parallel.",
-)
 @click.argument("input_toml")
-def ingest_sequence_data(input_toml, parallel):
+def ingest_sequence_data(input_toml):
     """Marshal protein and genome sequence information.
 
     IDs must correspond between GFF and FASTA files and must be unique across
     the entire set.
     """
     options = click_loguru.get_global_options()
+    user_options = click_loguru.get_user_global_options()
+    parallel = user_options["parallel"]
     input_obj = TaxonomicInputTable(Path(input_toml), write_table=False)
     input_table = input_obj.input_table
     set_path = Path(input_obj.setname)

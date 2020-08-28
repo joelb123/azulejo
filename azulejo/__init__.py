@@ -2,7 +2,9 @@
 """azulejo -- tile phylogenetic space with subtrees."""
 # standard library imports
 import locale
+import os
 import warnings
+from pathlib import Path
 from pkg_resources import iter_entry_points
 
 # third-party imports
@@ -11,14 +13,60 @@ from click_plugins import with_plugins
 
 # first-party imports
 from click_loguru import ClickLoguru
-from loguru import logger
 
 # module imports
 from .common import NAME
+from .installer import DependencyInstaller
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.4"
+__version__ = "0.9.5"
+INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
+    NAME.upper() + "_INSTALL_DIR"
+)
+if INSTALL_ENVIRON_VAR in os.environ:
+    INSTALL_PATH = Path(os.environ[INSTALL_ENVIRON_VAR])
+else:
+    INSTALL_PATH = None
+
+MUSCLE_VER = "3.8.1551"
+USEARCH_VER = "11.0.667"
+
+
+def muscle_version_parser(ver_str):
+    """Parse version out of muscle version string."""
+    return ver_str.split()[1]
+
+
+def usearch_version_parser(ver_str):
+    """Parse version out of usearch version string."""
+    return ver_str.split()[1].split("_")[0]
+
+
+DEPENDENCY_DICT = {
+    "muscle": {
+        "binaries": ["muscle"],
+        "tarball": (
+            "https://www.drive5.com/muscle/muscle_src_"
+            + MUSCLE_VER
+            + ".tar.gz"
+        ),
+        "dir": ".",
+        "version": MUSCLE_VER,
+        "version_command": ["-version"],
+        "version_parser": muscle_version_parser,
+        "make": ["muscle-pgo",],
+        "copy_binaries": ["muscle"],
+    },
+    "usearch": {
+        "binaries": ["usearch"],
+        "dir": ".",
+        "version": USEARCH_VER,
+        "version_command": ["-version"],
+        "version_parser": usearch_version_parser,
+    },
+}
+
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
@@ -42,9 +90,18 @@ click_loguru = ClickLoguru(NAME, __version__, retention=LOG_FILE_RETENTION)
     show_default=True,
     default=False,
     help="Treat warnings as fatal.",
+    callback=click_loguru.user_global_options_callback,
+)
+@click.option(
+    "--parallel/--no-parallel",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Process in parallel where supported.",
+    callback=click_loguru.user_global_options_callback,
 )
 @click.version_option(version=__version__, prog_name=NAME)
-def cli(warnings_as_errors, **unused_kwargs):
+def cli(warnings_as_errors, parallel, **unused_kwargs):
     """azulejo -- tiling genes in subtrees across phylogenetic space.
 
     \b
@@ -57,6 +114,31 @@ def cli(warnings_as_errors, **unused_kwargs):
     if warnings_as_errors:
         print("Runtime warnings (e.g., from pandas) will cause exceptions!")
         warnings.filterwarnings("error")
+    unused_fstring = f"{parallel}"
+
+
+@cli.command()
+@click.option(
+    "--force/--no-force",
+    help="Force overwrites of existing binaries.",
+    default=False,
+)
+@click.argument("dependencies", nargs=-1)
+def install(dependencies, force):
+    """Check for/install binary dependencies.
+
+    \b
+    Example:
+        azulejo install all
+
+    """
+    installer = DependencyInstaller(
+        DEPENDENCY_DICT, pkg_name=NAME, install_path=INSTALL_PATH, force=force
+    )
+    if dependencies == ():
+        installer.check_all()
+        return
+    installer.install_list(dependencies)
 
 
 from .analysis import analyze_clusters  # isort:skip

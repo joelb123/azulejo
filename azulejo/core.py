@@ -70,6 +70,9 @@ IDENT_LOG_MIN = -3
 IDENT_LOG_MAX = 0
 DEFAULT_STEPS = 16
 
+FASTA_EXT_LIST = [".faa", ".fa", ".fasta"]
+FAA_EXT = "faa"
+
 # Classes
 class ElapsedTimeReport:
 
@@ -757,13 +760,6 @@ def cleanup_fasta(
 @click_loguru.log_elapsed_time()
 @click.argument("setname")
 @click.option(
-    "--parallel/--no-parallel",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Process in parallel.",
-)
-@click.option(
     "--fasta/--no-fasta",
     is_flag=True,
     default=True,
@@ -771,9 +767,7 @@ def cleanup_fasta(
     help="Write FASTA output.",
 )
 @click.argument("fasta_list", nargs=-1, type=click.Path(exists=True))
-def prepare_protein_files(
-    setname, fasta_list, stemdict=None, parallel=True, fasta=True
-):
+def prepare_protein_files(setname, fasta_list, stemdict=None, fasta=True):
     """Sanitize and combine protein FASTA files."""
     options = click_loguru.get_global_options()
     set_path = Path(setname)
@@ -783,9 +777,9 @@ def prepare_protein_files(
             logger.error("Empty FASTA_LIST, aborting.")
         stemdict = {}
         for file_path in [Path(p) for p in fasta_list]:
-            if file_path.suffix != "." + FAA_EXT:
+            if file_path.suffix not in FASTA_EXT_LIST:
                 logger.error(
-                    f"Unrecognized extension in {file_path.path.name}"
+                    f"Unrecognized extension {file_path.suffix } in {file_path.name}"
                 )
                 sys.exit(1)
             stemdict[file_path.name[: -len(FAA_EXT) - 1]] = {
@@ -802,19 +796,10 @@ def prepare_protein_files(
     arg_list = []
     for file_stem in stemdict.keys():
         arg_list.append((set_path, stemdict[file_stem][FAA_EXT], file_stem,))
-    if parallel:
-        bag = db.from_sequence(arg_list)
-        del arg_list
-        if not options.quiet:
-            ProgressBar().register()
-    else:
-        protein_stats = []
+    protein_stats = []
     logger.info(f"Preparing {len(stemdict)} protein FASTA files:")
-    if parallel:
-        protein_stats = bag.map(cleanup_fasta, write_fasta=fasta)
-    else:
-        for args in arg_list:
-            protein_stats.append(cleanup_fasta(args, write_fasta=fasta))
+    for args in arg_list:
+        protein_stats.append(cleanup_fasta(*args, write_fasta=fasta))
     file_frame_dict = {}
     propfile_path_dict = {}
     n_seqs = 0
@@ -966,18 +951,13 @@ def compute_subclusters(cluster, cluster_size_dict=None):
     show_default=True,
     help="Process only clusters of this size.",
 )
-@click.option(
-    "--parallel/--no-parallel",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Process in parallel.",
-)
 @click.argument("synfile")
 @click.argument("homofile")
-def combine_clusters(first_n, clust_size, synfile, homofile, parallel):
+def combine_clusters(first_n, clust_size, synfile, homofile):
     """Combine synteny and homology clusters."""
     options = click_loguru.get_global_options()
+    user_options = click_loguru.get_user_global_options()
+    parallel = user_options["parallel"]
     timer = ElapsedTimeReport("reading/preparing")
     syn = pd.read_csv(synfile, sep="\t", index_col=0)
     homo = pd.read_csv(homofile, sep="\t", index_col=0)

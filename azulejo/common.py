@@ -65,6 +65,8 @@ DTYPE_DICT = {
     "adj_group": pd.UInt32Dtype(),
     "adj_groups": pd.UInt32Dtype(),
     "clusters": pd.UInt32Dtype(),
+    "fasta_url": pd.StringDtype(),
+    "gff_url": pd.StringDtype(),
     "frag.direction": DIRECTIONAL_CATEGORY,
     "frag.id": pd.CategoricalDtype(),
     "frag.idx": pd.UInt32Dtype(),

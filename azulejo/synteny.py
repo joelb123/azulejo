@@ -77,20 +77,15 @@ DEFAULT_K = 2
     show_default=True,
     help="Shingle non-ambiguous hashes over k-mer.",
 )
-@click.option(
-    "--parallel/--no-parallel",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Process in parallel.",
-)
 @click.argument("setname")
-def synteny_anchors(k, peatmer, setname, parallel, greedy, nonambig, shingle):
+def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
     """Calculate synteny anchors."""
     if k < 2:
         logger.error("k must be at least 2.")
         sys.exit(1)
     options = click_loguru.get_global_options()
+    user_options = click_loguru.get_user_global_options()
+    parallel = user_options["parallel"]
     set_path = Path(setname)
     file_stats_path = set_path / PROTEOMOLOGY_FILE
     proteomes = read_tsv_or_parquet(file_stats_path)

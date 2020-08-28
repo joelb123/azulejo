@@ -51,17 +51,12 @@ HOMOLOGY_COLS = ["hom.cluster", "hom.cl_size"]
     default=0.0,
     help="Minimum sequence ID (0-1). [default: lowest]",
 )
-@click.option(
-    "--parallel/--no-parallel",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Process in parallel.",
-)
 @click.argument("setname")
-def do_homology(identity, setname, parallel):
+def do_homology(identity, setname):
     """Calculate homology clusters, MSAs, trees."""
     options = click_loguru.get_global_options()
+    user_options = click_loguru.get_user_global_options()
+    parallel = user_options["parallel"]
     set_path = Path(setname)
     # read and possibly update proteomes
     proteomes_path = set_path / PROTEOMES_FILE
