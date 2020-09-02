@@ -35,6 +35,6 @@ def test_build(tmp_path):
             results = azulejo(["-q", "install", "-f", "-y", "all"])
         except sh.ErrorReturnCode as errors:
             print(errors)
-            pytest.fail(errors)
+            pytest.fail("Build failed")
         results = azulejo(["install"])
-        print(results.output)
+        print(results)
