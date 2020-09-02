@@ -4,6 +4,7 @@
 import os
 import pkg_resources
 import pkgutil
+import platform
 import shutil
 import sys
 import tempfile
@@ -17,6 +18,10 @@ from progressbar import DataTransferBar
 from requests_download import ProgressTracker
 from requests_download import download as request_download
 
+# Global constants
+PLATFORM_LIST = ["linux", "bsd", "macos", "unknown"]
+EXECUTABLE_EXTS = ".sh"
+
 
 def default_version_splitter(instring):
     """Split the version string out of version output."""
@@ -27,12 +32,12 @@ def walk_package(pkgname, root):
     """Walk through a package_resource."""
     dirs = []
     files = []
-    for name in pkg_resources.resource_listdir(pkgname, root):
-        fullname = root + "/" + name
-        if pkg_resources.resource_isdir(pkgname, fullname):
+    for name in pkg_resources.resource_listdir(pkgname, str(root)):
+        fullname = root / name
+        if pkg_resources.resource_isdir(pkgname, str(fullname)):
             dirs.append(fullname)
         else:
-            files.append(name)
+            files.append(Path(name))
     for new_path in dirs:
         yield from walk_package(pkgname, new_path)
     yield root, dirs, files
@@ -48,6 +53,8 @@ class DependencyInstaller(object):
         install_path=None,
         bin_path=None,
         force=False,
+        accept_licenses=False,
+        quiet=False,
     ):
         """Initialize dictionary of dependencies."""
         self.dependency_dict = dependency_dict
@@ -68,6 +75,22 @@ class DependencyInstaller(object):
         self.bin_path_in_path = str(self.bin_path) in os.environ["PATH"].split(
             ":"
         )
+        system = platform.system()
+        if system == "Linux":
+            self.platform = "linux"
+        elif system.endswith("BSD"):
+            self.platform = "bsd"
+        elif system == "Darwin":
+            self.platform = "macos"
+        else:
+            self.platform = "unknown"
+            logger.warning(
+                f"Unknown platform {system}, installs will likely fail"
+            )
+        self.not_my_platform = PLATFORM_LIST
+        self.not_my_platform.remove(self.platform)
+        self.accept_licenses = accept_licenses
+        self.quiet = quiet
 
     def check_all(self):
         """Check all depenencies for existence and version."""
@@ -130,6 +153,15 @@ class DependencyInstaller(object):
         else:
             bin_path_state += "not in path."
             logger.debug(f"Bin dir '{self.bin_path}' {bin_path_state}")
+        all_installed = all(
+            [
+                self.dependency_dict[d]["installed"]
+                for d in self.dependency_dict
+            ]
+        )
+        if all_installed:
+            print("All dependencies are installed")
+        return all_installed
 
     def install_list(self, deplist):
         """Install needed dependencies from a list."""
@@ -163,27 +195,24 @@ class DependencyInstaller(object):
         for dep in install_list:
             self.install(dep)
 
-    def _git(self, dep, dep_dict):
+    def _git(self, dep):
         """Git clone from list."""
-        from sh import git  # isort:skip
-
-        for repo in dep_dict["git_list"]:
+        git = sh.Command("git")
+        for repo in self.dependency_dict[dep]["git_list"]:
             logger.debug(f"   cloning {dep} repo {repo}")
             git.clone(repo)
 
-    def _download_untar(self, dep, dep_dict, progressbar=True):
+    def _download_untar(self, dep):
         """Download and untar tarball."""
-        from sh import tar  # isort:skip
-
-        download_url = dep_dict["tarball"]
+        tar = sh.Command("tar")
+        download_url = self.dependency_dict[dep]["tarball"]
         dlname = download_url.split("/")[-1]
         download_path = Path(".") / dlname
-        logger.debug(f"downloading {download_url} to {dlname}")
-        tmp_path = download_path / (dlname + ".tmp")
-        if progressbar:
-            trackers = (ProgressTracker(DataTransferBar()),)
+        logger.debug(f"downloading {dep} at {download_url} to {dlname}")
+        if self.quiet:
+            trackers = ()
         else:
-            trackers = None
+            trackers = (ProgressTracker(DataTransferBar()),)
         request_download(download_url, download_path, trackers=trackers)
         logger.debug(
             f"downloaded file {download_path}, size"
@@ -193,7 +222,30 @@ class DependencyInstaller(object):
         logger.debug(tar_output)
         logger.debug("untar done")
 
-    def _configure(self, dep, dep_dict):
+    def _download_binaries(self, dep):
+        """Download and untar tarball."""
+        download_dict = self.dependency_dict[dep]["download_binaries"]
+        if self.platform in download_dict:
+            download_url = download_dict[self.platform]
+        else:
+            logger.warning(
+                f"No binaries for download for {dep}, will fake it."
+            )
+            return
+        dlname = download_url.split("/")[-1]
+        download_path = Path(".") / dlname
+        logger.debug(f"downloading {dep} at {download_url} to {dlname}")
+        if self.quiet:
+            trackers = ()
+        else:
+            trackers = (ProgressTracker(DataTransferBar()),)
+        request_download(download_url, download_path, trackers=trackers)
+        logger.debug(
+            f"downloaded file {download_path}, size"
+            f" {download_path.stat().st_size}"
+        )
+
+    def _configure(self, dep):
         """Run make to build package."""
         logger.debug(f"   configuring {dep} in {Path.cwd()}")
         configure = sh.Command("./configure")
@@ -204,23 +256,31 @@ class DependencyInstaller(object):
             sys.exit(1)
         logger.debug(configure_out)
 
-    def _copy_in_files(self, out_head, pkgname, depname, force=True):
+    def _copy_in_files(self, out_head, pkgname, dep, force=True):
         """Copy any files under installer_data to build directory."""
-        resource_dir = "installer_data/" + depname
-        if pkg_resources.resource_exists(pkgname, resource_dir):
-            for root, dir, files in walk_package(pkgname, resource_dir):
-                split_dir = os.path.split(root)
-                if root == resource_dir:
-                    out_subdir = ""
+        resource_path = Path("installer_data") / dep
+        platform_path = resource_path / self.platform
+        not_my_platform_path_parts = [
+            (resource_path / p).parts for p in self.not_my_platform
+        ]
+        if pkg_resources.resource_exists(pkgname, str(resource_path)):
+            for root, unused_dirs, files in walk_package(
+                pkgname, resource_path
+            ):
+                root_parts = root.parts
+                if root_parts[:3] in not_my_platform_path_parts:
+                    continue
+                elif root_parts[:3] == platform_path.parts:
+                    subdir_parts = root_parts[3:]
                 else:
-                    out_subdir = "/".join(list(split_dir)[2:])
-                out_path = out_head / out_subdir
+                    subdir_parts = root_parts[2:]
+                out_path = out_head.joinpath(*subdir_parts)
                 if not out_path.exists() and len(files) > 0:
                     logger.info(f'Creating "{str(out_path)}" directory')
                     out_path.mkdir(0o755, parents=True)
                 for filename in files:
                     data_string = pkgutil.get_data(
-                        __name__, root + "/" + filename
+                        __name__, str(root / filename)
                     ).decode("UTF-8")
                     file_path = out_path / filename
                     if file_path.exists() and not force:
@@ -236,34 +296,63 @@ class DependencyInstaller(object):
                     logger.debug(f"{operation} {file_path}")
                     with file_path.open(mode="wt") as fh:
                         fh.write(data_string)
-                    if filename.endswith(".sh"):
+                    if filename.suffix in EXECUTABLE_EXTS:
                         file_path.chmod(0o755)
 
-    def _make(self, dep, dep_dict):
+    def _make(self, dep):
         """Run make to build package."""
-        from sh import make  # isort:skip
-
-        logger.debug(f"   making {dep_dict['make']} in {Path.cwd()}")
+        make = sh.Command("make")
+        logger.debug(
+            f"   making {self.dependency_dict[dep]['make']} in {Path.cwd()}"
+        )
         try:
-            make_out = make(dep_dict["make"])
+            make_out = make(self.dependency_dict[dep]["make"])
         except:
             logger.error("make failed.")
             logger.error(make_out)
             sys.exit(1)
         logger.debug(make_out)
 
-    def _make_install(self, dep, dep_dict):
+    def _make_install(self, dep):
         """Run make install to install a package."""
+        make = sh.Command("make")
         logger.info(f"   installing {dep} into {self.bin_path}")
-        install_out = make.install(dep_dict["make_install"])
+        install_out = make.install(self.dependency_dict[dep]["make_install"])
         logger.debug(install_out)
 
-    def _copy_binaries(self, dep, dep_dict):
+    def _copy_binaries(self, dep):
         """Copy the named binary to the bin directory."""
         logger.info(f"   copying {dep} into {self.bin_path}")
-        for bin in dep_dict["copy_binaries"]:
+        for bin in self.dependency_dict[dep]["copy_binaries"]:
             binpath = Path(bin)
             shutil.copy2(binpath, self.bin_path / binpath.name)
+
+    def _check_for_license_acceptance(self, dep):
+        """Prompt for acceptance of license terms."""
+        if "license" in self.dependency_dict[dep]:
+            license_name = self.dependency_dict[dep]["license"]
+        else:
+            license_name = "restrictive"
+        if "license_file" in self.dependency_dict[dep]:
+            license = Path(
+                self.dependency_dict[dep]["license_file"]
+            ).read_text()
+            logger.warning(license)
+        while "invalid answer":
+            reply = (
+                str(
+                    input(
+                        f"Do you accept this {license_name} license? (y/n): "
+                    )
+                )
+                .lower()
+                .strip()
+            )
+            if len(reply) > 0:
+                if reply[0] == "y":
+                    return True
+                if reply[0] == "n":
+                    return False
 
     def install(self, dep):
         """Install a particular dependency."""
@@ -277,9 +366,11 @@ class DependencyInstaller(object):
             # Get the sources.  Alternatives are git or download
             #
             if "git_list" in dep_dict:
-                self._git(dep, dep_dict)
+                self._git(dep)
             elif "tarball" in dep_dict:
-                self._download_untar(dep, dep_dict)
+                self._download_untar(dep)
+            elif "download_binaries" in dep_dict:
+                self._download_binaries(dep)
             #
             # Change to the work directory.
             #
@@ -296,26 +387,46 @@ class DependencyInstaller(object):
             #
             self._copy_in_files(workpath, self.pkg_name, dep, force=True)
             #
+            # Check licensing
+            #
+            if "license" in dep_dict:
+                if (
+                    "license_restrictive" in dep_dict
+                    and dep_dict["license_restrictive"]
+                ):
+                    logger.warning(
+                        f"{dep} has a restrictive {dep_dict['license']} license"
+                    )
+                    if not self.accept_licenses:
+                        accept = self._check_for_license_acceptance(dep)
+                        if not accept:
+                            logger.error(
+                                f"License terms for {dep} not accepted, skipping installation"
+                            )
+                            return
+                else:
+                    logger.info(f"{dep} has a {dep_dict['license']} license")
+            #
             # Build the executables.
             #
             if "configure" in dep_dict:
-                self._configure(dep, dep_dict)
+                self._configure(dep)
             if "configure_extra_dirs" in dep_dict:
                 for newdir in dep_dict["configure_extra_dirs"]:
                     os.chdir(workpath / newdir)
-                    self._configure(dep, dep_dict)
+                    self._configure(dep)
                     os.chdir(workpath)
             if "make" in dep_dict:
-                self._make(dep, dep_dict)
+                self._make(dep)
             if "make_extra_dirs" in dep_dict:
                 for newdir in dep_dict["make_extra_dirs"]:
                     os.chdir(workpath / newdir)
-                    self._make(dep, dep_dict)
+                    self._make(dep)
                     os.chdir(workpath)
             #
             # Install the executables.
             #
             if "make_install" in dep_dict:
-                self._make_install(dep, dep_dict)
+                self._make_install(dep)
             elif "copy_binaries" in dep_dict:
-                self._copy_binaries(dep, dep_dict)
+                self._copy_binaries(dep)

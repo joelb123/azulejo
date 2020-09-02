@@ -2,6 +2,7 @@
 """Base for pytest testing."""
 # standard library imports
 import contextlib
+import functools
 import os
 from pathlib import Path
 
@@ -15,3 +16,20 @@ def working_directory(path):
         yield
     finally:
         os.chdir(prev_cwd)
+
+
+def print_docstring():
+    """Decorator to print a docstring."""
+
+    def decorator(func):
+        """Define decorator"""
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            """Print docstring and call function"""
+            print(func.__doc__)
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

@@ -496,7 +496,7 @@ def homology_cluster(
         }
     )
     id_frame.sort_values("siz", ascending=False, inplace=True)
-    id_frame = id_frame.reindex(["hom.cluster", "siz", "id",], axis=1)
+    id_frame = id_frame.reindex(["hom.cluster", "siz", "id",], axis=1,)
     id_frame.reset_index(inplace=True)
     id_frame.drop(["index"], axis=1, inplace=True)
     id_frame.to_csv(idpath, sep="\t")

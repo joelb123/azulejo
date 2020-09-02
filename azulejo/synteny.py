@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Synteny (genome order) operations."""
 # standard library imports
-import array
 import sys
 
 # from os.path import commonprefix as prefix
@@ -46,6 +45,8 @@ DEFAULT_K = 2
 
 @cli.command()
 @click_loguru.init_logger()
+@click_loguru.log_elapsed_time(level="info")
+@click_loguru.log_peak_memory_use(level="info")
 @click.option(
     "-k", default=DEFAULT_K, help="Synteny block length.", show_default=True
 )
@@ -83,6 +84,7 @@ def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
     if k < 2:
         logger.error("k must be at least 2.")
         sys.exit(1)
+    click_loguru.elapsed_time("Hashing")
     options = click_loguru.get_global_options()
     user_options = click_loguru.get_user_global_options()
     parallel = user_options["parallel"]
@@ -125,6 +127,7 @@ def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
         pd.DataFrame.from_dict(hash_stats_list).set_index("idx").sort_index()
     )
     proteomes = log_and_add_to_stats(proteomes, hash_stats)
+    click_loguru.elapsed_time("Unambiguous anchor")
     del hash_stats_list, hash_stats
     merger = ExternalMerge(
         file_path_func=hash_mb.path_to_mailbox, n_merge=n_proteomes
@@ -151,6 +154,7 @@ def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
     )
     hash_mb.delete()
     del merger, merge_counter
+    click_loguru.elapsed_time("Disambiguating")
     ambig_mb = DataMailboxes(
         n_boxes=n_proteomes,
         mb_dir_path=(set_path / "mailboxes" / "ambig_merge"),
@@ -215,7 +219,7 @@ def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
         still_ambig_hashes,
         fragment_synteny_graph,
     ) = disambig_merger.merge(disambig_merge_counter)
-
+    click_loguru.elapsed_time("Shingling")
     logger.info(
         f"Disambiguated anchor IDs in range {disambig_hashes['tmp.disambig.base'].min()}"
         + f" to {disambig_hashes['tmp.disambig.base'].max()+k}"
@@ -282,6 +286,7 @@ def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
     del disambig_stats_list, disambig_stats
     write_tsv_or_parquet(proteomes, set_path / PROTEOSYN_FILE)
     # merge anchor info into clusters
+    click_loguru.elapsed_time("Anchor joining")
     arg_list = [(i,) for i in range(n_clusters)]
     if parallel:
         bag = db.from_sequence(arg_list)
@@ -323,6 +328,7 @@ def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
     logger.info(
         f"Mean cluster anchor coverage: {mean_clust_synteny:.1f}% (on clusters)"
     )
+    click_loguru.elapsed_time(None)
 
 
 def concat_without_overlap(df1, df2):

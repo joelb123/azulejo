@@ -1,4 +1,5 @@
-CFLAGS += -O3 -funroll-loops -ffast-math -fno-semantic-interposition -flto -DNDEBUG=1 $(PGOFLAGS)
+# Makefile for linux
+CFLAGS += -O3 -ffast-math -fno-semantic-interposition -flto -DNDEBUG=1 $(PGOFLAGS)
 LDLIBS = -lm 
 
 PGO_GENFLAGS = -fprofile-generate -pg --coverage
@@ -13,8 +14,6 @@ default: muscle-pgo
 
 $(CPPOBJ): %.o: %.cpp
 	$(CXX) -c $(CFLAGS) $< -o $@
-
-default: muscle-pgo
 
 muscle: $(CPPOBJ)
 	$(CXX) $(CFLAGS) -o muscle $(CPPOBJ) $(LDLIBS)

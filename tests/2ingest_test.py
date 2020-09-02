@@ -6,6 +6,9 @@ from pathlib import Path
 # third-party imports
 import sh
 
+# module imports
+from . import print_docstring
+
 # global constants
 azulejo = sh.Command("azulejo")
 W05_FASTA_FILE = "glyso.W05.gnm1.ann1.T47J.protein_primaryTranscript.faa"
@@ -16,6 +19,7 @@ LOCAL_INPUT_FILE = "glyso.toml"
 NET_INPUT_FILE = "glyma+glyso.toml"
 
 
+@print_docstring()
 def test_local_data_ingestion(datadir_mgr):
     """Test reading data from local files."""
     with datadir_mgr.in_tmp_dir(
@@ -27,15 +31,13 @@ def test_local_data_ingestion(datadir_mgr):
             PI_GFF_FILE,
         ],
     ):
-        output = azulejo(
-            ["-q", "-e", "ingest-sequence-data", LOCAL_INPUT_FILE]
-        )
-        print(output)
+        output = azulejo(["-q", "-e", "ingest-sequences", LOCAL_INPUT_FILE])
         assert Path("glycines/proteomes.tsv").exists()
         assert Path("glycines/fragments.tsv").exists()
         assert Path("glycines/glyso/W05/proteins.parq").exists()
 
 
+@print_docstring()
 def test_net_data_ingestion(datadir_mgr):
     """Test reading compressed data from https."""
     with datadir_mgr.in_tmp_dir(
@@ -44,7 +46,6 @@ def test_net_data_ingestion(datadir_mgr):
         outscope="global",
         excludepaths=["logs/"],
     ):
-        output = azulejo(["-q", "-e", "ingest-sequence-data", NET_INPUT_FILE])
-        print(output)
+        output = azulejo(["-q", "-e", "ingest-sequences", NET_INPUT_FILE])
         assert Path("glycines/fragments.tsv").exists()
         assert Path("glycines/glyma/proteins.parq").exists()

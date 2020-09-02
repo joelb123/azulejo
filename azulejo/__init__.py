@@ -10,9 +10,8 @@ from pkg_resources import iter_entry_points
 # third-party imports
 import click
 from click_plugins import with_plugins
-
-# first-party imports
 from click_loguru import ClickLoguru
+from loguru import logger
 
 # module imports
 from .common import NAME
@@ -57,6 +56,8 @@ DEPENDENCY_DICT = {
         "version_parser": muscle_version_parser,
         "make": ["muscle-pgo",],
         "copy_binaries": ["muscle"],
+        "license": "public domain",
+        "license_restrictive": False,
     },
     "usearch": {
         "binaries": ["usearch"],
@@ -64,6 +65,15 @@ DEPENDENCY_DICT = {
         "version": USEARCH_VER,
         "version_command": ["-version"],
         "version_parser": usearch_version_parser,
+        "download_binaries": {
+            "linux": "https://www.drive5.com/downloads/usearch11.0.667_i86linux32.gz",
+            "macos": "https://www.drive5.com/downloads/usearch11.0.667_i86osx32.gz",
+        },
+        "make": ["usearch"],
+        "copy_binaries": ["usearch"],
+        "license": "proprietary non-commercial",
+        "license_restrictive": True,
+        "license_file": "LICENSE.txt",
     },
 }
 
@@ -77,7 +87,9 @@ for localename in ["en_US", "en_US.utf8", "English_United_States"]:
         continue
 
 # set up logging
-click_loguru = ClickLoguru(NAME, __version__, retention=LOG_FILE_RETENTION)
+click_loguru = ClickLoguru(
+    NAME, __version__, retention=LOG_FILE_RETENTION, timer_log_level="info"
+)
 # create CLI
 @with_plugins(iter_entry_points(NAME + ".cli_plugins"))
 @click_loguru.logging_options
@@ -119,12 +131,22 @@ def cli(warnings_as_errors, parallel, **unused_kwargs):
 
 @cli.command()
 @click.option(
-    "--force/--no-force",
+    "--force",
+    "-f",
     help="Force overwrites of existing binaries.",
+    is_flag=True,
+    default=False,
+)
+@click.option(
+    "--accept_licenses",
+    "-y",
+    help="Accept all licenses.",
+    is_flag=True,
     default=False,
 )
 @click.argument("dependencies", nargs=-1)
-def install(dependencies, force):
+@click_loguru.init_logger(logfile=False)
+def install(dependencies, force, accept_licenses):
     """Check for/install binary dependencies.
 
     \b
@@ -132,13 +154,19 @@ def install(dependencies, force):
         azulejo install all
 
     """
+    options = click_loguru.get_global_options()
     installer = DependencyInstaller(
-        DEPENDENCY_DICT, pkg_name=NAME, install_path=INSTALL_PATH, force=force
+        DEPENDENCY_DICT,
+        pkg_name=NAME,
+        install_path=INSTALL_PATH,
+        force=force,
+        accept_licenses=accept_licenses,
+        quiet=options.quiet,
     )
     if dependencies == ():
         installer.check_all()
-        return
-    installer.install_list(dependencies)
+    else:
+        installer.install_list(dependencies)
 
 
 from .analysis import analyze_clusters  # isort:skip
@@ -153,9 +181,9 @@ from .core import combine_clusters  #  isort:skip
 from .core import compare_clusters  #  isort:skip
 from .core import prepare_protein_files  #  isort:skip
 from .core import homology_cluster  #  isort:skip
-from .homology import do_homology  # isort:skip
+from .homology import cluster_build_trees  # isort:skip
 from .homology import info_to_fasta  # isort:skip
-from .ingest import ingest_sequence_data  # isort:skip
+from .ingest import ingest_sequences  # isort:skip
 from .parquet import change_compression  # isort:skip
 from .parquet import tsv_to_parquet  # isort:skip
 from .proxy import calculate_proxy_genes  # isort:skip

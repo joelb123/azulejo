@@ -62,8 +62,9 @@ MINIMUM_PROTEINS = 100
 
 @cli.command()
 @click_loguru.init_logger()
+@click_loguru.log_elapsed_time()
 @click.argument("input_toml")
-def ingest_sequence_data(input_toml):
+def ingest_sequences(input_toml):
     """Marshal protein and genome sequence information.
 
     IDs must correspond between GFF and FASTA files and must be unique across
@@ -135,10 +136,8 @@ def ingest_sequence_data(input_toml):
     else:
         new_frags_path = set_path / ("new." + FRAGMENTS_FILE)
         logger.info(f'A fragments file table already exists at "{frags_path}"')
-        logger.info(
-            f'A new file has been written at "{new_frags_path}"'
-            + "edit and rename it to rename fragments"
-        )
+        logger.info(f'A new file has been written at "{new_frags_path}".')
+        logger.info("Edit and rename it to rename fragments.")
         write_tsv_or_parquet(frags, new_frags_path)
 
 

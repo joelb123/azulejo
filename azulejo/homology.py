@@ -45,6 +45,8 @@ HOMOLOGY_COLS = ["hom.cluster", "hom.cl_size"]
 
 @cli.command()
 @click_loguru.init_logger()
+@click_loguru.log_elapsed_time(level="info")
+@click_loguru.log_peak_memory_use(level="info")
 @click.option(
     "--identity",
     "-i",
@@ -52,8 +54,9 @@ HOMOLOGY_COLS = ["hom.cluster", "hom.cl_size"]
     help="Minimum sequence ID (0-1). [default: lowest]",
 )
 @click.argument("setname")
-def do_homology(identity, setname):
+def cluster_build_trees(identity, setname):
     """Calculate homology clusters, MSAs, trees."""
+    click_loguru.elapsed_time("Concatenation")
     options = click_loguru.get_global_options()
     user_options = click_loguru.get_user_global_options()
     parallel = user_options["parallel"]
@@ -93,6 +96,7 @@ def do_homology(identity, setname):
         stem = row["path"]
         file_idx[stem] = i
         stem_dict[i] = stem
+    click_loguru.elapsed_time("Clustering")
     logger.debug("Doing cluster calculation.")
     cwd = Path.cwd()
     os.chdir(set_path)
@@ -127,6 +131,7 @@ def do_homology(identity, setname):
     cluster_paths = [
         set_path / "homology" / f"{i}.fa" for i in range(n_clusters)
     ]
+    click_loguru.elapsed_time("Alignment")
     if parallel:
         bag = db.from_sequence(cluster_paths)
     else:
@@ -201,6 +206,7 @@ def do_homology(identity, setname):
     )
     write_tsv_or_parquet(clusters, set_path / CLUSTERS_FILE)
     # join homology cluster info to proteome info
+    click_loguru.elapsed_time("Joining")
     arg_list = []
     for i, row in proteomes.iterrows():
         arg_list.append((i, dotpath_to_path(row["path"]),))
@@ -235,6 +241,7 @@ def do_homology(identity, setname):
     write_tsv_or_parquet(
         proteomes, set_path / PROTEOMOLOGY_FILE, float_format="%5.2f"
     )
+    click_loguru.elapsed_time(None)
 
 
 def write_concatenated_protein_fasta(args):

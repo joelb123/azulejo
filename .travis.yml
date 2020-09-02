@@ -6,8 +6,6 @@ before_install:
    - pip install poetry
 install:
    - poetry install -v
-   - curl -sSfL https://www.drive5.com/downloads/usearch11.0.667_i86linux32.gz | gunzip > ${HOME}/bin/usearch
-   - chmod 755 ${HOME}/bin/usearch
    - export MAKEFLAGS="-j $(grep -c ^processor /proc/cpuinfo)"
 script:
    - poetry run nox -s tests

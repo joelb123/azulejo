@@ -156,20 +156,20 @@ python-versions = "*"
 
 [[package]]
 name = "boto3"
-version = "1.14.51"
+version = "1.14.54"
 description = "The AWS SDK for Python"
 category = "main"
 optional = false
 python-versions = "*"
 
 [package.dependencies]
-botocore = ">=1.17.51,<1.18.0"
+botocore = ">=1.17.54,<1.18.0"
 jmespath = ">=0.7.1,<1.0.0"
 s3transfer = ">=0.3.0,<0.4.0"
 
 [[package]]
 name = "botocore"
-version = "1.17.51"
+version = "1.17.54"
 description = "Low-level, data-driven core of boto 3."
 category = "main"
 optional = false
@@ -229,16 +229,17 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [[package]]
 name = "click-loguru"
-version = "1.1.0"
+version = "1.3.0"
 description = "Logging to stderr and file for click applications."
 category = "main"
 optional = false
 python-versions = ">=3.6.1,<4.0.0"
 
 [package.dependencies]
-attrs = ">=19.3.0,<20.0.0"
+attrs = ">=19.3,<21.0"
 click = ">=7.1.2,<8.0.0"
 loguru = ">=0.5.0,<0.6.0"
+memory_profiler = ">=0.57.0,<0.58.0"
 
 [[package]]
 name = "click-plugins"
@@ -342,7 +343,7 @@ six = "*"
 
 [[package]]
 name = "dask"
-version = "2.24.0"
+version = "2.25.0"
 description = "Parallel PyData with Task Scheduling"
 category = "main"
 optional = false
@@ -478,7 +479,7 @@ gitdb = ">=4.0.1,<5"
 
 [[package]]
 name = "identify"
-version = "1.4.29"
+version = "1.4.30"
 description = "File identification library for Python"
 category = "dev"
 optional = false
@@ -666,6 +667,17 @@ optional = false
 python-versions = "*"
 
 [[package]]
+name = "memory-profiler"
+version = "0.57.0"
+description = "A module for monitoring memory usage of a python program"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+psutil = "*"
+
+[[package]]
 name = "more-itertools"
 version = "8.5.0"
 description = "More routines for operating on iterables, beyond itertools"
@@ -776,7 +788,7 @@ xarray = "*"
 
 [[package]]
 name = "paramiko"
-version = "2.7.1"
+version = "2.7.2"
 description = "SSH2 protocol library"
 category = "main"
 optional = false
@@ -829,11 +841,11 @@ test = ["allpairspy", "click", "faker", "pytest"]
 
 [[package]]
 name = "pbr"
-version = "5.4.5"
+version = "5.5.0"
 description = "Python Build Reasonableness"
 category = "dev"
 optional = false
-python-versions = "*"
+python-versions = ">=2.6"
 
 [[package]]
 name = "phylopandas"
@@ -912,7 +924,7 @@ python = "<3.7"
 
 [[package]]
 name = "progressbar2"
-version = "3.51.4"
+version = "3.52.1"
 description = "A Python Progressbar library to provide visual (yet text based) progress to long running operations."
 category = "dev"
 optional = false
@@ -920,11 +932,22 @@ python-versions = "*"
 
 [package.extras]
 docs = ["sphinx (>=1.7.4)"]
-tests = ["flake8 (>=3.7.7)", "pytest (>=4.3.1)", "pytest-cov (>=2.6.1)", "pytest-flakes (>=4.0.0)", "pytest-pep8 (>=1.0.6)", "freezegun (>=0.3.11)", "sphinx (>=1.8.5)"]
+tests = ["flake8 (>=3.7.7)", "pytest (>=4.6.9)", "pytest-cov (>=2.6.1)", "pytest-flakes (>=4.0.0)", "pytest-pep8 (>=1.0.6)", "freezegun (>=0.3.11)", "sphinx (>=1.8.5)"]
 
 [package.dependencies]
 python-utils = ">=2.3.0"
 six = "*"
+
+[[package]]
+name = "psutil"
+version = "5.7.2"
+description = "Cross-platform lib for process and system monitoring in Python."
+category = "main"
+optional = false
+python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+
+[package.extras]
+test = ["ipaddress", "mock", "unittest2", "enum34", "pywin32", "wmi"]
 
 [[package]]
 name = "py"
@@ -955,7 +978,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
 name = "pydocstyle"
-version = "5.1.0"
+version = "5.1.1"
 description = "Python docstring style checker"
 category = "dev"
 optional = false
@@ -1170,7 +1193,7 @@ scipy = ">=1.0.1"
 
 [[package]]
 name = "sh"
-version = "1.13.1"
+version = "1.14.0"
 description = "Python subprocess replacement"
 category = "main"
 optional = false
@@ -1222,7 +1245,7 @@ python-versions = "*"
 
 [[package]]
 name = "stevedore"
-version = "3.2.0"
+version = "3.2.1"
 description = "Manage dynamic plugins for Python applications"
 category = "dev"
 optional = false
@@ -1397,7 +1420,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 [metadata]
 lock-version = "1.0"
 python-versions = "^3.6.1"
-content-hash = "155e878dd16e7c96ba08e8bfba5ff42dbd9c17a6c96518cf1e24a513e3ca2450"
+content-hash = "d2ed67f4e0a0cb46ca8b1b20a6ddf58340d9ffc0c2d84c61751eee2fa5459f41"
 
 [metadata.files]
 aiocontextvars = [
@@ -1468,12 +1491,12 @@ boto = [
     {file = "boto-2.49.0.tar.gz", hash = "sha256:ea0d3b40a2d852767be77ca343b58a9e3a4b00d9db440efb8da74b4e58025e5a"},
 ]
 boto3 = [
-    {file = "boto3-1.14.51-py2.py3-none-any.whl", hash = "sha256:f9dbccbcec916051c6588adbccae86547308ac4cd154f1eb7cf6422f0e391a71"},
-    {file = "boto3-1.14.51.tar.gz", hash = "sha256:a6bdb808e948bd264af135af50efb76253e85732c451fa605b7a287faf022432"},
+    {file = "boto3-1.14.54-py2.py3-none-any.whl", hash = "sha256:69ad8f2184979e223e12ee3071674fdf910983cf9f4d6f34f7ec407b089064b5"},
+    {file = "boto3-1.14.54.tar.gz", hash = "sha256:4196b418598851ffd10cf9d1606694673cbfeca4ddf8b25d4e50addbd2fc60bf"},
 ]
 botocore = [
-    {file = "botocore-1.17.51-py2.py3-none-any.whl", hash = "sha256:5f984def778b0000a12cf28ec727d64634ca46ab0dcdb5ce8b654bfb2a1fb99c"},
-    {file = "botocore-1.17.51.tar.gz", hash = "sha256:198a62d387eb64b4c1dde33a9c41e96b07884c68c1442dd7c7d38123592aae7c"},
+    {file = "botocore-1.17.54-py2.py3-none-any.whl", hash = "sha256:9e493a21e6a8d45c631eb2952ae8e1d0a31b9984546d4268ea10c0c33e2435ce"},
+    {file = "botocore-1.17.54.tar.gz", hash = "sha256:6fe05837646447d61acdaf1e3401b92cd9309f00b19c577a50d0ade7735a3403"},
 ]
 certifi = [
     {file = "certifi-2020.6.20-py2.py3-none-any.whl", hash = "sha256:8fc0819f1f30ba15bdb34cceffb9ef04d99f420f68eb75d901e9560b8749fc41"},
@@ -1522,8 +1545,8 @@ click = [
     {file = "click-7.1.2.tar.gz", hash = "sha256:d2b5255c7c6349bc1bd1e59e08cd12acbbd63ce649f2588755783aa94dfb6b1a"},
 ]
 click-loguru = [
-    {file = "click_loguru-1.1.0-py3-none-any.whl", hash = "sha256:96f9a52ec7b2549b0aa72b73da8d650a7132bd9f991fde3bf4382881b53aa5f1"},
-    {file = "click_loguru-1.1.0.tar.gz", hash = "sha256:ff5fdc6fa919991ac7b9c17fe8c9ac3216457f2823158131d302ca51e0efe713"},
+    {file = "click_loguru-1.3.0-py3-none-any.whl", hash = "sha256:8dfafa328f6d16d80e3c4951d1314b1bac708e770c2088b4d7afdf48cdef961e"},
+    {file = "click_loguru-1.3.0.tar.gz", hash = "sha256:6497a901ecf28920ea69dedeb48c787a30f3eeef75ad846abf754efa6a8f65b5"},
 ]
 click-plugins = [
     {file = "click-plugins-1.1.1.tar.gz", hash = "sha256:46ab999744a9d831159c3411bb0c79346d94a444df9a3a3742e9ed63645f264b"},
@@ -1609,8 +1632,8 @@ cycler = [
     {file = "cycler-0.10.0.tar.gz", hash = "sha256:cd7b2d1018258d7247a71425e9f26463dfb444d411c39569972f4ce586b0c9d8"},
 ]
 dask = [
-    {file = "dask-2.24.0-py3-none-any.whl", hash = "sha256:86c9b66f42d9107ac82210df19bab1211f00e59c82063f01fed7b9dcfa3c9e6c"},
-    {file = "dask-2.24.0.tar.gz", hash = "sha256:b4a40a3e4960700074a426d7759f53572621e8cd6358306f193e7e66ea6fd889"},
+    {file = "dask-2.25.0-py3-none-any.whl", hash = "sha256:0663e95022b37404c4f8bd386107b215878951476edd588c6783a40201d176f3"},
+    {file = "dask-2.25.0.tar.gz", hash = "sha256:12ac2ee71157b8eecb89b48cd2aa0be7b1b4bb90a791d3e8d6c4002cdc9499e3"},
 ]
 decorator = [
     {file = "decorator-4.4.2-py2.py3-none-any.whl", hash = "sha256:41fa54c2a0cc4ba648be4fd43cff00aedf5b9465c9bf18d64325bc225f08f760"},
@@ -1656,8 +1679,8 @@ gitpython = [
     {file = "GitPython-3.1.7.tar.gz", hash = "sha256:2db287d71a284e22e5c2846042d0602465c7434d910406990d5b74df4afb0858"},
 ]
 identify = [
-    {file = "identify-1.4.29-py2.py3-none-any.whl", hash = "sha256:b1aa2e05863dc80242610d46a7b49105e2eafe00ef0c8ff311c1828680760c76"},
-    {file = "identify-1.4.29.tar.gz", hash = "sha256:9f5fcf22b665eaece583bd395b103c2769772a0f646ffabb5b1f155901b07de2"},
+    {file = "identify-1.4.30-py2.py3-none-any.whl", hash = "sha256:f9f84a4ff44e29b9cc23c4012c2c8954089860723f80ce63d760393e5f197108"},
+    {file = "identify-1.4.30.tar.gz", hash = "sha256:e105a62fd3a496c701fd1bc4e24eb695455b5efb97e722816d5bd988c3344311"},
 ]
 idna = [
     {file = "idna-2.10-py2.py3-none-any.whl", hash = "sha256:b97d804b1e9b523befed77c48dacec60e6dcb0b5391d57af6a65a312a90648c0"},
@@ -1811,6 +1834,9 @@ mccabe = [
     {file = "mccabe-0.6.1-py2.py3-none-any.whl", hash = "sha256:ab8a6258860da4b6677da4bd2fe5dc2c659cff31b3ee4f7f5d64e79735b80d42"},
     {file = "mccabe-0.6.1.tar.gz", hash = "sha256:dd8d182285a0fe56bace7f45b5e7d1a6ebcbf524e8f3bd87eb0f125271b8831f"},
 ]
+memory-profiler = [
+    {file = "memory_profiler-0.57.0.tar.gz", hash = "sha256:23b196f91ea9ac9996e30bfab1e82fecc30a4a1d24870e81d1e81625f786a2c3"},
+]
 more-itertools = [
     {file = "more-itertools-8.5.0.tar.gz", hash = "sha256:6f83822ae94818eae2612063a5101a7311e68ae8002005b5e05f03fd74a86a20"},
     {file = "more_itertools-8.5.0-py3-none-any.whl", hash = "sha256:9b30f12df9393f0d28af9210ff8efe48d10c94f73e5daf886f10c4b0b0b4f03c"},
@@ -1882,8 +1908,8 @@ pandas-flavor = [
     {file = "pandas_flavor-0.2.0.tar.gz", hash = "sha256:7871655816de22dc766e916697ccc67449e1863c090ef5fd40d4d0fbd056e489"},
 ]
 paramiko = [
-    {file = "paramiko-2.7.1-py2.py3-none-any.whl", hash = "sha256:9c980875fa4d2cb751604664e9a2d0f69096643f5be4db1b99599fe114a97b2f"},
-    {file = "paramiko-2.7.1.tar.gz", hash = "sha256:920492895db8013f6cc0179293147f830b8c7b21fdfc839b6bad760c27459d9f"},
+    {file = "paramiko-2.7.2-py2.py3-none-any.whl", hash = "sha256:4f3e316fef2ac628b05097a637af35685183111d4bc1b5979bd397c2ab7b5898"},
+    {file = "paramiko-2.7.2.tar.gz", hash = "sha256:7f36f4ba2c0d81d219f4595e35f70d56cc94f9ac40a6acdf51d6ca210ce65035"},
 ]
 partd = [
     {file = "partd-1.1.0-py3-none-any.whl", hash = "sha256:7a491cf254e5ab09e9e6a40d80195e5e0e5e169115bfb8287225cb0c207536d2"},
@@ -1898,8 +1924,8 @@ pathvalidate = [
     {file = "pathvalidate-2.3.0.tar.gz", hash = "sha256:32d30dbacb711c16bb188b12ce7e9a46b41785f50a12f64500f747480a4b6ee3"},
 ]
 pbr = [
-    {file = "pbr-5.4.5-py2.py3-none-any.whl", hash = "sha256:579170e23f8e0c2f24b0de612f71f648eccb79fb1322c814ae6b3c07b5ba23e8"},
-    {file = "pbr-5.4.5.tar.gz", hash = "sha256:07f558fece33b05caf857474a366dfcc00562bca13dd8b47b2b3e22d9f9bf55c"},
+    {file = "pbr-5.5.0-py2.py3-none-any.whl", hash = "sha256:5adc0f9fc64319d8df5ca1e4e06eea674c26b80e6f00c530b18ce6a6592ead15"},
+    {file = "pbr-5.5.0.tar.gz", hash = "sha256:14bfd98f51c78a3dd22a1ef45cf194ad79eee4a19e8e1a0d5c7f8e81ffe182ea"},
 ]
 phylopandas = [
     {file = "phylopandas-0.8.0-py2.py3-none-any.whl", hash = "sha256:9f517270296731934ab9285067735401b531571b19103904a63ea5e3cae29200"},
@@ -1946,8 +1972,21 @@ pre-commit = [
     {file = "pre_commit-2.7.1.tar.gz", hash = "sha256:c54fd3e574565fe128ecc5e7d2f91279772ddb03f8729645fa812fe809084a70"},
 ]
 progressbar2 = [
-    {file = "progressbar2-3.51.4-py2.py3-none-any.whl", hash = "sha256:27abf038efe5b1b5dd91ecc5f704bc88683c1e2a0b2c0fee04de80a648634a0c"},
-    {file = "progressbar2-3.51.4.tar.gz", hash = "sha256:13f228cf357f94cdef933c91c1e771e52e1b1931dbae48267be8fcdc2ae2ce36"},
+    {file = "progressbar2-3.52.1-py2.py3-none-any.whl", hash = "sha256:a859a145cf5e129a39659ffa1d4fc8bc2f21889bfbb76253646658a510bf502a"},
+    {file = "progressbar2-3.52.1.tar.gz", hash = "sha256:763d6ff83e469667e9cfac31256a584518eaa8e3f1be8c191f2f62de973cd875"},
+]
+psutil = [
+    {file = "psutil-5.7.2-cp27-none-win32.whl", hash = "sha256:f2018461733b23f308c298653c8903d32aaad7873d25e1d228765e91ae42c3f2"},
+    {file = "psutil-5.7.2-cp27-none-win_amd64.whl", hash = "sha256:66c18ca7680a31bf16ee22b1d21b6397869dda8059dbdb57d9f27efa6615f195"},
+    {file = "psutil-5.7.2-cp35-cp35m-win32.whl", hash = "sha256:5e9d0f26d4194479a13d5f4b3798260c20cecf9ac9a461e718eb59ea520a360c"},
+    {file = "psutil-5.7.2-cp35-cp35m-win_amd64.whl", hash = "sha256:4080869ed93cce662905b029a1770fe89c98787e543fa7347f075ade761b19d6"},
+    {file = "psutil-5.7.2-cp36-cp36m-win32.whl", hash = "sha256:d8a82162f23c53b8525cf5f14a355f5d1eea86fa8edde27287dd3a98399e4fdf"},
+    {file = "psutil-5.7.2-cp36-cp36m-win_amd64.whl", hash = "sha256:0ee3c36428f160d2d8fce3c583a0353e848abb7de9732c50cf3356dd49ad63f8"},
+    {file = "psutil-5.7.2-cp37-cp37m-win32.whl", hash = "sha256:ff1977ba1a5f71f89166d5145c3da1cea89a0fdb044075a12c720ee9123ec818"},
+    {file = "psutil-5.7.2-cp37-cp37m-win_amd64.whl", hash = "sha256:a5b120bb3c0c71dfe27551f9da2f3209a8257a178ed6c628a819037a8df487f1"},
+    {file = "psutil-5.7.2-cp38-cp38-win32.whl", hash = "sha256:10512b46c95b02842c225f58fa00385c08fa00c68bac7da2d9a58ebe2c517498"},
+    {file = "psutil-5.7.2-cp38-cp38-win_amd64.whl", hash = "sha256:68d36986ded5dac7c2dcd42f2682af1db80d4bce3faa126a6145c1637e1b559f"},
+    {file = "psutil-5.7.2.tar.gz", hash = "sha256:90990af1c3c67195c44c9a889184f84f5b2320dce3ee3acbd054e3ba0b4a7beb"},
 ]
 py = [
     {file = "py-1.9.0-py2.py3-none-any.whl", hash = "sha256:366389d1db726cd2fcfc79732e75410e5fe4d31db13692115529d34069a043c2"},
@@ -1981,7 +2020,8 @@ pycparser = [
     {file = "pycparser-2.20.tar.gz", hash = "sha256:2d475327684562c3a96cc71adf7dc8c4f0565175cf86b6d7a404ff4c771f15f0"},
 ]
 pydocstyle = [
-    {file = "pydocstyle-5.1.0-py3-none-any.whl", hash = "sha256:08374b9d4d2b7164bae50b71bb24eb0d74a56b309029d5d502264092fa7db0c3"},
+    {file = "pydocstyle-5.1.1-py3-none-any.whl", hash = "sha256:aca749e190a01726a4fb472dd4ef23b5c9da7b9205c0a7857c06533de13fd678"},
+    {file = "pydocstyle-5.1.1.tar.gz", hash = "sha256:19b86fa8617ed916776a11cd8bc0197e5b9856d5433b777f51a3defe13075325"},
 ]
 pylint = [
     {file = "pylint-2.6.0-py3-none-any.whl", hash = "sha256:bfe68f020f8a0fece830a22dd4d5dddb4ecc6137db04face4c3420a46a52239f"},
@@ -2104,8 +2144,8 @@ seaborn = [
     {file = "seaborn-0.10.1.tar.gz", hash = "sha256:2d1a0c9d6bd1bc3cadb0364b8f06540f51322a670cf8438d0fde1c1c7317adc0"},
 ]
 sh = [
-    {file = "sh-1.13.1-py2.py3-none-any.whl", hash = "sha256:6f792e45b45d039b423081558904981e8ab49572b0c38009fcc65feaab06bcda"},
-    {file = "sh-1.13.1.tar.gz", hash = "sha256:97a3d2205e3c6a842d87ebbc9ae93acae5a352b1bc4609b428d0fd5bb9e286a3"},
+    {file = "sh-1.14.0-py2.py3-none-any.whl", hash = "sha256:4219d338349581a07cd1358c1d7de0fa57bb5d44e547cc87b0da7d5349705030"},
+    {file = "sh-1.14.0.tar.gz", hash = "sha256:05c7e520cdf70f70a7228a03b589da9f96c6e0d06fc487ab21fc62b26a592e59"},
 ]
 six = [
     {file = "six-1.15.0-py2.py3-none-any.whl", hash = "sha256:8b74bedcbbbaca38ff6d7491d76f2b06b3592611af620f8426e82dddb04a5ced"},
@@ -2123,8 +2163,8 @@ snowballstemmer = [
     {file = "snowballstemmer-2.0.0.tar.gz", hash = "sha256:df3bac3df4c2c01363f3dd2cfa78cce2840a79b9f1c2d2de9ce8d31683992f52"},
 ]
 stevedore = [
-    {file = "stevedore-3.2.0-py3-none-any.whl", hash = "sha256:c8f4f0ebbc394e52ddf49de8bcc3cf8ad2b4425ebac494106bbc5e3661ac7633"},
-    {file = "stevedore-3.2.0.tar.gz", hash = "sha256:38791aa5bed922b0a844513c5f9ed37774b68edc609e5ab8ab8d8fe0ce4315e5"},
+    {file = "stevedore-3.2.1-py3-none-any.whl", hash = "sha256:ddc09a744dc224c84ec8e8efcb70595042d21c97c76df60daee64c9ad53bc7ee"},
+    {file = "stevedore-3.2.1.tar.gz", hash = "sha256:a34086819e2c7a7f86d5635363632829dab8014e5fd7be2454c7cba84ac7514e"},
 ]
 toml = [
     {file = "toml-0.10.1-py2.py3-none-any.whl", hash = "sha256:bda89d5935c2eac546d648028b9901107a595863cb36bae0c73ac804a9b4ce88"},

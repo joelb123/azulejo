@@ -83,3 +83,7 @@ src
 # towncrier #
 #############
 newsfragments/
+
+# data dir #
+############
+tests/data

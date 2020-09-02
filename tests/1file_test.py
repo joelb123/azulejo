@@ -4,11 +4,16 @@
 import shutil
 from pathlib import Path
 
+# third-party imports
+from loguru import logger
+
 # first-party imports
 from azulejo.common import dotpath_to_path
-from azulejo.ingest import read_from_url
 from azulejo.ingest import TaxonomicInputTable
+from azulejo.ingest import read_from_url
 
+# module imports
+from . import print_docstring
 
 # global constants
 DOWNLOAD_URL = "https://v1.legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
@@ -16,9 +21,12 @@ RAW_FASTA_FILE = "glyso.W05.gnm1.ann1.T47J.protein_primaryTranscript.faa"
 RAW_GFF_FILE = "glyso.W05.gnm1.ann1.T47J.gene_models_main.gff3"
 INPUT_FILE = "glyma+glyso.toml"
 
+logger.disable("azulejo")
 
+
+@print_docstring()
 def test_setup(request):
-    """Remove datadir, if it exists, and install copies of static data."""
+    """Clean datadir and install copies of static data."""
     testdir = Path(request.fspath.dirpath())
     datadir = testdir / "data"
     if datadir.exists():
@@ -27,8 +35,9 @@ def test_setup(request):
     shutil.copytree(filesdir, datadir)
 
 
-def test_input_table_downloads(datadir_mgr):
-    """Test basic cli function."""
+@print_docstring()
+def test_input_table_parsing(datadir_mgr):
+    """Test input table and download data."""
     datadir_mgr.download(
         download_url=DOWNLOAD_URL,
         files=[RAW_FASTA_FILE, RAW_GFF_FILE],
@@ -46,7 +55,6 @@ def test_input_table_downloads(datadir_mgr):
         assert input.depth == 3
         assert input.setname == "glycines"
         input_table = input.input_table
-        print(f"input_table={input_table}")
         assert len(input_table) == 3
         assert len(input_table.columns) == 7
         rootpath = Path("glycines")
@@ -64,6 +72,5 @@ def test_input_table_downloads(datadir_mgr):
             ]:
                 with (out_path / outname).open("w") as out_fh:
                     with read_from_url(url) as in_fh:
-                        print(f"Copying {url} to {out_path / outname}")
                         for line in in_fh.read():
                             out_fh.write(line)
