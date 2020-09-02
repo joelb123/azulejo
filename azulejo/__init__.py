@@ -19,7 +19,7 @@ from .installer import DependencyInstaller
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.5"
+__version__ = "0.9.7"
 INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
     NAME.upper() + "_INSTALL_DIR"
 )
