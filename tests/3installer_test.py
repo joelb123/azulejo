@@ -29,14 +29,13 @@ def test_installer(tmp_path):
 
 @print_docstring()
 def test_build(tmp_path):
-    """Test version command."""
+    """Test building dependencies."""
     with working_directory(tmp_path):
         try:
             output = azulejo(["-q", "install", "-f", "-y", "all"])
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail(errors)
-        print(output)
         output = azulejo(["install"])
         assert "muscle version at recommended" in output
         assert "usearch version at recommended" in output
