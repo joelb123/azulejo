@@ -32,10 +32,9 @@ def test_build(tmp_path):
     """Test building dependencies."""
     with working_directory(tmp_path):
         try:
-            output = azulejo(["-q", "install", "-f", "-y", "all"])
+            results = azulejo(["-q", "install", "-f", "-y", "all"])
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail(errors)
-        output = azulejo(["install"])
-        assert "muscle version at recommended" in output
-        assert "usearch version at recommended" in output
+        results = azulejo(["install"])
+        print(results.output)
