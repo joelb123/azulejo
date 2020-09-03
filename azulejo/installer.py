@@ -91,6 +91,10 @@ class DependencyInstaller(object):
         self.not_my_platform.remove(self.platform)
         self.accept_licenses = accept_licenses
         self.quiet = quiet
+        if quiet:
+            self.output_kwargs = {}
+        else:
+            self.output_kwargs = {"_out": sys.stdout, "_err": sys.stderr}
         self.status_msg = None
 
     def check_all(self, exe_paths=False):
@@ -105,8 +109,8 @@ class DependencyInstaller(object):
             for binary in self.dependency_dict[dep]["binaries"]:
                 if sh.which(binary) == None:
                     self.dependency_dict[dep]["installed"] = False
-                    exe = "not installed"
-                    ver_str = ""
+                    exe = binary
+                    ver_str = "not installed."
                 else:
                     exe = sh.Command(binary)
                     ver_out = exe(*version_command, _err_to_out=True).rstrip(
@@ -140,7 +144,7 @@ class DependencyInstaller(object):
                 if exe_paths:
                     self.status_msg += f"{exe} {ver_str}\n"
                 else:
-                    self.status_msg += f"{dep} {ver_str}\n"
+                    self.status_msg += f"{binary} {ver_str}\n"
         self.versions_checked = True
         # Check that bin directory exists and is writable.
         if self.bin_path_exists:
@@ -209,7 +213,7 @@ class DependencyInstaller(object):
         git = sh.Command("git")
         for repo in self.dependency_dict[dep]["git_list"]:
             logger.debug(f"   cloning {dep} repo {repo}")
-            git.clone(repo)
+            git.clone(repo, **self.output_kwargs)
 
     def _download_untar(self, dep):
         """Download and untar tarball."""
@@ -227,9 +231,11 @@ class DependencyInstaller(object):
             f"downloaded file {download_path}, size"
             f" {download_path.stat().st_size}"
         )
-        tar_output = tar("xvf", download_path)
-        logger.debug(tar_output)
-        logger.debug("untar done")
+        try:
+            tar("xvf", download_path, **self.output_kwargs)
+        except:
+            logger.error(f"untar of {download_path} failed")
+            sys.exit(1)
 
     def _download_binaries(self, dep):
         """Download and untar tarball."""
@@ -259,11 +265,10 @@ class DependencyInstaller(object):
         logger.debug(f"   configuring {dep} in {Path.cwd()}")
         configure = sh.Command("./configure")
         try:
-            configure_out = configure()
-        except sh.ErrorReturnCode:
-            logger.error("configure failed.")
+            configure(**self.output_kwargs)
+        except:
+            logger.error(f"configure of {dep} failed.")
             sys.exit(1)
-        logger.debug(configure_out)
 
     def _copy_in_files(self, out_head, pkgname, dep, force=True):
         """Copy any files under installer_data to build directory."""
@@ -315,19 +320,21 @@ class DependencyInstaller(object):
             f"   making {self.dependency_dict[dep]['make']} in {Path.cwd()}"
         )
         try:
-            make_out = make(self.dependency_dict[dep]["make"])
+            make(self.dependency_dict[dep]["make"], **self.output_kwargs)
         except:
-            logger.error("make failed.")
-            logger.error(make_out)
+            logger.error(f"make of {dep} failed.")
             sys.exit(1)
-        logger.debug(make_out)
 
     def _make_install(self, dep):
         """Run make install to install a package."""
         make = sh.Command("make")
         logger.info(f"   installing {dep} into {self.bin_path}")
-        install_out = make.install(self.dependency_dict[dep]["make_install"])
-        logger.debug(install_out)
+        try:
+            make.install(
+                self.dependency_dict[dep]["make_install"], **self.output_kwargs
+            )
+        except:
+            logger.error(f"make install of {dep} failed.")
 
     def _copy_binaries(self, dep):
         """Copy the named binary to the bin directory."""
