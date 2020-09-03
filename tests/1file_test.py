@@ -13,20 +13,19 @@ from azulejo.ingest import TaxonomicInputTable
 from azulejo.ingest import read_from_url
 
 # module imports
+from . import W05_INPUTS
 from . import print_docstring
 
 # global constants
 DOWNLOAD_URL = "https://v1.legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
-RAW_FASTA_FILE = "glyso.W05.gnm1.ann1.T47J.protein_primaryTranscript.faa"
-RAW_GFF_FILE = "glyso.W05.gnm1.ann1.T47J.gene_models_main.gff3"
-INPUT_FILE = "glyma+glyso.toml"
+SINGLE_INPUT_FILE = "W05.toml"
 
 logger.disable("azulejo")
 
 
 @print_docstring()
 def test_setup(request):
-    """Clean datadir and install copies of static data."""
+    """Clean datadir and copy in static data."""
     testdir = Path(request.fspath.dirpath())
     datadir = testdir / "data"
     if datadir.exists():
@@ -37,30 +36,31 @@ def test_setup(request):
 
 @print_docstring()
 def test_input_table_parsing(datadir_mgr):
-    """Test input table and download data."""
+    """Test input table parsing."""
     datadir_mgr.download(
         download_url=DOWNLOAD_URL,
-        files=[RAW_FASTA_FILE, RAW_GFF_FILE],
+        files=W05_INPUTS,
         scope="global",
         md5_check=False,
         gunzip=True,
         progressbar=False,
     )
     with datadir_mgr.in_tmp_dir(
-        inpathlist=[RAW_GFF_FILE, RAW_FASTA_FILE, INPUT_FILE],
+        inpathlist=W05_INPUTS + [SINGLE_INPUT_FILE],
         save_outputs=True,
         outscope="global",
+        excludepaths=["logs/"],
     ):
-        input = TaxonomicInputTable(INPUT_FILE)
+        input = TaxonomicInputTable(SINGLE_INPUT_FILE)
         assert input.depth == 3
         assert input.setname == "glycines"
         input_table = input.input_table
-        assert len(input_table) == 3
+        assert len(input_table) == 1
         assert len(input_table.columns) == 7
         rootpath = Path("glycines")
         assert (rootpath / "proteomes.tsv").exists()
         assert (rootpath / "input.toml").exists()
-        for subdir in ["glyso", "W05"]:  # sample down depth
+        for subdir in ["glyso", "W05"]:
             rootpath /= subdir
             assert (rootpath / "node_properties.json").exists()
         for i, row in input_table.iterrows():

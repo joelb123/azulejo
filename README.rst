@@ -11,12 +11,14 @@ or inclusion in a data store such as that of the
 
 Prerequisites
 -------------
-Python 3.6 or greater is required. This package is tested under Linux using Python 3.8.  ``azulejo``
-relies on `usearch <https://www.drive5.com/usearch/download.html>`_ for clustering, which you must
-download and install manually due to licensing restrictions (free download, no registration required at
-the link).  ``azulejo`` also uses `MUSCLE <https://www.drive5.com/muscle/downloads.htm>`_ and requires
-version 3.8.1551 or greater.  ``MUSCLE`` is in the public domain and can be downloaded and
-built from source `here <https://www.drive5.com/muscle/muscle_src_3.8.1551.tar.gz>`_.
+Python 3.6 or greater is required. This package is tested under Linux using Python 3.8.
+
+``azulejo`` relies on `usearch <https://www.drive5.com/usearch/download.html>`_ for 
+clustering and `MUSCLE <https://www.drive5.com/muscle/downloads.htm>`_ for sequence
+alignment and initial tree-building.  ``usearch`` is free for individual, non-commercial
+use, while ``MUSCLE`` is in the public domain.  Both can be downloaded and installed
+by the ``azulejo install`` subcommand.  You will be asked to accept the license terms
+for ``usearch`` by the install procedure.
 
 Installation for Users
 ----------------------
@@ -29,6 +31,9 @@ completion for ``azulejo`` commands, execute the following command if you are us
 ``bash`` as your shell: ::
 
     eval "$(_AZULEJO_COMPLETE=source_bash azulejo)"
+
+Then you should run ``azulejo install`` to see if you have the binary dependencies
+installed.  If not, ``azulejo install all`` will install them for you.
 
 For Developers
 --------------
@@ -55,6 +60,7 @@ Usage
 Installation puts a single script called ``azulejo`` in your path.  The usage format is::
 
     azulejo [GLOBALOPTIONS] COMMAND [COMMANDOPTIONS][ARGS]
+
 
 Master Input File
 -----------------
@@ -176,28 +182,22 @@ The following options are global in scope and, if used must be placed before
 Commands
 --------
 A listing of commands is available via ``azulejo --help``.
-The currently implemented commands are:
+The currently implemented commands are, in the order they will normally be run:
 
 ========================= ==================================================
-  analyze-clusters        Statistics of clustering as function of identity.
-  calculate-proxy-genes   Calculate a set of proxy genes from synteny files.
-  change-compression      Change the compression type of a Parquet file.
-  check-taxonomic-rank    Check/show a lit of taxonomic ranks.
-  cluster-in-steps        Cluster in steps from low to 100% identity.
-  clusters-to-histograms  Compute histograms from cluster file.
-  combine-clusters        Combine synteny and homology clusters,
-  compare-clusters        compare one cluster file with another
-  dagchainer-synteny      Read DAGchainer synteny into homology frames.
-  do-homology             Calculate homology clusters, MSAs, trees.
+  install                 Check for/install binary dependencies.
   ingest-sequence-data    Marshal protein and genome sequence information.
-  length-std-dist         Plot length distribution of singletons in clusters
-  outlier-length-dist     Plot length distribution of outliers in clusters.
-  parquet-to-tsv          Reads parquet file, writes tsv.
-  prepare-protein-files   Sanitize and combine protein FASTA files.
-  proxy-genes             Calculate a set of proxy genes from synteny files.
+  cluster-build-trees     Calculate homology clusters, MSAs, trees.
   synteny-anchors         Calculate synteny anchors.
-  usearch-cluster         Cluster at a global sequence identity threshold.
+  calculate-proxy-genes   Calculate a set of proxy genes from synteny files.
+  parquet-to-tsv          Reads parquet file, writes tsv.
 ========================= ==================================================
+
+``azulejo`` stores most intermediate results in the Parquet format with
+extension ``.parq``.  These binary files are compressed and typically can
+be read more than 30X faster than the tab-separated-value (TSV) files they
+can be interconverted with.  In addition, Parquet files do not lose metadata
+such as binary representation sizes.
 
 Each command has its ``COMMANDOPTIONS``, which may be listed with: ::
 

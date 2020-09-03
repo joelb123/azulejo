@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.9.7"
+version = "0.9.8"
 description = "tile phylogenetic space with subtrees"
 authors = ["Joel Berendzen <joelb@ncgr.org>"]
 license = "BSD-3-Clause"
@@ -50,7 +50,7 @@ networkx = "^2.4"
 uri = "^2.0.1"
 toml = "^0.10.1"
 pathvalidate = "^2.3.0"
-attrs = ">=19.3,<21.0"
+attrs = "^=19.3"
 smart-open = "^2.0.0"
 paramiko = "^2.7.1"
 poetry-dynamic-versioning = "^0.8.1"

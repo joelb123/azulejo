@@ -4,18 +4,18 @@
 from pathlib import Path
 
 # third-party imports
+import pytest
 import sh
 
 # module imports
-from . import INGEST_OUTPUTS
-from . import W05_INPUTS
+from . import HOMOLOGY_OUTPUTS
+from . import SYNTENY_OUTPUTS
 from . import help_check
 from . import print_docstring
 
 # global constants
 azulejo = sh.Command("azulejo")
-NET_INPUT_FILE = "glyma+glyso.toml"
-SUBCOMMAND = "ingest-sequences"
+SUBCOMMAND = "synteny-anchors"
 
 
 def test_subcommand_help():
@@ -24,15 +24,19 @@ def test_subcommand_help():
 
 
 @print_docstring()
-def test_net_data_ingestion(datadir_mgr):
-    """Test ingesting compressed data from https."""
+def test_synteny_anchors(datadir_mgr):
+    """Test synteny anchor construction."""
     with datadir_mgr.in_tmp_dir(
-        inpathlist=W05_INPUTS + [NET_INPUT_FILE],
+        inpathlist=HOMOLOGY_OUTPUTS,
         save_outputs=True,
         outscope="global",
         excludepaths=["logs/"],
     ):
-        output = azulejo(["-q", "-e", SUBCOMMAND, NET_INPUT_FILE])
+        try:
+            output = azulejo(["-q", "-e", SUBCOMMAND, "glycines"])
+        except sh.ErrorReturnCode as errors:
+            print(errors)
+            pytest.fail("Build failed")
         print(output)
-        for filestring in INGEST_OUTPUTS:
+        for filestring in SYNTENY_OUTPUTS:
             assert Path(filestring).exists()

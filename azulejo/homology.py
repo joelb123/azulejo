@@ -55,7 +55,13 @@ HOMOLOGY_COLS = ["hom.cluster", "hom.cl_size"]
 )
 @click.argument("setname")
 def cluster_build_trees(identity, setname):
-    """Calculate homology clusters, MSAs, trees."""
+    """Calculate homology clusters, MSAs, trees.
+
+    \b
+    Example:
+        azulejo cluster-build-trees glycines
+
+    """
     click_loguru.elapsed_time("Concatenation")
     options = click_loguru.get_global_options()
     user_options = click_loguru.get_user_global_options()

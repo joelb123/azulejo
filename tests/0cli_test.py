@@ -5,6 +5,7 @@ import pytest
 import sh
 
 # module imports
+from . import help_check
 from . import print_docstring
 from . import working_directory
 
@@ -12,18 +13,9 @@ from . import working_directory
 azulejo = sh.Command("azulejo")
 
 
-@print_docstring()
-def test_cli(tmp_path):
-    """Test basic cli function."""
-    with working_directory(tmp_path):
-        try:
-            output = azulejo()
-        except sh.ErrorReturnCode as errors:
-            print(errors)
-            pytest.fail("Basic cli test failed")
-        assert "Usage:" in output
-        assert "Options:" in output
-        assert "Commands:" in output
+def test_cli():
+    """Test global help function."""
+    help_check("global")
 
 
 @print_docstring()

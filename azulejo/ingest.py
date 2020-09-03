@@ -69,6 +69,12 @@ def ingest_sequences(input_toml):
 
     IDs must correspond between GFF and FASTA files and must be unique across
     the entire set.
+
+    \b
+    Example:
+        azulejo ingest-sequences glyma+glyso.toml
+
+
     """
     options = click_loguru.get_global_options()
     user_options = click_loguru.get_user_global_options()

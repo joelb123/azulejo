@@ -87,13 +87,15 @@ class DependencyInstaller(object):
             logger.warning(
                 f"Unknown platform {system}, installs will likely fail"
             )
-        self.not_my_platform = PLATFORM_LIST
+        self.not_my_platform = PLATFORM_LIST.copy()
         self.not_my_platform.remove(self.platform)
         self.accept_licenses = accept_licenses
         self.quiet = quiet
+        self.status_msg = None
 
-    def check_all(self):
+    def check_all(self, exe_paths=False):
         """Check all depenencies for existence and version."""
+        self.status_msg = ""
         for dep in self.dependencies:
             target_version = version.parse(
                 self.dependency_dict[dep]["version"]
@@ -102,10 +104,9 @@ class DependencyInstaller(object):
             self.dependency_dict[dep]["installed"] = not self.force
             for bin in self.dependency_dict[dep]["binaries"]:
                 if sh.which(bin) == None:
-                    logger.debug(
-                        f"Binary {bin} of dependency {dep} is not" " installed"
-                    )
                     self.dependency_dict[dep]["installed"] = False
+                    exe = "not installed"
+                    ver_str = ""
                 else:
                     exe = sh.Command(bin)
                     ver_out = exe(*version_command, _err_to_out=True).rstrip(
@@ -123,12 +124,11 @@ class DependencyInstaller(object):
                         )
                     if installed_version == target_version:
                         ver_str = (
-                            f"{bin} version at recommended version"
-                            f" {installed_version}"
+                            f"at recommended version {installed_version}."
                         )
                     elif installed_version < target_version:
                         ver_str = (
-                            f"{bin} installed {installed_version} <  target"
+                            f"installed {installed_version} <  target"
                             f" {target_version}."
                         )
                         self.dependency_dict[dep]["installed"] = False
@@ -137,7 +137,10 @@ class DependencyInstaller(object):
                             f"installed {installed_version} exceeds target"
                             f" {target_version}."
                         )
-                    print(f"{dep}: {exe} {ver_str}")
+                if exe_paths:
+                    self.status_msg += f"{exe} {ver_str}\n"
+                else:
+                    self.status_msg += f"{dep} {ver_str}\n"
         self.versions_checked = True
         # Check that bin directory exists and is writable.
         if self.bin_path_exists:
@@ -160,8 +163,14 @@ class DependencyInstaller(object):
             ]
         )
         if all_installed:
-            print("All dependencies are installed")
+            self.status_msg += "All dependencies are installed.\n"
         return all_installed
+
+    def status(self, exe_paths=False):
+        """Returns and the installation status message,"""
+        if self.status_msg is None:
+            self.check_all(exe_paths=exe_paths)
+        return self.status_msg
 
     def install_list(self, deplist):
         """Install needed dependencies from a list."""

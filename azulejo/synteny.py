@@ -62,7 +62,7 @@ DEFAULT_K = 2
     is_flag=True,
     default=True,
     show_default=True,
-    help="Assign ambiguous hashes to longest frag.",
+    help="Ambiguous to longest frag.",
 )
 @click.option(
     "--nonambig/--no-nonambig",
@@ -76,11 +76,17 @@ DEFAULT_K = 2
     is_flag=True,
     default=True,
     show_default=True,
-    help="Shingle non-ambiguous hashes over k-mer.",
+    help="Shingle hashes over k-mer.",
 )
 @click.argument("setname")
 def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
-    """Calculate synteny anchors."""
+    """Calculate synteny anchors.
+
+    \b
+    Example:
+        azulejo synteny-anchors glycines
+
+    """
     if k < 2:
         logger.error("k must be at least 2.")
         sys.exit(1)

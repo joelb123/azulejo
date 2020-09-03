@@ -38,16 +38,3 @@ sequenced to serve as a reference genome assembly. The W05 accession has been us
 for genetic studies of several traits, including indeterminacy, seed size, pod number
 per plant, and seed color (Xie et al., 2019)."""
 citation_url =  "https://doi.org/10.1038/s41467-019-09142-9"
-
-[glycines.glyso.PI483463]
-rank = "strain"
-preference = 0
-gff = "glyso.PI483463.gff"
-fasta = "glyso.PI483463.faa"
-uri = "file://glycines/glyso/PI483463/"
-origin = "Shanxi Sheng, China"
-comments = """
-Glycine soja accession PI 483463 has been identified as being unusually
-salt-tolerant (Lee et al., 2009)."""
-citation_url = "https://doi.org/10.1093/jhered/esp027"
-

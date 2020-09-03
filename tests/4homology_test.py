@@ -4,18 +4,18 @@
 from pathlib import Path
 
 # third-party imports
+import pytest
 import sh
 
 # module imports
+from . import HOMOLOGY_OUTPUTS
 from . import INGEST_OUTPUTS
-from . import W05_INPUTS
 from . import help_check
 from . import print_docstring
 
 # global constants
 azulejo = sh.Command("azulejo")
-NET_INPUT_FILE = "glyma+glyso.toml"
-SUBCOMMAND = "ingest-sequences"
+SUBCOMMAND = "cluster-build-trees"
 
 
 def test_subcommand_help():
@@ -24,15 +24,19 @@ def test_subcommand_help():
 
 
 @print_docstring()
-def test_net_data_ingestion(datadir_mgr):
-    """Test ingesting compressed data from https."""
+def test_cluster_build_trees(datadir_mgr):
+    """Test homology clustering, MSA, and tree building."""
     with datadir_mgr.in_tmp_dir(
-        inpathlist=W05_INPUTS + [NET_INPUT_FILE],
+        inpathlist=INGEST_OUTPUTS,
         save_outputs=True,
         outscope="global",
         excludepaths=["logs/"],
     ):
-        output = azulejo(["-q", "-e", SUBCOMMAND, NET_INPUT_FILE])
+        try:
+            output = azulejo(["-q", "-e", SUBCOMMAND, "glycines"])
+        except sh.ErrorReturnCode as errors:
+            print(errors)
+            pytest.fail("Build failed")
         print(output)
-        for filestring in INGEST_OUTPUTS:
+        for filestring in HOMOLOGY_OUTPUTS:
             assert Path(filestring).exists()

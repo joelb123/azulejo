@@ -19,7 +19,7 @@ from .installer import DependencyInstaller
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.7"
+__version__ = "0.9.8"
 INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
     NAME.upper() + "_INSTALL_DIR"
 )
@@ -77,7 +77,6 @@ DEPENDENCY_DICT = {
     },
 }
 
-
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
     try:
@@ -93,7 +92,12 @@ click_loguru = ClickLoguru(
 # create CLI
 @with_plugins(iter_entry_points(NAME + ".cli_plugins"))
 @click_loguru.logging_options
-@click.group()
+@click.group(
+    epilog="Dependencies: "
+    + DependencyInstaller(
+        DEPENDENCY_DICT, pkg_name=NAME, install_path=INSTALL_PATH
+    ).status()
+)
 @click_loguru.stash_subcommand()
 @click.option(
     "-e",
@@ -109,7 +113,7 @@ click_loguru = ClickLoguru(
     is_flag=True,
     default=True,
     show_default=True,
-    help="Process in parallel where supported.",
+    help="Process in parallel.",
     callback=click_loguru.user_global_options_callback,
 )
 @click.version_option(version=__version__, prog_name=NAME)
@@ -123,8 +127,12 @@ def cli(warnings_as_errors, parallel, **unused_kwargs):
     Copyright (C) 2020. National Center for Genome Resources. All rights reserved.
     License: BSD-3-Clause
     """
+    options = click_loguru.get_global_options()
     if warnings_as_errors:
-        print("Runtime warnings (e.g., from pandas) will cause exceptions!")
+        if not options.quiet:
+            print(
+                "Runtime warnings (e.g., from pandas) will cause exceptions!"
+            )
         warnings.filterwarnings("error")
     unused_fstring = f"{parallel}"
 
@@ -164,22 +172,22 @@ def install(dependencies, force, accept_licenses):
         quiet=options.quiet,
     )
     if dependencies == ():
-        installer.check_all()
+        print(installer.status(exe_paths=True), end="")
     else:
         installer.install_list(dependencies)
 
 
-from .analysis import analyze_clusters  # isort:skip
-from .analysis import length_std_dist  # isort:skip
-from .analysis import outlier_length_dist  # isort:skip
-from .analysis import plot_degree_dists  # isort:skip
-from .core import add_singletons  #  isort:skip
-from .core import adjacency_to_graph  #  isort:skip
-from .core import cluster_in_steps  #  isort:skip
-from .core import clusters_to_histograms  #  isort:skip
-from .core import combine_clusters  #  isort:skip
-from .core import compare_clusters  #  isort:skip
-from .core import prepare_protein_files  #  isort:skip
+# from .analysis import analyze_clusters  # isort:skip
+# from .analysis import length_std_dist  # isort:skip
+# from .analysis import outlier_length_dist  # isort:skip
+# from .analysis import plot_degree_dists  # isort:skip
+# from .core import add_singletons  #  isort:skip
+# from .core import adjacency_to_graph  #  isort:skip
+# from .core import cluster_in_steps  #  isort:skip
+# from .core import clusters_to_histograms  #  isort:skip
+# from .core import combine_clusters  #  isort:skip
+# from .core import compare_clusters  #  isort:skip
+# from .core import prepare_protein_files  #  isort:skip
 from .core import homology_cluster  #  isort:skip
 from .homology import cluster_build_trees  # isort:skip
 from .homology import info_to_fasta  # isort:skip
