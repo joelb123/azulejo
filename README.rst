@@ -205,29 +205,27 @@ Each command has its ``COMMANDOPTIONS``, which may be listed with: ::
 
 Project Status
 --------------
-+-------------------+------------+------------+
-| Latest Release    | |pypi|     | |azulejo|  |
-+-------------------+------------+            +
-| Activity          | |repo|     |            |
-+-------------------+------------+            +
-| Downloads         ||downloads| |            |
-+-------------------+------------+            +
-| Download Rate     ||dlrate|    |            |
-+-------------------+------------+            +
-| License           | |license|  |            |
-+-------------------+------------+            +
-| Code Grade        | |codacy|   |            |
-+-------------------+------------+            +
-| Coverage          | |coverage| |            |
-+-------------------+------------+            +
-| Travis Build      | |travis|   |            |
-+-------------------+------------+            +
-| Dependencies      | |depend|   |            |
-+-------------------+------------+            +
-| Issues            | |issues|   |            |
-+-------------------+------------+            +
-| Code Style        | |black|    |            |
-+-------------------+------------+------------+
++-------------------+-------------+------------+
+| Latest Release    | |pypi|      | |azulejo|  |
++-------------------+-------------+            +
+| Activity          | |repo|      |            |
++-------------------+-------------+            +
+| Downloads         | |downloads| |            |
++-------------------+-------------+            +
+| Download Rate     | |dlrate|    |            |
++-------------------+-------------+            +
+| License           | |license|   |            |
++-------------------+-------------+            +
+| Code Grade        | |codacy|    |            |
++-------------------+-------------+            +
+| Coverage          | |coverage|  |            |
++-------------------+-------------+            +
+| Travis Build      | |travis|    |            |
++-------------------+-------------+            +
+| Issues            | |issues|    |            |
++-------------------+-------------+            +
+| Code Style        | |black|     |            |
++-------------------+-------------+------------+
 
 
 .. |azulejo| image:: docs/azulejo.jpg
@@ -273,10 +271,6 @@ Project Status
 .. |requires| image:: https://requires.io/github/legumeinfo/azulejo/requirements.svg?branch=master
      :target: https://requires.io/github/legumeinfo/azulejo/requirements/?branch=master
      :alt: Requirements Status
-
-.. |depend| image:: https://api.dependabot.com/badges/status?host=github&repo=legumeinfo/azulejo
-     :target: https://app.dependabot.com/accounts/legumeinfo/repos/203668510
-     :alt: dependabot dependencies
 
 .. |dlrate| image:: https://img.shields.io/pypi/dm/azulejo
     :target: https://pypistats.org/packages/azulejo

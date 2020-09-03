@@ -36,7 +36,7 @@ def test_cluster_build_trees(datadir_mgr):
             output = azulejo(["-q", "-e", SUBCOMMAND, "glycines"])
         except sh.ErrorReturnCode as errors:
             print(errors)
-            pytest.fail("Build failed")
+            pytest.fail("Homology clustering failed")
         print(output)
         for filestring in HOMOLOGY_OUTPUTS:
             assert Path(filestring).exists()

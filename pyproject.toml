@@ -116,7 +116,7 @@ style = "semver"
 
 [tool.coverage.run]
 parallel = true
-omit = ["tests/*", "noxfile.py", ".nox/*"]
+omit = ["tests/*", "noxfile.py", ".nox/*", "azulejo/analysis.py", "azulejo/proxy.py"]
 
 [tool.coverage.report]
 exclude_lines = [

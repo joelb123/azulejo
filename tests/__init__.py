@@ -44,7 +44,6 @@ HOMOLOGY_OUTPUTS = [
     )
 ]
 
-
 SYNTENY_OUTPUTS = [  # [f"{SET_DIR}/synteny/{i}.parq" for i in range(N_ANCHORS)] +
     f"{SET_DIR}/{f}"
     for f in (
@@ -52,6 +51,8 @@ SYNTENY_OUTPUTS = [  # [f"{SET_DIR}/synteny/{i}.parq" for i in range(N_ANCHORS)]
         + [f"{subdir}proteins.hom.syn.parq" for subdir in PROT_SUBDIRS]
     )
 ]
+
+TSV_TEST_FILE = f"{SET_DIR}/{PROT_SUBDIRS[0]}/proteins.hom.syn.parq"
 
 
 @contextlib.contextmanager
