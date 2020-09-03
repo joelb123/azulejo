@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Send and receive on-disk messages through names pips with file locking."""
 # standard library imports
-import array
 import contextlib
 import fcntl
 import sys
@@ -11,7 +10,6 @@ from pathlib import Path
 import attr
 import numpy as np
 import numpy.ma as ma
-import pandas as pd
 
 # global constant
 MAX_LINE_LEN = 144
@@ -19,7 +17,6 @@ MAX_LINE_LEN = 144
 
 @attr.s
 class DataMailboxes:
-
     """Pass data to and from on-disk FIFOs."""
 
     n_boxes = attr.ib()
@@ -74,7 +71,7 @@ class DataMailboxes:
         return self.mb_dir_path / f"{box_no}{ext}"
 
     def delete(self):
-        """Remove the mailbox directory. """
+        """Remove the mailbox directory."""
         file_list = list(self.mb_dir_path.glob("*"))
         for file in file_list:
             file.unlink()
@@ -83,7 +80,6 @@ class DataMailboxes:
 
 @attr.s
 class ExternalMerge(object):
-
     """Merges integers from files."""
 
     file_path_func = attr.ib(default=None)
@@ -96,9 +92,10 @@ class ExternalMerge(object):
         self.fh_list = [
             self.file_path_func(i).open() for i in range(self.n_merge)
         ]
-        assert [next(fh).rstrip() for fh in self.fh_list] == [
-            header_value
-        ] * self.n_merge
+        headers = [next(fh).rstrip() for fh in self.fh_list]
+        if headers != ([header_value] * self.n_merge):
+            print("Error in header values.")
+            sys.exit(1)
         self.value_vec = ma.masked_array(
             np.zeros(self.n_merge), mask=np.zeros(self.n_merge),
         ).astype(np.uint32)

@@ -411,7 +411,7 @@ def merge_unambig_hashes(
     syn["tmp.i"] = pd.array(range(len(syn)), dtype=pd.UInt32Dtype())
     if shingle:
         anchor_blocks = np.array([np.nan] * n_proteins)
-        for hash_val, subframe in syn.groupby(by=["tmp.base"]):
+        for unused_hash_val, subframe in syn.groupby(by=["tmp.base"]):
             # Note that base values are ordered with lower ortho counts first
             for unused_i, row in subframe.iterrows():
                 footprint = row["syn.hash.footprint"]
@@ -537,7 +537,7 @@ def merge_disambig_hashes(
     # Do disambiguated fills
     if shingle:
         disambig_fills = np.array([np.nan] * n_proteins)
-        for hash_val, subframe in syn.groupby(by=["tmp.disambig.base"]):
+        for unused_hash_val, subframe in syn.groupby(by=["tmp.disambig.base"]):
             for unused_i, row in subframe.iterrows():
                 footprint = row["syn.hash.footprint"]
                 row_no = row["tmp.i"]
@@ -558,7 +558,7 @@ def merge_disambig_hashes(
     # Deal with ambiguous hashes by adding non-ambiguous examples
     if nonambig:
         nonambig_fills = np.array([np.nan] * n_proteins)
-        for hash_val, subframe in syn.groupby(by=["tmp.base.ambig"]):
+        for unused_hash_val, subframe in syn.groupby(by=["tmp.base.ambig"]):
             if not greedy and len(subframe) > 1:
                 continue
             for unused_i, row in subframe.iterrows():
@@ -661,7 +661,8 @@ def join_synteny_to_clusters(args, cluster_parent=None, mailbox_reader=None):
 @click_loguru.init_logger()
 @click.argument("setname")
 def dagchainer_synteny(setname):
-    """Read DAGchainer synteny into homology frames.
+    """
+    Read DAGchainer synteny into homology frames.
 
     IDs must correspond between DAGchainer files and homology blocks.
     Currently does not calculate DAGchainer synteny.

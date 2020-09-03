@@ -13,10 +13,37 @@ from loguru import logger
 from .common import DIRECTIONAL_CATEGORY
 from .common import remove_tmp_columns
 
+# helper functions
+def _hash_array(kmer):
+    """Return a hash of an array."""
+    return xxhash.xxh32_intdigest(kmer.tobytes())
+
+
+def _cum_val_count(arr):
+    """Return an array of cumulative counts of values."""
+    counts = {}
+    out_arr = pd.array([pd.NA] * len(arr), dtype=pd.UInt32Dtype(),)
+    for i, val in enumerate(arr):
+        if pd.isnull(val):
+            continue
+        elif val in counts:
+            counts[val] += 1
+        else:
+            counts[val] = 1
+        out_arr[i] = counts[val]
+    return out_arr
+
+
+def _run_lengths_and_positions(vec):
+    """Compute vector of runlengths."""
+    uneq_idxs = np.append(np.where(vec[1:] != vec[:-1]), len(vec) - 1)
+    runlengths = np.diff(np.append(-1, uneq_idxs))
+    positions = np.cumsum(np.append(0, runlengths))[:-1]
+    return runlengths, positions
+
 
 @attr.s
 class SyntenyBlockHasher(object):
-
     """Synteny-block hashes via reversible-peatmer method."""
 
     k = attr.ib(default=3)
@@ -33,19 +60,13 @@ class SyntenyBlockHasher(object):
             return f"{prefix_str}hash.peatmer{self.k}"
         return f"{prefix_str}hash.kmer{self.k}"
 
-    def _hash_array(self, kmer):
-        """Return a hash of an array."""
-        return xxhash.xxh32_intdigest(kmer.tobytes())
-
-    def shingle(self, cluster_series, base, direction, hash):
+    def shingle(self, cluster_series, base, direction, hash_val):
         """Return a vector of anchor ID's. """
         vec = cluster_series.to_numpy().astype(int)
         steps = np.insert((vec[1:] != vec[:-1]).astype(int), 0, 0).cumsum()
-        try:
-            assert max(steps) == self.k - 1
-        except AssertionError:
+        if max(steps) != self.k - 1:
             logger.error(
-                f"Working around minor error in shingling hash {hash}, base"
+                f"Working around minor error in shingling hash {hash_val}, base"
                 f" {base};"
             )
             logger.error(f"input homology string={vec}")
@@ -89,15 +110,21 @@ class SyntenyBlockHasher(object):
             occur_downstream = row["tmp.downstr_occur"]
             if pd.notna(ambig_base):
                 if pd.notna(upstream_unambig):
-                    assert pd.notna(occur_upstream)
-                    upstream_hash[row_no] = self._hash_array(
+                    if not pd.notna(occur_upstream):
+                        logger.warning(
+                            f"Something is wrong upstream of base {ambig_base}"
+                        )
+                    upstream_hash[row_no] = _hash_array(
                         np.array(
                             [upstream_unambig, ambig_base, occur_upstream]
                         )
                     )
                 if pd.notna(downstream_unambig):
-                    assert pd.notna(occur_downstream)
-                    downstream_hash[row_no] = self._hash_array(
+                    if not pd.notna(occur_downstream):
+                        logger.warning(
+                            f"Something is wrong downstream of base {ambig_base}"
+                        )
+                    downstream_hash[row_no] = _hash_array(
                         np.array(
                             [ambig_base, downstream_unambig, occur_downstream]
                         )
@@ -127,13 +154,14 @@ class SyntenyBlockHasher(object):
 
     def _true_positions_and_runs(self, bool_vec):
         """Return arrays of positions and lengths of runs of True."""
-        runlengths, positions = self._run_lengths_and_positions(bool_vec)
+        runlengths, positions = _run_lengths_and_positions(bool_vec)
         true_idxs = np.where(bool_vec[positions])
         return positions[true_idxs], runlengths[true_idxs]
 
     def cum_val_count_where_ser2_is_NA(self, ser1, ser2, flip=False):
         """Return the cumulative value count of ser1 in regions where ser2 is NA."""
-        assert len(ser1) == len(ser2)
+        if len(ser1) != len(ser2):
+            logger.warning(f"Lengths of ser1 and ser2 differ at {ser1}")
         vc_arr = pd.array([pd.NA] * len(ser1), dtype=pd.UInt32Dtype(),)
         if not (ser2.isnull().all() or ser2.notna().all()):
             null_vec = ser2.isnull().to_numpy()
@@ -142,10 +170,11 @@ class SyntenyBlockHasher(object):
                 null_vec = np.flip(null_vec)
                 val_vec = np.flip(val_vec)
             null_pos, null_runs = self._true_positions_and_runs(null_vec)
-            for i in range(len(null_pos)):
+            null_len = len(null_pos)
+            for i in range(null_len):
                 vc_arr[
                     null_pos[i] : (null_pos[i] + null_runs[i])
-                ] = self._cum_val_count(
+                ] = _cum_val_count(
                     val_vec[null_pos[i] : (null_pos[i] + null_runs[i])]
                 )
             if flip:
@@ -153,34 +182,12 @@ class SyntenyBlockHasher(object):
         vc_ser = pd.Series(vc_arr, index=ser2.index)
         return vc_ser
 
-    def _cum_val_count(self, arr):
-        """Return an array of cumulative counts of values."""
-        counts = {}
-        out_arr = pd.array([pd.NA] * len(arr), dtype=pd.UInt32Dtype(),)
-        for i, val in enumerate(arr):
-            if pd.isnull(val):
-                continue
-            elif val in counts:
-                counts[val] += 1
-            else:
-                counts[val] = 1
-            out_arr[i] = counts[val]
-        return out_arr
-
-    def _run_lengths_and_positions(self, vec):
-        """Compute vector of runlengths."""
-        uneq_idxs = np.append(np.where(vec[1:] != vec[:-1]), len(vec) - 1)
-        runlengths = np.diff(np.append(-1, uneq_idxs))
-        positions = np.cumsum(np.append(0, runlengths))[:-1]
-        return runlengths, positions
-
     def calculate(self, cluster_series):
         """Return an array of synteny block hashes data."""
         # Maybe the best code I've ever written--JB
         vec = cluster_series.to_numpy().astype(int)
         if self.peatmer:
-            uneq_idxs = np.append(np.where(vec[1:] != vec[:-1]), len(vec) - 1)
-            runlengths, positions = self._run_lengths_and_positions(vec)
+            runlengths, positions = _run_lengths_and_positions(vec)
             n_mers = len(positions) - self.k + 1
             footprints = pd.array(
                 [runlengths[i : i + self.k].sum() for i in range(n_mers)],
@@ -199,10 +206,8 @@ class SyntenyBlockHasher(object):
         )
         fwd_rev_hashes = np.array(
             [
-                np.apply_along_axis(self._hash_array, 1, kmer_mat),
-                np.apply_along_axis(
-                    self._hash_array, 1, np.flip(kmer_mat, axis=1)
-                ),
+                np.apply_along_axis(_hash_array, 1, kmer_mat),
+                np.apply_along_axis(_hash_array, 1, np.flip(kmer_mat, axis=1)),
             ]
         )
         plus_minus = np.array([["+"] * n_mers, ["-"] * n_mers])

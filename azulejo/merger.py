@@ -12,11 +12,17 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 from itertools import combinations
-from loguru import logger
+
+# helper_functions
+def _unpack_payloads(vec):
+    """Unpack TSV ints in payload."""
+    values = np.array(
+        [[int(i) for i in s.split("\t")] for s in vec.compressed()]
+    ).transpose()
+    return values
 
 
 class AmbiguousMerger(object):
-
     """Counts instance of merges."""
 
     def __init__(
@@ -47,24 +53,13 @@ class AmbiguousMerger(object):
         # self.print_counter = 0
         # self.print_increment = 1000
 
-    def _unpack_payloads(self, vec):
-        """Unpack TSV ints in payload"""
-        wheres = np.where(~vec.mask)[0]
-        values = np.array(
-            [[int(i) for i in s.split("\t")] for s in vec.compressed()]
-        ).transpose()
-        return wheres, values
-
     def merge_func(self, value, count, payload_vec):
         """Return list of merged values."""
         self.values.append(value)
         self.counts.append(count)
-        wheres, arr = self._unpack_payloads(payload_vec)
+        arr = _unpack_payloads(payload_vec)
         max_ambig = arr[0].max()
         self.ambig.append(max_ambig)
-        # if (self.print_counter%self.print_increment == 0):
-        #    print(f"{value}: {max_ambig} {wheres} {arr}")
-        # self.print_counter += 1
         if max_ambig == 1:
             self._adjacency_to_graph([f"{i}" for i in arr[1]], value)
 
@@ -111,7 +106,7 @@ class AmbiguousMerger(object):
         )
         # ambig_frame.to_csv('ambig_frame.tsv', sep="\t")
         del merge_frame
-        component_sizes = [len(g) for g in nx.connected_components(self.graph)]
+        # component_sizes = [len(g) for g in nx.connected_components(self.graph)]
         # logger.info(f"Synteny graph has {self.graph.number_of_nodes()} nodes" +
         #            f" and {self.graph.number_of_edges()}/{self.n_edges}  edges")
         # logger.info(f"There are {len(component_sizes)} connected components of sizes {component_sizes}")

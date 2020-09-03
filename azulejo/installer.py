@@ -102,13 +102,13 @@ class DependencyInstaller(object):
             )
             version_command = self.dependency_dict[dep]["version_command"]
             self.dependency_dict[dep]["installed"] = not self.force
-            for bin in self.dependency_dict[dep]["binaries"]:
-                if sh.which(bin) == None:
+            for binary in self.dependency_dict[dep]["binaries"]:
+                if sh.which(binary) == None:
                     self.dependency_dict[dep]["installed"] = False
                     exe = "not installed"
                     ver_str = ""
                 else:
-                    exe = sh.Command(bin)
+                    exe = sh.Command(binary)
                     ver_out = exe(*version_command, _err_to_out=True).rstrip(
                         "\n"
                     )
@@ -167,7 +167,7 @@ class DependencyInstaller(object):
         return all_installed
 
     def status(self, exe_paths=False):
-        """Returns and the installation status message,"""
+        """Returns and the installation status message."""
         if self.status_msg is None:
             self.check_all(exe_paths=exe_paths)
         return self.status_msg
@@ -260,7 +260,7 @@ class DependencyInstaller(object):
         configure = sh.Command("./configure")
         try:
             configure_out = configure()
-        except:
+        except sh.ErrorReturnCode:
             logger.error("configure failed.")
             sys.exit(1)
         logger.debug(configure_out)
@@ -332,8 +332,8 @@ class DependencyInstaller(object):
     def _copy_binaries(self, dep):
         """Copy the named binary to the bin directory."""
         logger.info(f"   copying {dep} into {self.bin_path}")
-        for bin in self.dependency_dict[dep]["copy_binaries"]:
-            binpath = Path(bin)
+        for binary in self.dependency_dict[dep]["copy_binaries"]:
+            binpath = Path(binary)
             shutil.copy2(binpath, self.bin_path / binpath.name)
 
     def _check_for_license_acceptance(self, dep):
@@ -343,10 +343,10 @@ class DependencyInstaller(object):
         else:
             license_name = "restrictive"
         if "license_file" in self.dependency_dict[dep]:
-            license = Path(
+            license_text = Path(
                 self.dependency_dict[dep]["license_file"]
             ).read_text()
-            logger.warning(license)
+            logger.warning(license_text)
         while "invalid answer":
             reply = (
                 str(

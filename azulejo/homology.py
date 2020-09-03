@@ -55,7 +55,8 @@ HOMOLOGY_COLS = ["hom.cluster", "hom.cl_size"]
 )
 @click.argument("setname")
 def cluster_build_trees(identity, setname):
-    """Calculate homology clusters, MSAs, trees.
+    """
+    Calculate homology clusters, MSAs, trees.
 
     \b
     Example:
@@ -251,8 +252,8 @@ def cluster_build_trees(identity, setname):
 
 
 def write_concatenated_protein_fasta(args):
-    row, concat_fasta_path, frags = args
     """Read peptide sequences from info file and write them out."""
+    row, concat_fasta_path, frags = args
     dotpath = row["path"]
     phylogeny_dict = {"prot.idx": row.name, "path": dotpath}
     for n in [name for name in row.index if name.startswith("phy.")]:
@@ -395,20 +396,15 @@ def parse_cluster_fasta(filepath, trim_dict=True):
                     f"Header format is bad in {filepath} header"
                     f" {len(properties_dict)+1}"
                 )
-            id = mm[next_pos + 1 : space_pos].decode("utf-8")
+            cluster_id = mm[next_pos + 1 : space_pos].decode("utf-8")
             payload = json.loads(mm[space_pos + 1 : eol_pos])
-            properties_dict[id] = payload
+            properties_dict[cluster_id] = payload
             if trim_dict:
                 size = memory_map.trim(space_pos, eol_pos)
             next_pos = mm.find(b">", space_pos)
     cluster = (
         pd.DataFrame.from_dict(properties_dict).transpose().convert_dtypes()
     )
-    cluster["frag.direction"] = pd.Categorical(
-        cluster["frag.direction"], dtype=DIRECTIONAL_CATEGORY
-    )
-    for int_key in ["frag.start", "frag.pos", "prot.len", "prot.idx"]:
-        cluster[int_key] = pd.array(cluster[int_key], dtype=pd.UInt32Dtype())
     return cluster
 
 
@@ -423,18 +419,6 @@ def join_homology_to_proteome(args, mailbox_reader=None):
         ).convert_dtypes()
         clusters_in_proteome = len(homology_frame)
     proteome_frame = pd.concat([proteins, homology_frame], axis=1)
-    proteome_frame = proteome_frame.astype(
-        {
-            "hom.cluster": pd.UInt32Dtype(),
-            "hom.cl_size": pd.UInt32Dtype(),
-            "prot.m_start": pd.BooleanDtype(),
-            "frag.idx": pd.UInt32Dtype(),
-            "prot.no_stop": pd.BooleanDtype(),
-            "frag.is_plas": pd.BooleanDtype(),
-            "frag.is_scaf": pd.BooleanDtype(),
-            "frag.is_chr": pd.BooleanDtype(),
-        }
-    )
     write_tsv_or_parquet(proteome_frame, protein_parent / HOMOLOGY_FILE)
     return {
         "prot.idx": idx,

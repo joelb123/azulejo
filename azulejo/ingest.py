@@ -23,7 +23,7 @@ from dask.diagnostics import ProgressBar
 import smart_open
 from loguru import logger
 from pathvalidate import ValidationError
-from pathvalidate import validate_filename
+from pathvalidate import validate_filename as pv_validate_filename
 
 # module imports
 from . import cli
@@ -59,13 +59,73 @@ COMPRESSION_EXTENSIONS = (
 
 MINIMUM_PROTEINS = 100
 
+# helper functions
+def _remove_leading_zeroes_in_field(string):
+    """If blank-separated fields are integer, remove the leading zero."""
+    split = string.split(" ")
+    for i, field in enumerate(split):
+        if field.isdigit():
+            split[i] = f"{int(field)}"
+    return " ".join(split)
+
+
+def _is_scaffold(ids):
+    """Assess whether fragment is likely a scaffold."""
+    return np.logical_or(
+        ids.str.contains(SCAFFOLD_ABBREV),
+        ids.str.startswith(ALTERNATE_ABBREV),
+    )
+
+
+def _is_chromosome(ids):
+    """Assess whether fragment is likely a chromosome."""
+    return np.logical_and(
+        ids.str.startswith(CHROMOSOME_ABBREV), ~_is_scaffold(ids)
+    )
+
+
+def _is_plastid(ids):
+    """Assess whether fragment is likely a plastid."""
+    return np.logical_or.reduce(
+        [ids.str.startswith(s) for s in PLASTID_STARTS]
+    )
+
+
+def _validate_filename(name):
+    """Check if a potential filename is valid or not."""
+    try:
+        pv_validate_filename(name)
+    except ValidationError as e:
+        logger.error(f"Invalid component name {name} in input file")
+        logger.error(e)
+        sys.exit(1)
+    return name
+
+
+def _strip_file_uri(url):
+    """Removes the file:// uri from a URL string."""
+    if url.startswith(FILE_TRANSPORT):
+        return url[len(FILE_TRANSPORT) :]
+    return url
+
+
+def _validate_uri(uri):
+    """Check if the transport at the start of a URI is valid or not."""
+    try:
+        smart_open.parse_uri(uri)
+    except NotImplementedError:
+        logger.error(f'Unimplemented transport in uri "{uri}"')
+        sys.exit(1)
+    return uri
+
 
 @cli.command()
 @click_loguru.init_logger()
 @click_loguru.log_elapsed_time()
 @click.argument("input_toml")
 def ingest_sequences(input_toml):
-    """Marshal protein and genome sequence information.
+    """
+    Marshal protein and genome sequence information.
 
     IDs must correspond between GFF and FASTA files and must be unique across
     the entire set.
@@ -83,7 +143,7 @@ def ingest_sequences(input_toml):
     input_table = input_obj.input_table
     set_path = Path(input_obj.setname)
     arg_list = []
-    for i, row in input_table.iterrows():
+    for unused_i, row in input_table.iterrows():
         arg_list.append((row["path"], row["fasta_url"], row["gff_url"],))
     if parallel:
         bag = db.from_sequence(arg_list)
@@ -210,7 +270,7 @@ def read_fasta_and_gff(args):
         "frag.max": frag_counts[0],
     }
     features["frag.prot_count"] = pd.array(
-        features["frag.id"].map(frag_counts), dtype=pd.UInt32Dtype()
+        features["frag.id"].map(frag_counts)
     )
     features.sort_values(
         by=["frag.prot_count", "frag.id", "frag.start"],
@@ -225,23 +285,12 @@ def read_fasta_and_gff(args):
     # join GFF info to FASTA info
     joined_path = out_path / PROTEINS_FILE
     features = features.join(prop_frame)
-    # Make unsigned integer 32
-    for int_key in ["frag.start", "frag.pos", "prot.len", "prot.n_ambig"]:
-        features[int_key] = pd.array(features[int_key], dtype=pd.UInt32Dtype())
-    for bool_key in ["prot.m_start", "prot.no_stop"]:
-        features[int_key] = pd.array(
-            features[int_key], dtype=pd.BooleanDtype()
-        )
-    features["prot.seq"] = pd.array(
-        features["prot.seq"], dtype=pd.StringDtype()
-    )
     write_tsv_or_parquet(features, joined_path, sort_cols=False)
     return file_stats, frag_stats, frags
 
 
 @attr.s
 class FragmentCharacterizer:
-
     """Rename and characterize fragments based on those names."""
 
     extra_plastid_starts = attr.ib(default=[])
@@ -250,7 +299,6 @@ class FragmentCharacterizer:
 
     @attr.s
     class UnknownsAsScaffolds(object):
-
         """Keep track of unknown scaffolds."""
 
         scaf_dict = attr.ib(default={})
@@ -273,7 +321,6 @@ class FragmentCharacterizer:
 
     @attr.s
     class PreserveUnique(object):
-
         """Ensure uniqueness of a series is preserved."""
 
         ser = attr.ib(default=None)
@@ -281,33 +328,6 @@ class FragmentCharacterizer:
         def ensure_still_unique(self, new_ser):
             if new_ser.nunique() == self.ser.nunique():
                 self.ser = new_ser
-
-    def remove_leading_zeroes_in_field(self, string):
-        """If blank-separated fields are integer, remove the leading zero."""
-        split = string.split(" ")
-        for i, field in enumerate(split):
-            if field.isdigit():
-                split[i] = f"{int(field)}"
-        return " ".join(split)
-
-    def is_scaffold(self, ids):
-        """Assess whether fragment is likely a scaffold."""
-        return np.logical_or(
-            ids.str.contains(SCAFFOLD_ABBREV),
-            ids.str.startswith(ALTERNATE_ABBREV),
-        )
-
-    def is_chromosome(self, ids):
-        """Assess whether fragment is likely a chromosome."""
-        return np.logical_and(
-            ids.str.startswith(CHROMOSOME_ABBREV), ~self.is_scaffold(ids)
-        )
-
-    def is_plastid(self, ids):
-        """Assess whether fragment is likely a plastid."""
-        return np.logical_or.reduce(
-            [ids.str.startswith(s) for s in PLASTID_STARTS]
-        )
 
     def cleanup_frag_ids(self, orig_ids):
         """Try to automatically put genome fragments on a common basis."""
@@ -335,7 +355,7 @@ class FragmentCharacterizer:
             uniq.ser.str.replace(SCAFFOLD_ABBREV, SCAFFOLD_ABBREV + " ")
         )
         uniq.ensure_still_unique(uniq.ser.str.replace("  ", " "))
-        clean = uniq.ser.map(self.remove_leading_zeroes_in_field)
+        clean = uniq.ser.map(_remove_leading_zeroes_in_field)
         sc_namer = self.UnknownsAsScaffolds()
         clean = clean.map(sc_namer.rename_unknowns)
         orig_ids.index = clean
@@ -348,21 +368,14 @@ class FragmentCharacterizer:
         for unused_path, subframe in frags.groupby(by=["path"]):
             clean_list.append(self.cleanup_frag_ids(subframe["frag.orig_id"]))
         clean_ids = pd.concat(clean_list).sort_index()
-        frags["frag.is_plas"] = pd.array(
-            self.is_plastid(clean_ids), dtype="boolean"
-        )
-        frags["frag.is_scaf"] = pd.array(
-            self.is_scaffold(clean_ids), dtype="boolean"
-        )
-        frags["frag.is_chr"] = pd.array(
-            self.is_chromosome(clean_ids), dtype="boolean"
-        )
+        frags["frag.is_plas"] = pd.array(_is_plastid(clean_ids))
+        frags["frag.is_scaf"] = pd.array(_is_scaffold(clean_ids))
+        frags["frag.is_chr"] = pd.array(_is_chromosome(clean_ids))
         frags["frag.id"] = clean_ids
         return frags
 
 
 class TaxonomicInputTable:
-
     """Parse an azulejo input dictionary."""
 
     def __init__(self, toml_path, write_table=True):
@@ -383,7 +396,7 @@ class TaxonomicInputTable:
                 + f"object, but defines {len(tree)} instead"
             )
             sys.exit(1)
-        self.setname = self._validate_name(list(tree.keys())[0])
+        self.setname = _validate_filename(list(tree.keys())[0])
         root_path = Path(self.setname)
         if not root_path.exists():
             logger.info(f"Creating directory for set {self.setname}")
@@ -412,30 +425,6 @@ class TaxonomicInputTable:
         if toml_path != saved_input_path:
             shutil.copy2(toml_path, root_path / SAVED_INPUT_FILE)
 
-    def _validate_name(self, name):
-        """Check if a potential filename is valid or not."""
-        try:
-            validate_filename(name)
-        except ValidationError as e:
-            logger.error(f"Invalid component name {name} in input file")
-            sys.exit(1)
-        return name
-
-    def _validate_uri(self, uri):
-        """Check if the transport at the start of a URI is valid or not."""
-        try:
-            smart_open.parse_uri(uri)
-        except NotImplementedError:
-            logger.error(f'Unimplemented transport in uri "{uri}"')
-            sys.exit(1)
-        return uri
-
-    def _strip_file_uri(self, url):
-        """Removes the file:// uri from a URL string."""
-        if url.startswith(FILE_TRANSPORT):
-            return url[len(FILE_TRANSPORT) :]
-        return url
-
     def _walk(self, node_name, tree):
         """Recursively walk tree structure."""
         # Check for required field properties.
@@ -463,7 +452,7 @@ class TaxonomicInputTable:
         # Push node onto stack
         self._nodes.append(
             self._Node(
-                self._validate_name(dot_path),
+                _validate_filename(dot_path),
                 tree["name"],
                 tree["rank"],
                 rank_val,
@@ -499,7 +488,7 @@ class TaxonomicInputTable:
             if "uri" not in tree:
                 uri = FILE_TRANSPORT
             else:
-                uri = self._validate_uri(tree["uri"])
+                uri = _validate_uri(tree["uri"])
                 if not uri.endswith("/"):
                     uri += "/"
             self._genome_dir_dict[self._n_genomes] = {"path": dot_path}
@@ -515,10 +504,10 @@ class TaxonomicInputTable:
                 ] = n.name
             self._genome_dir_dict[self._n_genomes][
                 "fasta_url"
-            ] = self._strip_file_uri(uri + tree["fasta"])
+            ] = _strip_file_uri(uri + tree["fasta"])
             self._genome_dir_dict[self._n_genomes][
                 "gff_url"
-            ] = self._strip_file_uri(uri + tree["gff"])
+            ] = _strip_file_uri(uri + tree["gff"])
             self._n_genomes += 1
         for n in self._nodes:
             properties[n.rank] = n.name
@@ -534,7 +523,7 @@ class TaxonomicInputTable:
 
 @contextlib.contextmanager
 def _cd(newdir, cleanup=lambda: True):
-    "Change directory with cleanup."
+    """Change directory with cleanup."""
     prevdir = os.getcwd()
     os.chdir(os.path.expanduser(newdir))
     try:

@@ -12,10 +12,20 @@ START_CHARS = ("M",)
 UNAMBIGUOUS_ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
 ALPHABET = UNAMBIGUOUS_ALPHABET + AMBIGUOUS
 
+# helper functions
+def _count_ambiguous(seq):
+    """
+    Count ambiguous residues.
+
+    :param seq: sequence
+    :return: Number of ambiguous residues
+    """
+    return sum([i == AMBIGUOUS for i in seq])
+
 
 class Sanitizer:
-
-    """Count and clean up problems with protein sequence.
+    """
+    Count and clean up problems with protein sequence.
 
     Problems recognized are:
           alphabet:  if not in IUPAC set, changed to 'X'
@@ -50,7 +60,8 @@ class Sanitizer:
         self.stops = 0
 
     def char_remover(self, seq, character):
-        """Remove positions with a given character.
+        """
+        Remove positions with a given character.
 
         :param seq: mutable sequence
         :return: sequence with characters removed
@@ -62,7 +73,8 @@ class Sanitizer:
         return seq
 
     def fix_alphabet(self, seq):
-        """Replace everything out of alphabet with AMBIGUOUS.
+        """
+        Replace everything out of alphabet with AMBIGUOUS.
 
         :param seq: mutable sequence, upper-cased
         :return: fixed sequence
@@ -76,7 +88,8 @@ class Sanitizer:
         return seq
 
     def remove_char_on_ends(self, seq, character):
-        """Remove leading/trailing characters..
+        """
+        Remove leading/trailing characters..
 
         :param seq: mutable sequence
         :return: sequence with characters removed from ends
@@ -97,7 +110,8 @@ class Sanitizer:
         return seq, stops
 
     def sanitize(self, seq):
-        """Sanitize potential problems with sequence.
+        """
+        Sanitize potential problems with sequence.
 
         Remove dashes, change non-IUPAC characters to
         ambiguous, and remove ambiguous characters on ends.
@@ -118,20 +132,12 @@ class Sanitizer:
             raise ValueError("zero-length sequence after ends trimmed")
         self.resid_out += len(seq)
         self.stops += int(has_stop)
-        n_ambig = self.count_ambiguous(seq)
+        n_ambig = _count_ambiguous(seq)
         self.ambiguous += n_ambig
         bad_start = self.starts_improperly(seq)
         self.improper_starts += int(bad_start)
         self.seqs_out += 1
         return seq, has_stop, bad_start, n_ambig
-
-    def count_ambiguous(self, seq):
-        """Count ambiguous residues.
-
-        :param seq: sequence
-        :return: Number of ambiguous residues
-        """
-        return sum([i == AMBIGUOUS for i in seq])
 
     def starts_improperly(self, seq):
         """Return True if start char not in list."""
@@ -153,7 +159,6 @@ class Sanitizer:
 
 
 class DuplicateSequenceIndex:
-
     """Count duplicated sequences."""
 
     def __init__(self):

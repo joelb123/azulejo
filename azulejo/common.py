@@ -39,7 +39,7 @@ SAVED_INPUT_FILE = "input.toml"
 # Changing the extension of these files will change the type of file written.
 # TSV files, though readable/editable, do not give the written values back.
 # Parquet is also ~100X faster.
-4
+
 CLUSTER_FILETYPE = "parq"
 CLUSTERS_FILE = "clusters.parq"
 CLUSTERSYN_FILE = "clusters.syn.parq"
@@ -61,6 +61,7 @@ SCAFFOLD_SYNONYMS = ["scaffold", "scaf", "sca"]
 SCAFFOLD_ABBREV = "sc"
 
 DIRECTIONAL_CATEGORY = pd.CategoricalDtype(categories=["-", "+"])
+YES_NO = pd.CategoricalDtype(categories=["y", "n"])
 DTYPE_DICT = {
     "adj_group": pd.UInt32Dtype(),
     "adj_groups": pd.UInt32Dtype(),

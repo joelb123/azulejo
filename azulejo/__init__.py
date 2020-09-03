@@ -11,7 +11,6 @@ from pkg_resources import iter_entry_points
 import click
 from click_plugins import with_plugins
 from click_loguru import ClickLoguru
-from loguru import logger
 
 # module imports
 from .common import NAME
@@ -31,13 +30,13 @@ else:
 MUSCLE_VER = "3.8.1551"
 USEARCH_VER = "11.0.667"
 
-
-def muscle_version_parser(ver_str):
+# helper functions
+def _muscle_version_parser(ver_str):
     """Parse version out of muscle version string."""
     return ver_str.split()[1]
 
 
-def usearch_version_parser(ver_str):
+def _usearch_version_parser(ver_str):
     """Parse version out of usearch version string."""
     return ver_str.split()[1].split("_")[0]
 
@@ -53,7 +52,7 @@ DEPENDENCY_DICT = {
         "dir": ".",
         "version": MUSCLE_VER,
         "version_command": ["-version"],
-        "version_parser": muscle_version_parser,
+        "version_parser": _muscle_version_parser,
         "make": ["muscle-pgo",],
         "copy_binaries": ["muscle"],
         "license": "public domain",
@@ -64,7 +63,7 @@ DEPENDENCY_DICT = {
         "dir": ".",
         "version": USEARCH_VER,
         "version_command": ["-version"],
-        "version_parser": usearch_version_parser,
+        "version_parser": _usearch_version_parser,
         "download_binaries": {
             "linux": "https://www.drive5.com/downloads/usearch11.0.667_i86linux32.gz",
             "macos": "https://www.drive5.com/downloads/usearch11.0.667_i86osx32.gz",
@@ -118,7 +117,7 @@ click_loguru = ClickLoguru(
 )
 @click.version_option(version=__version__, prog_name=NAME)
 def cli(warnings_as_errors, parallel, **unused_kwargs):
-    """azulejo -- tiling genes in subtrees across phylogenetic space.
+    """Azulejo -- tiling genes in subtrees across phylogenetic space.
 
     \b
     For more information, see the homepage at https://github.com/legumeinfo/azulejo
@@ -134,7 +133,7 @@ def cli(warnings_as_errors, parallel, **unused_kwargs):
                 "Runtime warnings (e.g., from pandas) will cause exceptions!"
             )
         warnings.filterwarnings("error")
-    unused_fstring = f"{parallel}"
+    f"{parallel}"
 
 
 @cli.command()
@@ -155,7 +154,8 @@ def cli(warnings_as_errors, parallel, **unused_kwargs):
 @click.argument("dependencies", nargs=-1)
 @click_loguru.init_logger(logfile=False)
 def install(dependencies, force, accept_licenses):
-    """Check for/install binary dependencies.
+    """
+    Check for/install binary dependencies.
 
     \b
     Example:
@@ -188,7 +188,7 @@ def install(dependencies, force, accept_licenses):
 # from .core import combine_clusters  #  isort:skip
 # from .core import compare_clusters  #  isort:skip
 # from .core import prepare_protein_files  #  isort:skip
-from .core import homology_cluster  #  isort:skip
+# from .core import homology_cluster  #  isort:skip
 from .homology import cluster_build_trees  # isort:skip
 from .homology import info_to_fasta  # isort:skip
 from .ingest import ingest_sequences  # isort:skip

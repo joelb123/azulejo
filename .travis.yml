@@ -1,5 +1,7 @@
+dist: focal
 sudo: false
 language: python
+compiler: gcc
 python:
    - "3.8"
 before_install:
@@ -8,6 +10,6 @@ install:
    - poetry install -v
    - export MAKEFLAGS="-j $(grep -c ^processor /proc/cpuinfo)"
 script:
-   - poetry run nox -s tests
+   - travis_wait 60 poetry run nox -s tests
 after_success:
   - bash <(curl -s https://codecov.io/bash) -X gcov
