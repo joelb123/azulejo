@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tests for data ingestion."""
 # standard library imports
+import sys
 from pathlib import Path
 
 # third-party imports
@@ -37,6 +38,6 @@ def test_synteny_anchors(datadir_mgr):
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail("Synteny anchor construction failed")
-        print(output)
+        print(f"output={output}")
         for filestring in SYNTENY_OUTPUTS:
             assert Path(filestring).exists()

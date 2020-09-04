@@ -50,6 +50,51 @@ def _true_positions_and_runs(bool_vec):
     return positions[true_idxs], runlengths[true_idxs]
 
 
+def _fill_na_with_last_valid(ser, flip=False):
+    """Input a series with NA values, returns a series with those values filled."""
+    lv_arr = pd.array([pd.NA] * len(ser), dtype=pd.UInt32Dtype(),)
+    if not (ser.isnull().all() or ser.notna().all()):
+        null_vec = ser.isnull().to_numpy()
+        val_vec = ser.to_numpy()
+        if flip:
+            null_vec = np.flip(null_vec)
+            val_vec = np.flip(val_vec)
+        first_null_pos, null_runs = _true_positions_and_runs(null_vec)
+        fill_vals = np.append(pd.NA, val_vec)[first_null_pos]
+        for i, pos in enumerate(first_null_pos):
+            for j in range(null_runs[i]):
+                lv_arr[pos + j] = fill_vals[i]
+        if flip:
+            lv_arr = np.flip(lv_arr)
+        lv_ser = pd.Series(lv_arr, index=ser.index)
+        return lv_ser
+
+
+def _cum_val_cnt_where_ser2_is_na(ser1, ser2, flip=False):
+    """Return the cumulative value count of ser1 in regions where ser2 is NA."""
+    if len(ser1) != len(ser2):
+        logger.warning(f"Lengths of ser1 and ser2 differ at {ser1}")
+    vc_arr = pd.array([pd.NA] * len(ser1), dtype=pd.UInt32Dtype(),)
+    if not (ser2.isnull().all() or ser2.notna().all()):
+        null_vec = ser2.isnull().to_numpy()
+        val_vec = ser1.to_numpy()
+        if flip:
+            null_vec = np.flip(null_vec)
+            val_vec = np.flip(val_vec)
+        null_pos, null_runs = _true_positions_and_runs(null_vec)
+        null_len = len(null_pos)
+        for i in range(null_len):
+            vc_arr[
+                null_pos[i] : (null_pos[i] + null_runs[i])
+            ] = _cum_val_count(
+                val_vec[null_pos[i] : (null_pos[i] + null_runs[i])]
+            )
+        if flip:
+            vc_arr = np.flip(vc_arr)
+    vc_ser = pd.Series(vc_arr, index=ser2.index)
+    return vc_ser
+
+
 @attr.s
 class SyntenyBlockHasher(object):
     """Synteny-block hashes via reversible-peatmer method."""
@@ -88,16 +133,16 @@ class SyntenyBlockHasher(object):
         """Calculated Disambiguation frame (per-fragment)."""
         hash2_fr = df[["syn.anchor_id", "tmp.base.ambig"]].copy()
         hash2_fr = hash2_fr.rename(columns={"syn.anchor_id": "tmp.anchor_id"})
-        hash2_fr["tmp.upstr_anchor"] = self.fill_na_with_last_valid(
+        hash2_fr["tmp.upstr_anchor"] = _fill_na_with_last_valid(
             df["syn.anchor_id"]
         )
-        hash2_fr["tmp.downstr_anchor"] = self.fill_na_with_last_valid(
+        hash2_fr["tmp.downstr_anchor"] = _fill_na_with_last_valid(
             df["syn.anchor_id"], flip=True
         )
-        hash2_fr["tmp.upstr_occur"] = self.cum_val_count_where_ser2_is_NA(
+        hash2_fr["tmp.upstr_occur"] = _cum_val_cnt_where_ser2_is_na(
             df["tmp.base.ambig"], df["syn.anchor_id"]
         )
-        hash2_fr["tmp.downstr_occur"] = self.cum_val_count_where_ser2_is_NA(
+        hash2_fr["tmp.downstr_occur"] = _cum_val_cnt_where_ser2_is_na(
             df["tmp.base.ambig"], df["syn.anchor_id"], flip=True
         )
         hash2_fr["tmp.i"] = range(len(hash2_fr))
@@ -140,49 +185,6 @@ class SyntenyBlockHasher(object):
         hash2_fr["syn.disambig_upstr"] = upstream_hash
         hash2_fr["syn.disambig_downstr"] = downstream_hash
         return remove_tmp_columns(hash2_fr)
-
-    def fill_na_with_last_valid(self, ser, flip=False):
-        """Input a series with NA values, returns a series with those values filled."""
-        lv_arr = pd.array([pd.NA] * len(ser), dtype=pd.UInt32Dtype(),)
-        if not (ser.isnull().all() or ser.notna().all()):
-            null_vec = ser.isnull().to_numpy()
-            val_vec = ser.to_numpy()
-            if flip:
-                null_vec = np.flip(null_vec)
-                val_vec = np.flip(val_vec)
-            first_null_pos, null_runs = _true_positions_and_runs(null_vec)
-            fill_vals = np.append(pd.NA, val_vec)[first_null_pos]
-            for i, pos in enumerate(first_null_pos):
-                for j in range(null_runs[i]):
-                    lv_arr[pos + j] = fill_vals[i]
-            if flip:
-                lv_arr = np.flip(lv_arr)
-        lv_ser = pd.Series(lv_arr, index=ser.index)
-        return lv_ser
-
-    def cum_val_count_where_ser2_is_NA(self, ser1, ser2, flip=False):
-        """Return the cumulative value count of ser1 in regions where ser2 is NA."""
-        if len(ser1) != len(ser2):
-            logger.warning(f"Lengths of ser1 and ser2 differ at {ser1}")
-        vc_arr = pd.array([pd.NA] * len(ser1), dtype=pd.UInt32Dtype(),)
-        if not (ser2.isnull().all() or ser2.notna().all()):
-            null_vec = ser2.isnull().to_numpy()
-            val_vec = ser1.to_numpy()
-            if flip:
-                null_vec = np.flip(null_vec)
-                val_vec = np.flip(val_vec)
-            null_pos, null_runs = _true_positions_and_runs(null_vec)
-            null_len = len(null_pos)
-            for i in range(null_len):
-                vc_arr[
-                    null_pos[i] : (null_pos[i] + null_runs[i])
-                ] = _cum_val_count(
-                    val_vec[null_pos[i] : (null_pos[i] + null_runs[i])]
-                )
-            if flip:
-                vc_arr = np.flip(vc_arr)
-        vc_ser = pd.Series(vc_arr, index=ser2.index)
-        return vc_ser
 
     def calculate(self, cluster_series):
         """Return an array of synteny block hashes data."""

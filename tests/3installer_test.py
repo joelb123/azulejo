@@ -23,24 +23,22 @@ def test_subcommand_help():
 
 @print_docstring()
 def test_installer(tmp_path):
-    """Test installer check function."""
-    with working_directory(tmp_path):
-        try:
-            output = azulejo([SUBCOMMAND])
-        except sh.ErrorReturnCode as errors:
-            print(errors)
-            pytest.fail("Installer test failed")
-        assert "muscle" in output
-        assert "usearch" in output
-
-
-@print_docstring()
-def test_build(tmp_path):
-    """Test building dependencies."""
-    with working_directory(tmp_path):
-        try:
-            output = azulejo(["-q", SUBCOMMAND, "-y", "all"])
-        except sh.ErrorReturnCode as errors:
-            print(errors)
-            pytest.fail("Build failed")
-        assert "All dependencies" in azulejo(["install"])
+    """Test installer check and build functions."""
+    try:
+        output = azulejo([SUBCOMMAND])
+    except sh.ErrorReturnCode as errors:
+        print(errors)
+        pytest.fail("Installer test failed")
+    assert "muscle" in output
+    assert "usearch" in output
+    if "All dependencies" in output:
+        print("All dependencies already installed.")
+    else:
+        with working_directory(tmp_path):
+            try:
+                output = azulejo(["-q", SUBCOMMAND, "-y", "all"])
+            except sh.ErrorReturnCode as errors:
+                print(errors)
+                pytest.fail("Build failed")
+            print(output)
+            assert "All dependencies" in azulejo(["install"])
