@@ -33,4 +33,4 @@ def test_parquet_conversion(datadir_mgr):
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail("Parquet-to-TSV conversion failed")
-        assert Path("proteins.hom.syn.tsv").exists()
+        assert Path("proteins.hom.tsv").exists()
