@@ -60,7 +60,6 @@ click_loguru = "^1.3.0"
 xxhash = "^2.0.0"
 
 [tool.poetry.dev-dependencies]
-pytest-cov = "^2.8.1"
 black = {version = "^20.8b1", allow-prereleases = true}
 pre-commit = "^2.3.0"
 pydocstyle = "^5.0.2"
@@ -69,10 +68,11 @@ pylint = "^2.5.2"
 bandit = "^1.6.2"
 towncrier = "^19.2.0"
 coverage = {extras = ["toml"], version = "^5.1"}
-pytest-datadir-mgr = "^1.0.1"
 nox = "^2020.5.24"
 isort = "^5.4.2"
 flynt = "^0.52"
+pytest-cov = "^2.10.1"
+pytest_datadir_mgr = "^1.1.3"
 
 [tool.poetry.scripts]
 azulejo = "azulejo:cli"
