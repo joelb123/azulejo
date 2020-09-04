@@ -15,7 +15,9 @@ script:
    - pytest -s tests/1file_test.py
    - pytest -s tests/2ingest_test.py
    - pytest -s tests/3installer_test.py
-   - travis_wait 30 pytest -s tests/4homology_test.py
+   - pushd tests/data
+   - azulejo cluster-build-trees glycines
+   - popd
    - pytest -s tests/5synteny_test.py
    - pytest -s tests/6parquet_test.py
 after_success:

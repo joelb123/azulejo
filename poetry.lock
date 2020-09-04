@@ -234,14 +234,14 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [[package]]
 name = "click-loguru"
-version = "1.3.2"
+version = "1.3.4"
 description = "Logging to stderr and file for click applications."
 category = "main"
 optional = false
 python-versions = ">=3.6.1,<4.0.0"
 
 [package.dependencies]
-attrs = ">=19.3,<21.0"
+attrs = ">=20.1.0,<21.0.0"
 click = ">=7.1.2,<8.0.0"
 loguru = ">=0.5.0,<0.6.0"
 memory_profiler = ">=0.57.0,<0.58.0"
@@ -1570,8 +1570,8 @@ click = [
     {file = "click-7.1.2.tar.gz", hash = "sha256:d2b5255c7c6349bc1bd1e59e08cd12acbbd63ce649f2588755783aa94dfb6b1a"},
 ]
 click-loguru = [
-    {file = "click_loguru-1.3.2-py3-none-any.whl", hash = "sha256:b33cb25c79d03d2f157ec4cf194575e72fe144326220c5b3ce4b4f30f530cfcd"},
-    {file = "click_loguru-1.3.2.tar.gz", hash = "sha256:db68b4977dd0cdf1861cb267896b0c5849c3fab9b2bcc76ef8df23bc22f56afa"},
+    {file = "click_loguru-1.3.4-py3-none-any.whl", hash = "sha256:c2a7ab12a40d7d46103c3d1df2752c3d38bf6ba1f0b3227a7329085984440973"},
+    {file = "click_loguru-1.3.4.tar.gz", hash = "sha256:f38382f0a924eb388d29f21a20f60b8c805668fb34b396977029643268d52c6a"},
 ]
 click-plugins = [
     {file = "click-plugins-1.1.1.tar.gz", hash = "sha256:46ab999744a9d831159c3411bb0c79346d94a444df9a3a3742e9ed63645f264b"},
