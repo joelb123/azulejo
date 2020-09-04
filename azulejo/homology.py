@@ -8,7 +8,6 @@ import shutil
 from pathlib import Path
 
 # third-party imports
-import click
 import dask.bag as db
 import numpy as np
 import pandas as pd
@@ -19,11 +18,8 @@ import sh
 from loguru import logger
 
 # module imports
-from . import cli
-from . import click_loguru
 from .common import CLUSTER_FILETYPE
 from .common import CLUSTERS_FILE
-from .common import DIRECTIONAL_CATEGORY
 from .common import FRAGMENTS_FILE
 from .common import HOMOLOGY_FILE
 from .common import PROTEINS_FILE
@@ -43,31 +39,13 @@ from .mailboxes import DataMailboxes
 HOMOLOGY_COLS = ["hom.cluster", "hom.cl_size"]
 
 
-@cli.command()
-@click_loguru.init_logger()
-@click_loguru.log_elapsed_time(level="info")
-@click_loguru.log_peak_memory_use(level="info")
-@click.option(
-    "--identity",
-    "-i",
-    default=0.0,
-    help="Minimum sequence ID (0-1). [default: lowest]",
-)
-@click.argument("setname")
-def cluster_build_trees(identity, setname):
-    """
-    Calculate homology clusters, MSAs, trees.
-
-    \b
-    Example:
-        azulejo cluster-build-trees glycines
-
-    """
+def cluster_build_trees(identity, set_name, click_loguru=None):
+    """Calculate homology clusters, MSAs, trees."""
     click_loguru.elapsed_time("Concatenation")
     options = click_loguru.get_global_options()
     user_options = click_loguru.get_user_global_options()
     parallel = user_options["parallel"]
-    set_path = Path(setname)
+    set_path = Path(set_name)
     # read and possibly update proteomes
     proteomes_path = set_path / PROTEOMES_FILE
     proteomes_in = read_tsv_or_parquet(proteomes_path)
@@ -104,18 +82,20 @@ def cluster_build_trees(identity, setname):
         file_idx[stem] = i
         stem_dict[i] = stem
     click_loguru.elapsed_time("Clustering")
-    logger.debug("Doing cluster calculation.")
     cwd = Path.cwd()
     os.chdir(set_path)
-    n_clusters, run_stats, cluster_hist = homology_cluster.callback(
+    n_clusters, run_stats, cluster_hist = homology_cluster(
         "proteins.fa",
         identity,
         write_ids=True,
         delete=False,
         cluster_stats=False,
         outname="homology",
+        click_loguru=click_loguru,
     )
     log_path = Path("homology.log")
+    log_dir_path = Path("logs")
+    log_dir_path.mkdir()
     shutil.copy2(log_path, "logs/homology.log")
     log_path.unlink()
     os.chdir(cwd)
@@ -139,10 +119,8 @@ def cluster_build_trees(identity, setname):
         set_path / "homology" / f"{i}.fa" for i in range(n_clusters)
     ]
     click_loguru.elapsed_time("Alignment")
-    if parallel:
-        bag = db.from_sequence(cluster_paths)
-    else:
-        cluster_stats = []
+    bag = db.from_sequence(cluster_paths)
+    cluster_stats = []
     if not options.quiet:
         logger.info(
             f"Calculating MSAs and trees for {len(cluster_paths)} homology"
@@ -217,10 +195,8 @@ def cluster_build_trees(identity, setname):
     arg_list = []
     for i, row in proteomes.iterrows():
         arg_list.append((i, dotpath_to_path(row["path"]),))
-    if parallel:
-        bag = db.from_sequence(arg_list)
-    else:
-        homo_stats = []
+    bag = db.from_sequence(arg_list)
+    homo_stats = []
     if not options.quiet:
         logger.info(f"Joining homology info to {n_proteomes} proteomes:")
         ProgressBar().register()
@@ -281,9 +257,7 @@ def write_concatenated_protein_fasta(args):
     for prop in phylogeny_dict:
         prot_info[prop] = phylogeny_dict[prop]
     # write concatenated sequence info
-    info_to_fasta.callback(
-        None, concat_fasta_path, append=True, infoobj=prot_info
-    )
+    info_to_fasta(None, concat_fasta_path, append=True, infoobj=prot_info)
 
 
 def parse_cluster(
@@ -427,18 +401,6 @@ def join_homology_to_proteome(args, mailbox_reader=None):
     }
 
 
-@cli.command()
-@click_loguru.init_logger(logfile=False)
-@click.option(
-    "--append/--no-append",
-    "-a/-x",
-    is_flag=True,
-    default=True,
-    help="Append to FASTA file.",
-    show_default=True,
-)
-@click.argument("infofile")
-@click.argument("fastafile")
 def info_to_fasta(infofile, fastafile, append, infoobj=None):
     """Convert infofile to FASTA file."""
     if infoobj is None:

@@ -13,6 +13,7 @@ from loguru import logger
 from .common import DIRECTIONAL_CATEGORY
 from .common import remove_tmp_columns
 
+
 # helper functions
 def _hash_array(kmer):
     """Return a hash of an array."""
@@ -40,6 +41,13 @@ def _run_lengths_and_positions(vec):
     runlengths = np.diff(np.append(-1, uneq_idxs))
     positions = np.cumsum(np.append(0, runlengths))[:-1]
     return runlengths, positions
+
+
+def _true_positions_and_runs(bool_vec):
+    """Return arrays of positions and lengths of runs of True."""
+    runlengths, positions = _run_lengths_and_positions(bool_vec)
+    true_idxs = np.where(bool_vec[positions])
+    return positions[true_idxs], runlengths[true_idxs]
 
 
 @attr.s
@@ -142,7 +150,7 @@ class SyntenyBlockHasher(object):
             if flip:
                 null_vec = np.flip(null_vec)
                 val_vec = np.flip(val_vec)
-            first_null_pos, null_runs = self._true_positions_and_runs(null_vec)
+            first_null_pos, null_runs = _true_positions_and_runs(null_vec)
             fill_vals = np.append(pd.NA, val_vec)[first_null_pos]
             for i, pos in enumerate(first_null_pos):
                 for j in range(null_runs[i]):
@@ -151,12 +159,6 @@ class SyntenyBlockHasher(object):
                 lv_arr = np.flip(lv_arr)
         lv_ser = pd.Series(lv_arr, index=ser.index)
         return lv_ser
-
-    def _true_positions_and_runs(self, bool_vec):
-        """Return arrays of positions and lengths of runs of True."""
-        runlengths, positions = _run_lengths_and_positions(bool_vec)
-        true_idxs = np.where(bool_vec[positions])
-        return positions[true_idxs], runlengths[true_idxs]
 
     def cum_val_count_where_ser2_is_NA(self, ser1, ser2, flip=False):
         """Return the cumulative value count of ser1 in regions where ser2 is NA."""
@@ -169,7 +171,7 @@ class SyntenyBlockHasher(object):
             if flip:
                 null_vec = np.flip(null_vec)
                 val_vec = np.flip(val_vec)
-            null_pos, null_runs = self._true_positions_and_runs(null_vec)
+            null_pos, null_runs = _true_positions_and_runs(null_vec)
             null_len = len(null_pos)
             for i in range(null_len):
                 vc_arr[
@@ -197,7 +199,7 @@ class SyntenyBlockHasher(object):
             n_elements = len(cluster_series)
             n_mers = n_elements - self.k + 1
             positions = np.arange(n_elements)
-            footprints = pd.array([self.k] * (n_mers), dtype=pd.UInt32Dtype())
+            footprints = pd.array([self.k] * n_mers, dtype=pd.UInt32Dtype())
         if n_mers < 1:
             return None
         # Calculate k-mers over indirect index

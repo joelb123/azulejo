@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 # third-party imports
-import click
 import dask.bag as db
 import numpy as np
 import pandas as pd
@@ -16,8 +15,6 @@ from dask.diagnostics import ProgressBar
 from loguru import logger
 
 # module imports
-from . import cli
-from . import click_loguru
 from .common import ANCHOR_HIST_FILE
 from .common import CLUSTERS_FILE
 from .common import CLUSTERSYN_FILE
@@ -40,53 +37,12 @@ CLUSTER_COLS = [
 ]
 MERGE_COLS = ["syn.hash.self_count", "frag.idx"]
 REMERGE_COLS = ["tmp.disambig.self_count", "frag.idx"]
-DEFAULT_K = 2
 
 
-@cli.command()
-@click_loguru.init_logger()
-@click_loguru.log_elapsed_time(level="info")
-@click_loguru.log_peak_memory_use(level="info")
-@click.option(
-    "-k", default=DEFAULT_K, help="Synteny block length.", show_default=True
-)
-@click.option(
-    "--peatmer/--kmer",
-    default=True,
-    is_flag=True,
-    show_default=True,
-    help="Allow repeats in block.",
-)
-@click.option(
-    "--greedy/--no-greedy",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Ambiguous to longest frag.",
-)
-@click.option(
-    "--nonambig/--no-nonambig",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Fill with non-ambiguous hashes.",
-)
-@click.option(
-    "--shingle/--no-shingle",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Shingle hashes over k-mer.",
-)
-@click.argument("setname")
-def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
-    """Calculate synteny anchors.
-
-    \b
-    Example:
-        azulejo synteny-anchors glycines
-
-    """
+def synteny_anchors(
+    k, peatmer, setname, greedy, nonambig, shingle, click_loguru=None
+):
+    """Calculate synteny anchors."""
     if k < 2:
         logger.error("k must be at least 2.")
         sys.exit(1)
@@ -657,9 +613,9 @@ def join_synteny_to_clusters(args, cluster_parent=None, mailbox_reader=None):
     }
 
 
-@cli.command()
-@click_loguru.init_logger()
-@click.argument("setname")
+# @cli.command()
+# @click_loguru.init_logger()
+# @click.argument("setname")
 def dagchainer_synteny(setname):
     """
     Read DAGchainer synteny into homology frames.

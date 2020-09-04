@@ -8,16 +8,11 @@ import sys
 from pathlib import Path
 
 # third-party imports
-import click
 import numpy as np
 import pandas as pd
 
 # first-party imports
 from loguru import logger
-
-# module imports
-from . import cli
-from . import click_loguru
 
 
 def read_files(setname, synteny=None):
@@ -171,11 +166,6 @@ class ProxySelector:
         )
 
 
-@cli.command()
-@click_loguru.init_logger()
-@click.argument("setname")
-@click.argument("synteny_type")
-@click.argument("prefs", nargs=-1)
 def calculate_proxy_genes(setname, synteny_type, prefs):
     """Calculate a set of proxy genes from synteny files.
 

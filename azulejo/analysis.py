@@ -139,7 +139,7 @@ def analyze_clusters(
     #
     plt.style.use("seaborn-whitegrid")
     axis_dict = {}
-    fig, axes = plt.subplots(len(matches), sharex=True)
+    fig, axes = plt.subplots(len(matches))
     try:
         for axis, i in enumerate(axes):
             axis_dict[matches[i]] = axis

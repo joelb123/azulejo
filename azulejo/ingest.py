@@ -11,7 +11,6 @@ from pathlib import Path
 
 # third-party imports
 import attr
-import click
 import dask.bag as db
 import gffpandas.gffpandas as gffpd
 import numpy as np
@@ -26,8 +25,6 @@ from pathvalidate import ValidationError
 from pathvalidate import validate_filename as pv_validate_filename
 
 # module imports
-from . import cli
-from . import click_loguru
 from .common import ALTERNATE_ABBREV
 from .common import CHROMOSOME_ABBREV
 from .common import CHROMOSOME_SYNONYMS
@@ -46,7 +43,7 @@ from .core import cleanup_fasta
 from .taxonomy import rankname_to_number
 
 # global constants
-__all__ = ["TaxonomicInputTable", "read_from_url"]
+__all__ = ["read_from_url", "ingest_sequences"]
 FILE_TRANSPORT = "file://"
 REQUIRED_LEAF_NAMES = (
     "fasta",
@@ -58,6 +55,7 @@ COMPRESSION_EXTENSIONS = (
 )
 
 MINIMUM_PROTEINS = 100
+
 
 # helper functions
 def _remove_leading_zeroes_in_field(string):
@@ -119,23 +117,8 @@ def _validate_uri(uri):
     return uri
 
 
-@cli.command()
-@click_loguru.init_logger()
-@click_loguru.log_elapsed_time()
-@click.argument("input_toml")
-def ingest_sequences(input_toml):
-    """
-    Marshal protein and genome sequence information.
-
-    IDs must correspond between GFF and FASTA files and must be unique across
-    the entire set.
-
-    \b
-    Example:
-        azulejo ingest-sequences glyma+glyso.toml
-
-
-    """
+def ingest_sequences(input_toml, click_loguru=None):
+    """Marshal protein and genome sequence information."""
     options = click_loguru.get_global_options()
     user_options = click_loguru.get_user_global_options()
     parallel = user_options["parallel"]
@@ -145,10 +128,8 @@ def ingest_sequences(input_toml):
     arg_list = []
     for unused_i, row in input_table.iterrows():
         arg_list.append((row["path"], row["fasta_url"], row["gff_url"],))
-    if parallel:
-        bag = db.from_sequence(arg_list)
-    else:
-        file_stats = []
+    bag = db.from_sequence(arg_list)
+    file_stats = []
     if not options.quiet:
         logger.info(f"Extracting FASTA/GFF info for {len(arg_list)} genomes:")
         ProgressBar().register()
@@ -262,7 +243,7 @@ def read_fasta_and_gff(args):
             "frag.len": frag_counts,
             "frag.orig_id": frag_counts.index,
         },
-        index=(frag_counts.index),
+        index=frag_counts.index,
     )
     frag_stats = {
         "path": dotpath,
@@ -359,7 +340,6 @@ class FragmentCharacterizer:
         sc_namer = self.UnknownsAsScaffolds()
         clean = clean.map(sc_namer.rename_unknowns)
         orig_ids.index = clean
-        self.trans_dict = orig_ids.to_dict()
         return clean
 
     def assign_frag_properties(self, frags):

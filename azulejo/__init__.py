@@ -3,6 +3,7 @@
 # standard library imports
 import locale
 import os
+import sys
 import warnings
 from pathlib import Path
 from pkg_resources import iter_entry_points
@@ -11,10 +12,21 @@ from pkg_resources import iter_entry_points
 import click
 from click_plugins import with_plugins
 from click_loguru import ClickLoguru
+from loguru import logger
 
 # module imports
 from .common import NAME
+from .core import homology_cluster as undeco_homology_cluster
+from .core import cluster_in_steps as undeco_cluster_in_steps
+from .homology import cluster_build_trees as undeco_cluster_build_trees
+from .homology import info_to_fasta as undeco_into_to_fasta
+from .ingest import ingest_sequences as undeco_ingest_sequences
 from .installer import DependencyInstaller
+from .parquet import parquet_to_tsv as undeco_parquet_to_tsv
+from .proxy import calculate_proxy_genes as undeco_calculate_proxy_genes
+from .synteny import synteny_anchors as undeco_synteny_anchors
+from .taxonomy import print_taxonomic_ranks
+from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
@@ -26,21 +38,8 @@ if INSTALL_ENVIRON_VAR in os.environ:
     INSTALL_PATH = Path(os.environ[INSTALL_ENVIRON_VAR])
 else:
     INSTALL_PATH = None
-
 MUSCLE_VER = "3.8.1551"
 USEARCH_VER = "11.0.667"
-
-# helper functions
-def _muscle_version_parser(ver_str):
-    """Parse version out of muscle version string."""
-    return ver_str.split()[1]
-
-
-def _usearch_version_parser(ver_str):
-    """Parse version out of usearch version string."""
-    return ver_str.split()[1].split("_")[0]
-
-
 DEPENDENCY_DICT = {
     "muscle": {
         "binaries": ["muscle"],
@@ -52,8 +51,8 @@ DEPENDENCY_DICT = {
         "dir": ".",
         "version": MUSCLE_VER,
         "version_command": ["-version"],
-        "version_parser": _muscle_version_parser,
-        "make": ["muscle-pgo",],
+        "version_parser": lambda v: v.split()[1],
+        "make": ["muscle-pgo"],
         "copy_binaries": ["muscle"],
         "license": "public domain",
         "license_restrictive": False,
@@ -63,7 +62,7 @@ DEPENDENCY_DICT = {
         "dir": ".",
         "version": USEARCH_VER,
         "version_command": ["-version"],
-        "version_parser": _usearch_version_parser,
+        "version_parser": lambda v: v.split()[1].split("_")[0],
         "download_binaries": {
             "linux": "https://www.drive5.com/downloads/usearch11.0.667_i86linux32.gz",
             "macos": "https://www.drive5.com/downloads/usearch11.0.667_i86osx32.gz",
@@ -75,6 +74,8 @@ DEPENDENCY_DICT = {
         "license_file": "LICENSE.txt",
     },
 }
+DEFAULT_K = 2
+DEFAULT_STEPS = 16
 
 # set locale so grouping works
 for localename in ["en_US", "en_US.utf8", "English_United_States"]:
@@ -88,7 +89,8 @@ for localename in ["en_US", "en_US.utf8", "English_United_States"]:
 click_loguru = ClickLoguru(
     NAME, __version__, retention=LOG_FILE_RETENTION, timer_log_level="info"
 )
-# create CLI
+
+
 @with_plugins(iter_entry_points(NAME + ".cli_plugins"))
 @click_loguru.logging_options
 @click.group(
@@ -116,7 +118,7 @@ click_loguru = ClickLoguru(
     callback=click_loguru.user_global_options_callback,
 )
 @click.version_option(version=__version__, prog_name=NAME)
-def cli(warnings_as_errors, parallel, **unused_kwargs):
+def cli(warnings_as_errors, parallel, **kwargs):
     """Azulejo -- tiling genes in subtrees across phylogenetic space.
 
     \b
@@ -133,7 +135,7 @@ def cli(warnings_as_errors, parallel, **unused_kwargs):
                 "Runtime warnings (e.g., from pandas) will cause exceptions!"
             )
         warnings.filterwarnings("error")
-    f"{parallel}"
+    f"{parallel}{kwargs}"
 
 
 @cli.command()
@@ -163,7 +165,7 @@ def install(dependencies, force, accept_licenses):
 
     """
     options = click_loguru.get_global_options()
-    installer = DependencyInstaller(
+    dep_installer = DependencyInstaller(
         DEPENDENCY_DICT,
         pkg_name=NAME,
         install_path=INSTALL_PATH,
@@ -172,29 +174,373 @@ def install(dependencies, force, accept_licenses):
         quiet=options.quiet,
     )
     if dependencies == ():
-        print(installer.status(exe_paths=True), end="")
+        print(dep_installer.status(exe_paths=True), end="")
     else:
-        installer.install_list(dependencies)
+        dep_installer.install_list(dependencies)
 
 
-# from .analysis import analyze_clusters  # isort:skip
-# from .analysis import length_std_dist  # isort:skip
-# from .analysis import outlier_length_dist  # isort:skip
-# from .analysis import plot_degree_dists  # isort:skip
-# from .core import add_singletons  #  isort:skip
-# from .core import adjacency_to_graph  #  isort:skip
-# from .core import cluster_in_steps  #  isort:skip
-# from .core import clusters_to_histograms  #  isort:skip
-# from .core import combine_clusters  #  isort:skip
-# from .core import compare_clusters  #  isort:skip
-# from .core import prepare_protein_files  #  isort:skip
-# from .core import homology_cluster  #  isort:skip
-from .homology import cluster_build_trees  # isort:skip
-from .homology import info_to_fasta  # isort:skip
-from .ingest import ingest_sequences  # isort:skip
-from .parquet import change_compression  # isort:skip
-from .parquet import tsv_to_parquet  # isort:skip
-from .proxy import calculate_proxy_genes  # isort:skip
-from .synteny import synteny_anchors  # isort:skip
-from .synteny import dagchainer_synteny  # isort:skip
-from .taxonomy import check_taxonomic_rank  # isort:skip
+@cli.command()
+@click_loguru.init_logger()
+@click_loguru.log_elapsed_time(level="info")
+@click_loguru.log_peak_memory_use(level="info")
+@click.option(
+    "--identity",
+    "-i",
+    default=0.0,
+    help="Minimum sequence ID (0-1). [default: lowest]",
+)
+@click.argument("setname")
+def cluster_build_trees(identity, setname):
+    """
+    Calculate homology clusters, MSAs, trees.
+
+    \b
+    Example:
+        azulejo cluster-build-trees glycines
+
+    """
+    undeco_cluster_build_trees(identity, setname, click_loguru=click_loguru)
+
+
+@cli.command()
+@click_loguru.init_logger(logfile=False)
+@click.option(
+    "--append/--no-append",
+    "-a/-x",
+    is_flag=True,
+    default=True,
+    help="Append to FASTA file.",
+    show_default=True,
+)
+@click.argument("infofile")
+@click.argument("fastafile")
+def info_to_fasta(infofile, fastafile, append):
+    """Convert infofile to FASTA file."""
+    undeco_into_to_fasta(infofile, fastafile, append)
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click_loguru.log_elapsed_time(level="info")
+@click_loguru.log_peak_memory_use(level="info")
+@click.option(
+    "-k", default=DEFAULT_K, help="Synteny block length.", show_default=True
+)
+@click.option(
+    "--peatmer/--kmer",
+    default=True,
+    is_flag=True,
+    show_default=True,
+    help="Allow repeats in block.",
+)
+@click.option(
+    "--greedy/--no-greedy",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Ambiguous to longest frag.",
+)
+@click.option(
+    "--nonambig/--no-nonambig",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Fill with non-ambiguous hashes.",
+)
+@click.option(
+    "--shingle/--no-shingle",
+    is_flag=True,
+    default=True,
+    show_default=True,
+    help="Shingle hashes over k-mer.",
+)
+@click.argument("setname")
+def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
+    """Calculate synteny anchors.
+
+    \b
+    Example:
+        azulejo synteny-anchors glycines
+
+    """
+    undeco_synteny_anchors(
+        k,
+        peatmer,
+        setname,
+        greedy,
+        nonambig,
+        shingle,
+        click_loguru=click_loguru,
+    )
+
+
+@cli.command()
+@click_loguru.init_logger(logfile=False)
+@click.argument("rankname", nargs=-1)
+def check_taxonomic_rank(rankname):
+    """Check/show a lit of taxonomic ranks."""
+    if rankname == ():
+        print_taxonomic_ranks()
+    else:
+        rankname = rankname[0]
+        try:
+            rankval = rankname_to_number(rankname)
+        except ValueError as e:
+            logger.error(e)
+            sys.exit(1)
+        print(rankval)
+
+
+@cli.command()
+@click_loguru.init_logger(logfile=False)
+@click.option(
+    "--columns",
+    default=False,
+    is_flag=True,
+    show_default=False,
+    help="Print names/dtypes of columns.",
+)
+@click.option(
+    "--index_name",
+    default=False,
+    is_flag=True,
+    show_default=False,
+    help="Print the name of the index.",
+)
+@click.option(
+    "--no_index",
+    default=False,
+    is_flag=True,
+    show_default=False,
+    help="Do not write index column.",
+)
+@click.option(
+    "--pretty",
+    default=False,
+    is_flag=True,
+    show_default=False,
+    help="Pretty-print output.",
+)
+@click.option(
+    "--no_header",
+    "-h",
+    default=False,
+    is_flag=True,
+    show_default=False,
+    help="Do not write the header.",
+)
+@click.option(
+    "--col",
+    "-c",
+    default=None,
+    multiple=True,
+    show_default=True,
+    help="Write only the named column.",
+)
+@click.option(
+    "--writefile",
+    "-w",
+    default=False,
+    is_flag=True,
+    show_default=True,
+    help="Write to a TSV file.",
+)
+@click.option(
+    "--index_val",
+    "-i",
+    default=None,
+    multiple=True,
+    show_default=True,
+    help="Write only the row with this index value.",
+)
+@click.option(
+    "--head",
+    default=0,
+    show_default=False,
+    help="Write only the first N rows.",
+)
+@click.option(
+    "--max_rows",
+    default=None,
+    show_default=False,
+    help="Pretty-print N rows.",
+)
+@click.option(
+    "--max_cols",
+    default=None,
+    show_default=False,
+    help="Pretty-print N cols.",
+)
+@click.option(
+    "--tail",
+    default=0,
+    show_default=False,
+    help="Write only the last N rows.",
+)
+@click.argument("parquetfile", type=click.Path(exists=True))
+@click.argument("tsvfile", nargs=-1)
+def parquet_to_tsv(
+    parquetfile,
+    tsvfile,
+    columns,
+    index_name,
+    col,
+    no_index,
+    head,
+    tail,
+    index_val,
+    no_header,
+    pretty,
+    max_rows,
+    max_cols,
+    writefile,
+):
+    """
+    Reads parquet file, writes tsv.
+
+    \b
+    Example:
+        azulejo parquet-to-tsv glycines/proteomes.syn.parq
+    """
+    undeco_parquet_to_tsv(
+        parquetfile,
+        tsvfile,
+        columns,
+        index_name,
+        col,
+        no_index,
+        head,
+        tail,
+        index_val,
+        no_header,
+        pretty,
+        max_rows,
+        max_cols,
+        writefile,
+    )
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click.argument("seqfile")
+@click.option(
+    "--identity",
+    "-i",
+    default=0.0,
+    help="Minimum sequence identity (float, 0-1). [default: lowest]",
+)
+@click.option(
+    "--min_id_freq",
+    "-m",
+    default=0,
+    show_default=True,
+    help="Minimum frequency of ID components.",
+)
+@click.option(
+    "--delete/--no-delete",
+    "-d/-n",
+    is_flag=True,
+    default=True,
+    help="Delete primary output of clustering. [default: delete]",
+)
+@click.option(
+    "--write_ids/--no-write_ids",
+    "-w",
+    is_flag=True,
+    default=False,
+    help="Write file of ID-to-clusters. [default: delete]",
+)
+@click.option(
+    "--do_calc/--no-do_calc",
+    "-c/-x",
+    is_flag=True,
+    default=True,
+    help="Write file of ID-to-clusters. [default: do_calc]",
+)
+@click.option(
+    "--substrs", help="subpath to file of substrings. [default: none]"
+)
+@click.option("--dups", help="subpath to file of duplicates. [default: none]")
+def homology_cluster(
+    seqfile,
+    identity,
+    delete=True,
+    write_ids=False,
+    do_calc=True,
+    min_id_freq=0,
+    substrs=None,
+    dups=None,
+    cluster_stats=True,
+    outname=None,
+):
+    """Cluster at a global sequence identity threshold."""
+    undeco_homology_cluster(
+        seqfile,
+        identity,
+        delete=delete,
+        write_ids=write_ids,
+        do_calc=do_calc,
+        min_id_freq=min_id_freq,
+        substrs=substrs,
+        dups=dups,
+        cluster_stats=cluster_stats,
+        outname=outname,
+        click_loguru=click_loguru,
+    )
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click.argument("seqfile")
+@click.option(
+    "--steps",
+    "-s",
+    default=DEFAULT_STEPS,
+    show_default=True,
+    help="# of steps from lowest to highest",
+)
+@click.option(
+    "--min_id_freq",
+    "-m",
+    default=0,
+    show_default=True,
+    help="Minimum frequency of ID components.",
+)
+@click.option(
+    "--substrs", help="subpath to file of substrings. [default: none]"
+)
+@click.option("--dups", help="subpath to file of duplicates. [default: none]")
+def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
+    """Cluster in steps from low to 100% identity."""
+    undeco_cluster_in_steps(
+        seqfile, steps, min_id_freq=min_id_freq, substrs=substrs, dups=dups
+    )
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click_loguru.log_elapsed_time()
+@click.argument("input_toml")
+def ingest_sequences(input_toml):
+    """
+    Marshal protein and genome sequence information.
+
+    IDs must correspond between GFF and FASTA files and must be unique across
+    the entire set.
+
+    \b
+    Example:
+        azulejo ingest-sequences glyma+glyso.toml
+
+    """
+    undeco_ingest_sequences(input_toml, click_loguru=click_loguru)
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click.argument("setname")
+@click.argument("synteny_type")
+@click.argument("prefs", nargs=-1)
+def calculate_proxy_genes(setname, synteny_type, prefs):
+    """Calculate a set of proxy genes from synteny files"""
+    undeco_calculate_proxy_genes(setname, synteny_type, prefs)

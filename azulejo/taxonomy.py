@@ -1,17 +1,5 @@
 # -*- coding: utf-8 -*-
 """King Phylip came over for great spaghetti."""
-# standard library imports
-import sys
-
-# third-party imports
-import click
-
-# first-party imports
-from loguru import logger
-
-# module imports
-from . import cli
-from . import click_loguru
 
 PREFIXES = {
     "giga": -5,
@@ -72,8 +60,7 @@ def prefix_to_number(prefix):
     """Return the number of the prefix."""
     if prefix in PREFIXES:
         return PREFIXES[prefix]
-    else:
-        raise ValueError(f'prefix "{prefix}" not found in list of prefixes')
+    raise ValueError(f'prefix "{prefix}" not found in list of prefixes')
 
 
 def print_taxonomic_ranks():
@@ -90,20 +77,3 @@ def print_taxonomic_ranks():
         else:
             prefixname = prefix
         print(f"\t{prefixname}\t{PREFIXES[prefix]}")
-
-
-@cli.command()
-@click_loguru.init_logger(logfile=False)
-@click.argument("rankname", nargs=-1)
-def check_taxonomic_rank(rankname):
-    """Check/show a lit of taxonomic ranks."""
-    if rankname == ():
-        print_taxonomic_ranks()
-    else:
-        rankname = rankname[0]
-        try:
-            rankval = rankname_to_number(rankname)
-        except ValueError as e:
-            logger.error(e)
-            sys.exit(1)
-        print(rankval)

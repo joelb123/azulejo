@@ -39,7 +39,7 @@ def test_build(tmp_path):
     """Test building dependencies."""
     with working_directory(tmp_path):
         try:
-            output = azulejo([SUBCOMMAND, "-f", "-y", "all"])
+            output = azulejo(["-q", SUBCOMMAND, "-y", "all"])
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail("Build failed")

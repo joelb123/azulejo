@@ -8,16 +8,12 @@ import timeit
 from pathlib import Path
 
 # third-party imports
-import click
 import pandas as pd
 
 # first-party imports
 from loguru import logger
 
-# module imports
-from . import cli
-from . import click_loguru
-
+# global constants
 COMPRESSION_TYPES = [
     "SNAPPY",
     "GZIP",
@@ -39,94 +35,6 @@ def check_compression(compression):
         sys.exit(1)
 
 
-@cli.command()
-@click_loguru.init_logger(logfile=False)
-@click.option(
-    "--columns",
-    default=False,
-    is_flag=True,
-    show_default=False,
-    help="Print names/dtypes of columns.",
-)
-@click.option(
-    "--index_name",
-    default=False,
-    is_flag=True,
-    show_default=False,
-    help="Print the name of the index.",
-)
-@click.option(
-    "--no_index",
-    default=False,
-    is_flag=True,
-    show_default=False,
-    help="Do not write index column.",
-)
-@click.option(
-    "--pretty",
-    default=False,
-    is_flag=True,
-    show_default=False,
-    help="Pretty-print output.",
-)
-@click.option(
-    "--no_header",
-    "-h",
-    default=False,
-    is_flag=True,
-    show_default=False,
-    help="Do not write the header.",
-)
-@click.option(
-    "--col",
-    "-c",
-    default=None,
-    multiple=True,
-    show_default=True,
-    help="Write only the named column.",
-)
-@click.option(
-    "--writefile",
-    "-w",
-    default=False,
-    is_flag=True,
-    show_default=True,
-    help="Write to a TSV file.",
-)
-@click.option(
-    "--index_val",
-    "-i",
-    default=None,
-    multiple=True,
-    show_default=True,
-    help="Write only the row with this index value.",
-)
-@click.option(
-    "--head",
-    default=0,
-    show_default=False,
-    help="Write only the first N rows.",
-)
-@click.option(
-    "--max_rows",
-    default=None,
-    show_default=False,
-    help="Pretty-print N rows.",
-)
-@click.option(
-    "--max_cols",
-    default=None,
-    show_default=False,
-    help="Pretty-print N cols.",
-)
-@click.option(
-    "--tail",
-    default=0,
-    show_default=False,
-    help="Write only the last N rows.",
-)
-@click.argument("parquetfile", type=click.Path(exists=True))
-@click.argument("tsvfile", nargs=-1)
 def parquet_to_tsv(
     parquetfile,
     tsvfile,
@@ -198,10 +106,6 @@ def parquet_to_tsv(
         df.to_csv(tsvfile, sep="\t", index=write_index, header=write_header)
 
 
-@cli.command()
-@click_loguru.init_logger(logfile=False)
-@click.argument("compression")
-@click.argument("infile", type=click.Path(exists=True))
 def change_compression(infile, compression):
     """Change the compression type of a Parquet file."""
     pd.read_parquet(infile).to_parquet(
@@ -209,17 +113,6 @@ def change_compression(infile, compression):
     )
 
 
-@cli.command()
-@click_loguru.init_logger(logfile=False)
-@click.option(
-    "--compression",
-    "-c",
-    default=None,
-    show_default=True,
-    help="Specify the compression to be used.",
-)
-@click.argument("tsvfile", type=click.Path(exists=True))
-@click.argument("parquetfile", type=click.Path())
 def tsv_to_parquet(tsvfile, parquetfile, compression):
     """Write a TSV file as a parquet file using specified compression."""
     pd.read_csv(tsvfile, sep="\t", index_col=0).to_parquet(
@@ -232,9 +125,6 @@ def parse_parquet(filebuf):
     pd.read_parquet(filebuf)
 
 
-@cli.command()
-@click_loguru.init_logger(logfile=False)
-@click.argument("infile", type=click.Path(exists=True))
 def time_parquet_parsing(infile):
     """Calculate the time it takes to parse a buffered file"""
     filebuf = io.BytesIO(Path(infile).open("rb").read())

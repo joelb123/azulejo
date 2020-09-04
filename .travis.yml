@@ -10,6 +10,7 @@ install:
    - poetry install -v
    - export MAKEFLAGS="-j $(grep -c ^processor /proc/cpuinfo)"
 script:
-   - travis_wait 60 poetry run nox -s tests
+   - azulejo install -y all
+   - travis_wait 30 poetry run nox -s tests
 after_success:
   - bash <(curl -s https://codecov.io/bash) -X gcov

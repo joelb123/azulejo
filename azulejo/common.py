@@ -224,7 +224,7 @@ class TrimmableMemoryMap:
 
 
 def dotpath_to_path(dotpath):
-    "Return a dot-separated pathstring as a path."
+    """Return a dot-separated pathstring as a path."""
     return Path("/".join(dotpath.split(".")))
 
 
