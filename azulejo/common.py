@@ -71,9 +71,9 @@ DTYPE_DICT = {
     "frag.direction": DIRECTIONAL_CATEGORY,
     "frag.id": pd.CategoricalDtype(),
     "frag.idx": pd.UInt32Dtype(),
-    "frag.is_chr": pd.BooleanDtype(),
-    "frag.is_plas": pd.BooleanDtype(),
-    "frag.is_scaf": pd.BooleanDtype(),
+    "frag.is_chr": YES_NO,
+    "frag.is_plas": YES_NO,
+    "frag.is_scaf": YES_NO,
     "frag.len": pd.UInt64Dtype(),
     "frag.max": pd.UInt32Dtype(),
     "frag.orig_id": pd.StringDtype(),
@@ -337,6 +337,7 @@ def read_tsv_or_parquet(filepath):
 
 
 def log_and_add_to_stats(stats, new_stats):
+    """Print stats info and write to stats file."""
     with pd.option_context(
         "display.max_rows",
         None,
@@ -348,3 +349,17 @@ def log_and_add_to_stats(stats, new_stats):
         logger.info(new_stats)
     overlap_cols = list(set(stats.columns) & set(new_stats.columns))
     return pd.concat([stats, new_stats.drop(columns=overlap_cols)], axis=1)
+
+
+def bool_to_t_or_f(bool_val):
+    """Convert boolean to T/F value"""
+    if bool_val:
+        return "t"
+    return "f"
+
+
+def t_or_f_to_bool(val):
+    """Convert boolean to T/F value"""
+    if val.lower() == "t":
+        return True
+    return False

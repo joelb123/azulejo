@@ -29,8 +29,6 @@ INGEST_OUTPUTS = [
 ]
 
 HOMOLOGY_OUTPUTS = [
-    f"{SET_DIR}/homology/{i}.parq" for i in range(N_CLUSTERS)
-] + [
     f"{SET_DIR}/{f}"
     for f in (
         [
@@ -53,6 +51,17 @@ SYNTENY_OUTPUTS = [  # [f"{SET_DIR}/synteny/{i}.parq" for i in range(N_ANCHORS)]
 ]
 
 TSV_TEST_FILE = f"{SET_DIR}/{PROT_SUBDIRS[0]}/proteins.hom.syn.parq"
+
+
+def find_homology_files(in_tmp_dir=True):
+    """Find the set of homology files, which can vary."""
+    if in_tmp_dir:
+        prefix = Path(".")
+    else:
+        prefix = Path("tests/data")
+    subdir = f"{SET_DIR}/homology/"
+    homology_files = (prefix / subdir).glob("*.parq")
+    return [subdir + f.name for f in homology_files]
 
 
 @contextlib.contextmanager

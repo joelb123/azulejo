@@ -11,6 +11,7 @@ import sh
 # module imports
 from . import HOMOLOGY_OUTPUTS
 from . import INGEST_OUTPUTS
+from . import find_homology_files
 from . import help_check
 from . import print_docstring
 
@@ -38,7 +39,5 @@ def test_cluster_build_trees(datadir_mgr):
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail("Homology clustering failed")
-        print(f"output={output}")
-        for filestring in HOMOLOGY_OUTPUTS:
-            if not Path(filestring).exists():
-                print(f"{filestring} not found")
+        for filestring in find_homology_files():
+            assert Path(filestring).stat().st_size > 0

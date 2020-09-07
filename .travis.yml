@@ -20,7 +20,7 @@ script:
    - popd
    - ls tests/data/glycines/homology/*.parq | wc -l
    - ls -l tests/data/glycines/homology/14566.parq
-   - pytest -s tests/6parquet_test.py
    - pytest -s tests/5synteny_test.py
+   - pytest -s tests/6parquet_test.py
 after_success:
   - bash <(curl -s https://codecov.io/bash) -X gcov

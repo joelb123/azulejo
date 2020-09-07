@@ -36,6 +36,7 @@ from .common import PROTEOMES_FILE
 from .common import SAVED_INPUT_FILE
 from .common import SCAFFOLD_ABBREV
 from .common import SCAFFOLD_SYNONYMS
+from .common import bool_to_t_or_f
 from .common import dotpath_to_path
 from .common import sort_proteome_frame
 from .common import write_tsv_or_parquet
@@ -69,23 +70,27 @@ def _remove_leading_zeroes_in_field(string):
 
 def _is_scaffold(ids):
     """Assess whether fragment is likely a scaffold."""
-    return np.logical_or(
-        ids.str.contains(SCAFFOLD_ABBREV),
-        ids.str.startswith(ALTERNATE_ABBREV),
+    return bool_to_t_or_f(
+        np.logical_or(
+            ids.str.contains(SCAFFOLD_ABBREV),
+            ids.str.startswith(ALTERNATE_ABBREV),
+        )
     )
 
 
 def _is_chromosome(ids):
     """Assess whether fragment is likely a chromosome."""
-    return np.logical_and(
-        ids.str.startswith(CHROMOSOME_ABBREV), ~_is_scaffold(ids)
+    return bool_to_t_or_f(
+        np.logical_and(
+            ids.str.startswith(CHROMOSOME_ABBREV), ~_is_scaffold(ids)
+        )
     )
 
 
 def _is_plastid(ids):
     """Assess whether fragment is likely a plastid."""
-    return np.logical_or.reduce(
-        [ids.str.startswith(s) for s in PLASTID_STARTS]
+    return bool_to_t_or_f(
+        np.logical_or.reduce([ids.str.startswith(s) for s in PLASTID_STARTS])
     )
 
 
