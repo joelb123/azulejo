@@ -35,10 +35,9 @@ def test_synteny_anchors(datadir_mgr):
         excludepaths=["logs/"],
     ):
         try:
-            output = azulejo(["-e", "-q", SUBCOMMAND, "glycines"])
+            azulejo(["-e", "-q", SUBCOMMAND, "glycines"])
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail("Synteny anchor construction failed")
-        print(f"output={output}")
         for filestring in SYNTENY_OUTPUTS:
             assert Path(filestring).exists()

@@ -36,9 +36,10 @@ from .common import PROTEOMES_FILE
 from .common import SAVED_INPUT_FILE
 from .common import SCAFFOLD_ABBREV
 from .common import SCAFFOLD_SYNONYMS
-from .common import bool_to_t_or_f
+from .common import bool_to_y_or_n
 from .common import dotpath_to_path
 from .common import sort_proteome_frame
+from .common import y_or_n_to_bool
 from .common import write_tsv_or_parquet
 from .core import cleanup_fasta
 from .taxonomy import rankname_to_number
@@ -70,7 +71,7 @@ def _remove_leading_zeroes_in_field(string):
 
 def _is_scaffold(ids):
     """Assess whether fragment is likely a scaffold."""
-    return bool_to_t_or_f(
+    return bool_to_y_or_n(
         np.logical_or(
             ids.str.contains(SCAFFOLD_ABBREV),
             ids.str.startswith(ALTERNATE_ABBREV),
@@ -80,16 +81,17 @@ def _is_scaffold(ids):
 
 def _is_chromosome(ids):
     """Assess whether fragment is likely a chromosome."""
-    return bool_to_t_or_f(
+    return bool_to_y_or_n(
         np.logical_and(
-            ids.str.startswith(CHROMOSOME_ABBREV), ~_is_scaffold(ids)
+            ids.str.startswith(CHROMOSOME_ABBREV),
+            ~y_or_n_to_bool(_is_scaffold(ids)),
         )
     )
 
 
 def _is_plastid(ids):
     """Assess whether fragment is likely a plastid."""
-    return bool_to_t_or_f(
+    return bool_to_y_or_n(
         np.logical_or.reduce([ids.str.startswith(s) for s in PLASTID_STARTS])
     )
 
@@ -353,9 +355,9 @@ class FragmentCharacterizer:
         for unused_path, subframe in frags.groupby(by=["path"]):
             clean_list.append(self.cleanup_frag_ids(subframe["frag.orig_id"]))
         clean_ids = pd.concat(clean_list).sort_index()
-        frags["frag.is_plas"] = pd.array(_is_plastid(clean_ids))
-        frags["frag.is_scaf"] = pd.array(_is_scaffold(clean_ids))
-        frags["frag.is_chr"] = pd.array(_is_chromosome(clean_ids))
+        frags["frag.is_plas"] = _is_plastid(clean_ids)
+        frags["frag.is_scaf"] = _is_scaffold(clean_ids)
+        frags["frag.is_chr"] = _is_chromosome(clean_ids)
         frags["frag.id"] = clean_ids
         return frags
 

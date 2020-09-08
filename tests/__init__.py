@@ -51,6 +51,7 @@ SYNTENY_OUTPUTS = [  # [f"{SET_DIR}/synteny/{i}.parq" for i in range(N_ANCHORS)]
 ]
 
 TSV_TEST_FILE = f"{SET_DIR}/{PROT_SUBDIRS[0]}/proteins.hom.syn.parq"
+TSV_OUTPUT_FILE = "proteins.hom.syn.tsv"
 
 
 def find_homology_files(in_tmp_dir=True):

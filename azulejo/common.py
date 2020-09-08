@@ -351,15 +351,14 @@ def log_and_add_to_stats(stats, new_stats):
     return pd.concat([stats, new_stats.drop(columns=overlap_cols)], axis=1)
 
 
-def bool_to_t_or_f(bool_val):
+def bool_to_y_or_n(bool_arr):
     """Convert boolean to T/F value"""
-    if bool_val:
-        return "t"
-    return "f"
+    boolean_dict = {True: "y", False: "n"}
+    bool_ser = pd.Series(bool_arr)
+    return bool_ser.map(boolean_dict)
 
 
-def t_or_f_to_bool(val):
+def y_or_n_to_bool(bool_ser):
     """Convert boolean to T/F value"""
-    if val.lower() == "t":
-        return True
-    return False
+    tf_dict = {"y": True, False: "n"}
+    return bool_ser.map(tf_dict).astype(bool)

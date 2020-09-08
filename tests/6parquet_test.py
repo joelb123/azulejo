@@ -8,6 +8,7 @@ import pytest
 import sh
 
 # module imports
+from . import TSV_OUTPUT_FILE
 from . import TSV_TEST_FILE
 from . import help_check
 from . import print_docstring
@@ -33,4 +34,4 @@ def test_parquet_conversion(datadir_mgr):
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail("Parquet-to-TSV conversion failed")
-        assert Path("proteins.hom.tsv").exists()
+        assert Path(TSV_OUTPUT_FILE).exists()
