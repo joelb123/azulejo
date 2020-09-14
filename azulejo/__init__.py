@@ -190,13 +190,13 @@ def install(dependencies, force, accept_licenses):
     help="Minimum sequence ID (0-1). [default: lowest]",
 )
 @click.argument("setname")
-def cluster_build_trees(identity, setname):
+def homology(identity, setname):
     """
     Calculate homology clusters, MSAs, trees.
 
     \b
     Example:
-        azulejo cluster-build-trees glycines
+        azulejo homology glycines
 
     """
     undeco_cluster_build_trees(identity, setname, click_loguru=click_loguru)
@@ -212,11 +212,11 @@ def cluster_build_trees(identity, setname):
     help="Append to FASTA file.",
     show_default=True,
 )
-@click.argument("infofile")
+@click.argument("parquetfile")
 @click.argument("fastafile")
-def info_to_fasta(infofile, fastafile, append):
-    """Convert infofile to FASTA file."""
-    undeco_into_to_fasta(infofile, fastafile, append)
+def parquet_to_fasta(parquetfile, fastafile, append):
+    """Convert Parquet sequence info to FASTA file."""
+    undeco_into_to_fasta(parquetfile, fastafile, append)
 
 
 @cli.command()
@@ -233,52 +233,25 @@ def info_to_fasta(infofile, fastafile, append):
     show_default=True,
     help="Allow repeats in block.",
 )
-@click.option(
-    "--greedy/--no-greedy",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Ambiguous to longest frag.",
-)
-@click.option(
-    "--nonambig/--no-nonambig",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Fill with non-ambiguous hashes.",
-)
-@click.option(
-    "--shingle/--no-shingle",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Shingle hashes over k-mer.",
-)
 @click.argument("setname")
-def synteny_anchors(k, peatmer, setname, greedy, nonambig, shingle):
+def synteny(k, peatmer, setname):
     """Calculate synteny anchors.
 
     \b
     Example:
-        azulejo synteny-anchors glycines
+        azulejo synteny glycines
 
     """
     undeco_synteny_anchors(
-        k,
-        peatmer,
-        setname,
-        greedy,
-        nonambig,
-        shingle,
-        click_loguru=click_loguru,
+        k, peatmer, setname, click_loguru=click_loguru,
     )
 
 
 @cli.command()
 @click_loguru.init_logger(logfile=False)
 @click.argument("rankname", nargs=-1)
-def check_taxonomic_rank(rankname):
-    """Check/show a lit of taxonomic ranks."""
+def taxonomy(rankname):
+    """Check/show taxonomic ranks."""
     if rankname == ():
         print_taxonomic_ranks()
     else:
@@ -461,7 +434,7 @@ def parquet_to_tsv(
     "--substrs", help="subpath to file of substrings. [default: none]"
 )
 @click.option("--dups", help="subpath to file of duplicates. [default: none]")
-def homology_cluster(
+def cluster(
     seqfile,
     identity,
     delete=True,
@@ -521,7 +494,7 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
 @click_loguru.init_logger()
 @click_loguru.log_elapsed_time()
 @click.argument("input_toml")
-def ingest_sequences(input_toml):
+def ingest(input_toml):
     """
     Marshal protein and genome sequence information.
 
@@ -530,7 +503,7 @@ def ingest_sequences(input_toml):
 
     \b
     Example:
-        azulejo ingest-sequences glyma+glyso.toml
+        azulejo ingest glyma+glyso.toml
 
     """
     undeco_ingest_sequences(input_toml, click_loguru=click_loguru)
@@ -541,6 +514,6 @@ def ingest_sequences(input_toml):
 @click.argument("setname")
 @click.argument("synteny_type")
 @click.argument("prefs", nargs=-1)
-def calculate_proxy_genes(setname, synteny_type, prefs):
-    """Calculate a set of proxy genes from synteny files"""
+def proxy_genes(setname, synteny_type, prefs):
+    """Calculate a set of proxy genes."""
     undeco_calculate_proxy_genes(setname, synteny_type, prefs)

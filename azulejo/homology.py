@@ -69,7 +69,7 @@ def cluster_build_trees(identity, set_name, click_loguru=None):
         arg_list.append((row, concat_fasta_path, frag_frames[row["path"]]))
     if not options.quiet:
         logger.info(
-            f"Renaming frags and concatenating sequences for {len(arg_list)}"
+            f"Renaming fragments and concatenating sequences for {len(arg_list)}"
             " proteomes:"
         )
     for args in arg_list:
@@ -95,17 +95,17 @@ def cluster_build_trees(identity, set_name, click_loguru=None):
     )
     log_path = Path("homology.log")
     log_dir_path = Path("logs")
-    log_dir_path.mkdir()
+    log_dir_path.mkdir(exist_ok=True)
     shutil.copy2(log_path, "logs/homology.log")
     log_path.unlink()
     os.chdir(cwd)
     logger.info(f"Number of clusters: {n_clusters}")
     # logger.info(run_stats)
     # logger.info(f"\nCluster size histogram ({n_proteomes} proteomes):")
-    with pd.option_context(
-        "display.max_rows", None, "display.float_format", "{:,.2f}%".format
-    ):
-        logger.info(cluster_hist)
+    # with pd.option_context(
+    #    "display.max_rows", None, "display.float_format", "{:,.2f}%".format
+    # ):
+    #    logger.info(cluster_hist)
     del cluster_hist
     del run_stats
     concat_fasta_path.unlink()

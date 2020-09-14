@@ -186,10 +186,10 @@ The currently implemented commands are, in the order they will normally be run:
 
 ========================= ==================================================
   install                 Check for/install binary dependencies.
-  ingest-sequence-data    Marshal protein and genome sequence information.
-  cluster-build-trees     Calculate homology clusters, MSAs, trees.
-  synteny-anchors         Calculate synteny anchors.
-  calculate-proxy-genes   Calculate a set of proxy genes from synteny files.
+  ingest                  Marshal protein and genome sequence information.
+  homology                Calculate homology clusters, MSAs, trees.
+  synteny                 Calculate synteny anchors.
+  proxy-genes             Calculate a set of proxy genes from synteny files.
   parquet-to-tsv          Reads parquet file, writes tsv.
 ========================= ==================================================
 

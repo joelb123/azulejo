@@ -95,6 +95,58 @@ def _cum_val_cnt_where_ser2_is_na(ser1, ser2, flip=False):
     return vc_ser
 
 
+def calculate_disambig_hashes(df):
+    """Calculate disambiguation frame (per-fragment)."""
+    hash2_fr = df[["syn.anchor.id", "tmp.ambig.id"]].copy()
+    hash2_fr = hash2_fr.rename(columns={"syn.anchor.id": "tmp.anchor.id"})
+    hash2_fr["tmp.upstr_anchor"] = _fill_na_with_last_valid(
+        df["syn.anchor.id"]
+    )
+    hash2_fr["tmp.downstr_anchor"] = _fill_na_with_last_valid(
+        df["syn.anchor.id"], flip=True
+    )
+    hash2_fr["tmp.upstr_occur"] = _cum_val_cnt_where_ser2_is_na(
+        df["tmp.ambig.id"], df["syn.anchor.id"]
+    )
+    hash2_fr["tmp.downstr_occur"] = _cum_val_cnt_where_ser2_is_na(
+        df["tmp.ambig.id"], df["syn.anchor.id"], flip=True
+    )
+    hash2_fr["tmp.i"] = range(len(hash2_fr))
+    upstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
+    downstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
+    hash2_fr["tmp.disambig.up"] = pd.NA
+    hash2_fr["tmp.disambig.down"] = pd.NA
+    for unused_id, row in hash2_fr.iterrows():
+        row_no = row["tmp.i"]
+        ambig_base = row["tmp.ambig.id"]
+        upstream_unambig = row["tmp.upstr_anchor"]
+        downstream_unambig = row["tmp.downstr_anchor"]
+        occur_upstream = row["tmp.upstr_occur"]
+        occur_downstream = row["tmp.downstr_occur"]
+        if pd.notna(ambig_base):
+            if pd.notna(upstream_unambig):
+                if not pd.notna(occur_upstream):
+                    logger.warning(
+                        f"Something is wrong upstream of base {ambig_base}"
+                    )
+                upstream_hash[row_no] = _hash_array(
+                    np.array([upstream_unambig, ambig_base, occur_upstream])
+                )
+            if pd.notna(downstream_unambig):
+                if not pd.notna(occur_downstream):
+                    logger.warning(
+                        f"Something is wrong downstream of base {ambig_base}"
+                    )
+                downstream_hash[row_no] = _hash_array(
+                    np.array(
+                        [ambig_base, downstream_unambig, occur_downstream]
+                    )
+                )
+    hash2_fr["tmp.disambig.up"] = upstream_hash
+    hash2_fr["tmp.disambig.down"] = downstream_hash
+    return hash2_fr[["tmp.disambig.up", "tmp.disambig.down"]]
+
+
 @attr.s
 class SyntenyBlockHasher(object):
     """Synteny-block hashes via reversible-peatmer method."""
@@ -113,78 +165,17 @@ class SyntenyBlockHasher(object):
             return f"{prefix_str}hash.peatmer{self.k}"
         return f"{prefix_str}hash.kmer{self.k}"
 
-    def shingle(self, cluster_series, base, direction, hash_val):
+    def shingle(self, cluster_series, direction, hash_val):
         """Return a vector of anchor ID's. """
         vec = cluster_series.to_numpy().astype(int)
         steps = np.insert((vec[1:] != vec[:-1]).astype(int), 0, 0).cumsum()
         if max(steps) != self.k - 1:
-            logger.error(
-                f"Working around minor error in shingling hash {hash_val}, base"
-                f" {base};"
-            )
-            logger.error(f"input homology string={vec}")
-            logger.error(f"max index = {max(steps)}, should be {self.k-1}")
+            logger.warning(f"Inconsistency in shingling hash {hash_val}")
+            logger.warning(f"input homology string={vec}")
             steps[np.where(steps > self.k - 1)] = self.k - 1
-        if direction == "+":
-            return base + steps
-        return base + self.k - 1 - steps
-
-    def calculate_disambig_hashes(self, df):
-        """Calculated Disambiguation frame (per-fragment)."""
-        hash2_fr = df[["syn.anchor_id", "tmp.base.ambig"]].copy()
-        hash2_fr = hash2_fr.rename(columns={"syn.anchor_id": "tmp.anchor_id"})
-        hash2_fr["tmp.upstr_anchor"] = _fill_na_with_last_valid(
-            df["syn.anchor_id"]
-        )
-        hash2_fr["tmp.downstr_anchor"] = _fill_na_with_last_valid(
-            df["syn.anchor_id"], flip=True
-        )
-        hash2_fr["tmp.upstr_occur"] = _cum_val_cnt_where_ser2_is_na(
-            df["tmp.base.ambig"], df["syn.anchor_id"]
-        )
-        hash2_fr["tmp.downstr_occur"] = _cum_val_cnt_where_ser2_is_na(
-            df["tmp.base.ambig"], df["syn.anchor_id"], flip=True
-        )
-        hash2_fr["tmp.i"] = range(len(hash2_fr))
-        upstream_hash = pd.array(
-            [pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype()
-        )
-        downstream_hash = pd.array(
-            [pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype()
-        )
-        hash2_fr["syn.disambig_upstr"] = pd.NA
-        hash2_fr["syn.disambig_downstr"] = pd.NA
-        for unused_id, row in hash2_fr.iterrows():
-            row_no = row["tmp.i"]
-            ambig_base = row["tmp.base.ambig"]
-            upstream_unambig = row["tmp.upstr_anchor"]
-            downstream_unambig = row["tmp.downstr_anchor"]
-            occur_upstream = row["tmp.upstr_occur"]
-            occur_downstream = row["tmp.downstr_occur"]
-            if pd.notna(ambig_base):
-                if pd.notna(upstream_unambig):
-                    if not pd.notna(occur_upstream):
-                        logger.warning(
-                            f"Something is wrong upstream of base {ambig_base}"
-                        )
-                    upstream_hash[row_no] = _hash_array(
-                        np.array(
-                            [upstream_unambig, ambig_base, occur_upstream]
-                        )
-                    )
-                if pd.notna(downstream_unambig):
-                    if not pd.notna(occur_downstream):
-                        logger.warning(
-                            f"Something is wrong downstream of base {ambig_base}"
-                        )
-                    downstream_hash[row_no] = _hash_array(
-                        np.array(
-                            [ambig_base, downstream_unambig, occur_downstream]
-                        )
-                    )
-        hash2_fr["syn.disambig_upstr"] = upstream_hash
-        hash2_fr["syn.disambig_downstr"] = downstream_hash
-        return remove_tmp_columns(hash2_fr)
+        if direction == "-":
+            steps = self.k - 1 - steps
+        return steps
 
     def calculate(self, cluster_series):
         """Return an array of synteny block hashes data."""

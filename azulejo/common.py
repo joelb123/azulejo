@@ -51,6 +51,8 @@ PROTEOMOLOGY_FILE = "proteomes.hom.parq"
 PROTEOSYN_FILE = "proteomes.hom.syn.parq"
 PROTEINS_FILE = "proteins.parq"
 SYNTENY_FILE = "proteins.hom.syn.parq"
+ANCHORS_FILE = "anchors.parq"
+SYNTENY_FILETYPE = "tsv"
 
 # fragment-name defs
 PLASTID_STARTS = ["chromop", "chl", "mt", "mi", "rh", "mu", "le", "pl"]
@@ -60,11 +62,34 @@ CHROMOSOME_ABBREV = "chr"
 SCAFFOLD_SYNONYMS = ["scaffold", "scaf", "sca"]
 SCAFFOLD_ABBREV = "sc"
 
+# synteny codes
+UNAMBIGUOUS_CODE = "U"
+DISAMBIGUATED_CODE = "D"
+INDIRECT_CODE = "I"
+NON_AMBIGUOUS_CODE = "N"
+AMBIGUOUS_CODE = "A"
+CODE_ORDER = [
+    UNAMBIGUOUS_CODE,
+    DISAMBIGUATED_CODE,
+    INDIRECT_CODE,
+    NON_AMBIGUOUS_CODE,
+    AMBIGUOUS_CODE,
+]
+CODE_DICT = {
+    UNAMBIGUOUS_CODE: "unambiguous",
+    DISAMBIGUATED_CODE: "disambiguated",
+    INDIRECT_CODE: "indirectly unambiguous",
+    NON_AMBIGUOUS_CODE: "non-ambiguous",
+    AMBIGUOUS_CODE: "ambiguous",
+}
+
 DIRECTIONAL_CATEGORY = pd.CategoricalDtype(categories=["-", "+"])
 YES_NO = pd.CategoricalDtype(categories=["y", "n"])
+SYNTENY_CATEGORY = pd.CategoricalDtype(categories=CODE_ORDER)
 DTYPE_DICT = {
     "adj_group": pd.UInt32Dtype(),
     "adj_groups": pd.UInt32Dtype(),
+    "anchor.id": pd.UInt32Dtype(),
     "clusters": pd.UInt32Dtype(),
     "fasta_url": pd.StringDtype(),
     "gff_url": pd.StringDtype(),
@@ -84,6 +109,7 @@ DTYPE_DICT = {
     "hom.clusters": pd.UInt32Dtype(),
     "hom.cluster": pd.UInt32Dtype(),
     "hom.cl_size": pd.UInt32Dtype(),
+    "in_anchor": pd.UInt32Dtype(),
     "in_synteny": pd.UInt32Dtype(),
     "max_frags_per_anch": pd.UInt32Dtype(),
     "path": pd.CategoricalDtype(),
@@ -102,23 +128,25 @@ DTYPE_DICT = {
     "seqs.rmv": pd.UInt32Dtype(),
     "seqs.stp": pd.UInt32Dtype(),
     "size": pd.UInt32Dtype(),
-    "syn.anchors": pd.UInt32Dtype(),
-    "syn.disambig": pd.UInt32Dtype(),
-    "syn.disambig_downstr": pd.UInt32Dtype(),
-    "syn.disambig_upstr": pd.UInt32Dtype(),
-    "syn.fom": "float64",
-    "syn.hash_pct": "float64",
+    "syn.anchors.total": pd.UInt32Dtype(),
+    "syn.anchors.ambig": pd.UInt32Dtype(),
+    "syn.anchors.disambig": pd.UInt32Dtype(),
+    "syn.anchors.indirect": pd.UInt32Dtype(),
+    "syn.anchors.nonambig": pd.UInt32Dtype(),
+    "syn.anchors.unambig": pd.UInt32Dtype(),
+    "syn.anchors.unassigned": pd.UInt32Dtype(),
+    "syn.anchor.count": pd.UInt32Dtype(),
+    "syn.anchor.id": pd.UInt32Dtype(),
+    "syn.anchor.footprint": pd.UInt32Dtype(),
+    "syn.anchor.direction": DIRECTIONAL_CATEGORY,
+    "syn.code": SYNTENY_CATEGORY,
+    "syn.orthogenomic_pct": "float64",
     "syn.hash.footprint": pd.UInt32Dtype(),
     "syn.hash.direction": DIRECTIONAL_CATEGORY,
-    "syn.hash.ortho_count": pd.UInt32Dtype(),
-    "syn.hash.ortho_count.ambig": pd.UInt32Dtype(),
     "syn.hash.self_count": pd.UInt32Dtype(),
-    "syn.hashes.ambig": pd.UInt32Dtype(),
-    "syn.hashes.disambig": pd.UInt32Dtype(),
-    "syn.hashes.nonambig": pd.UInt32Dtype(),
-    "syn.hashes.unambig": pd.UInt32Dtype(),
-    "syn.hashes.unassigned": pd.UInt32Dtype(),
-    "syn.anchor_id": pd.UInt32Dtype(),
+    "syn.shingle.base": pd.UInt32Dtype(),
+    "syn.shingle.count": pd.UInt32Dtype(),
+    "syn.shingle.sub": pd.UInt32Dtype(),
     "val": "float64",
     # patterns are matched after checking for exact matches
     "patterns": [
@@ -130,6 +158,8 @@ DTYPE_DICT = {
         {"start": "syn.hash.kmer", "type": pd.UInt32Dtype()},
     ],
 }
+
+
 # shared functions
 
 

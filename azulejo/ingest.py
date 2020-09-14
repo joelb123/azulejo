@@ -131,6 +131,7 @@ def ingest_sequences(input_toml, click_loguru=None):
     parallel = user_options["parallel"]
     input_obj = TaxonomicInputTable(Path(input_toml), write_table=False)
     input_table = input_obj.input_table
+    logger.info(f"Set name: {input_obj.setname}")
     set_path = Path(input_obj.setname)
     arg_list = []
     for unused_i, row in input_table.iterrows():

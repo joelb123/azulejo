@@ -17,7 +17,7 @@ from . import print_docstring
 
 # global constants
 azulejo = sh.Command("azulejo")
-SUBCOMMAND = "cluster-build-trees"
+SUBCOMMAND = "homology"
 
 
 def test_subcommand_help():

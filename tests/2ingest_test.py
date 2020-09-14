@@ -15,7 +15,7 @@ from . import print_docstring
 # global constants
 azulejo = sh.Command("azulejo")
 NET_INPUT_FILE = "glyma+glyso.toml"
-SUBCOMMAND = "ingest-sequences"
+SUBCOMMAND = "ingest"
 
 
 def test_subcommand_help():
