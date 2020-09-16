@@ -8,6 +8,7 @@ from pathlib import Path
 
 # third-party imports
 import pandas as pd
+import xxhash
 from loguru import logger
 
 # global constants
@@ -51,8 +52,11 @@ PROTEOMOLOGY_FILE = "proteomes.hom.parq"
 PROTEOSYN_FILE = "proteomes.hom.syn.parq"
 PROTEINS_FILE = "proteins.parq"
 SYNTENY_FILE = "proteins.hom.syn.parq"
-ANCHORS_FILE = "anchors.parq"
+ANCHORS_FILE = "anchors.tsv"
 SYNTENY_FILETYPE = "tsv"
+COLLECTION_FILE = "collection.json"
+COLLECTION_HOM_FILE = "collection.hom.json"
+COLLECTION_SYN_FILE = "collection.hom.syn.json"
 
 # fragment-name defs
 PLASTID_STARTS = ["chromop", "chl", "mt", "mi", "rh", "mu", "le", "pl"]
@@ -66,26 +70,21 @@ SCAFFOLD_ABBREV = "sc"
 UNAMBIGUOUS_CODE = "U"
 DISAMBIGUATED_CODE = "D"
 INDIRECT_CODE = "I"
+LOCALLY_UNAMBIGUOUS_CODE = "L"
 NON_AMBIGUOUS_CODE = "N"
 AMBIGUOUS_CODE = "A"
-CODE_ORDER = [
-    UNAMBIGUOUS_CODE,
-    DISAMBIGUATED_CODE,
-    INDIRECT_CODE,
-    NON_AMBIGUOUS_CODE,
-    AMBIGUOUS_CODE,
-]
 CODE_DICT = {
     UNAMBIGUOUS_CODE: "unambiguous",
     DISAMBIGUATED_CODE: "disambiguated",
     INDIRECT_CODE: "indirectly unambiguous",
+    LOCALLY_UNAMBIGUOUS_CODE: "locally unambiguous",
     NON_AMBIGUOUS_CODE: "non-ambiguous",
     AMBIGUOUS_CODE: "ambiguous",
 }
 
 DIRECTIONAL_CATEGORY = pd.CategoricalDtype(categories=["-", "+"])
 YES_NO = pd.CategoricalDtype(categories=["y", "n"])
-SYNTENY_CATEGORY = pd.CategoricalDtype(categories=CODE_ORDER)
+SYNTENY_CATEGORY = pd.CategoricalDtype(categories=CODE_DICT.keys())
 DTYPE_DICT = {
     "adj_group": pd.UInt32Dtype(),
     "adj_groups": pd.UInt32Dtype(),
@@ -128,13 +127,6 @@ DTYPE_DICT = {
     "seqs.rmv": pd.UInt32Dtype(),
     "seqs.stp": pd.UInt32Dtype(),
     "size": pd.UInt32Dtype(),
-    "syn.anchors.total": pd.UInt32Dtype(),
-    "syn.anchors.ambig": pd.UInt32Dtype(),
-    "syn.anchors.disambig": pd.UInt32Dtype(),
-    "syn.anchors.indirect": pd.UInt32Dtype(),
-    "syn.anchors.nonambig": pd.UInt32Dtype(),
-    "syn.anchors.unambig": pd.UInt32Dtype(),
-    "syn.anchors.unassigned": pd.UInt32Dtype(),
     "syn.anchor.count": pd.UInt32Dtype(),
     "syn.anchor.id": pd.UInt32Dtype(),
     "syn.anchor.footprint": pd.UInt32Dtype(),
@@ -148,7 +140,7 @@ DTYPE_DICT = {
     "syn.shingle.count": pd.UInt32Dtype(),
     "syn.shingle.sub": pd.UInt32Dtype(),
     "val": "float64",
-    # patterns are matched after checking for exact matches
+    # patterns are matched in order after checking for exact matches
     "patterns": [
         {"start": "phy.", "type": pd.CategoricalDtype()},
         {"start": "pct_", "end": "_pct", "type": "float64"},
@@ -156,6 +148,7 @@ DTYPE_DICT = {
         {"start": "n_", "end": ".n", "type": pd.UInt32Dtype()},
         {"start": "syn.hash.peatmer", "type": pd.UInt32Dtype()},
         {"start": "syn.hash.kmer", "type": pd.UInt32Dtype()},
+        {"start": "syn.anchors.", "type": pd.UInt32Dtype()},
     ],
 }
 
@@ -392,3 +385,12 @@ def y_or_n_to_bool(bool_ser):
     """Convert boolean to T/F value"""
     tf_dict = {"y": True, False: "n"}
     return bool_ser.map(tf_dict).astype(bool)
+
+
+def write_collection_stats(stats_dict, coll_path):
+    """Write out stats_dict to collection in JSON format."""
+
+
+def hash_array(kmer):
+    """Return a hash of a numpy array."""
+    return xxhash.xxh32_intdigest(kmer.tobytes())

@@ -46,7 +46,7 @@ class DataMailboxes:
 
     @contextlib.contextmanager
     def locked_open_for_write(self, box_no):
-        """Open a mailbox with an advisory file lock."""
+        """Acquire a lock on a m."""
         mb_path = self.path_to_mailbox(box_no)
         with mb_path.open("a+") as fd:
             fcntl.flock(fd, fcntl.LOCK_EX)
@@ -55,7 +55,7 @@ class DataMailboxes:
 
     @contextlib.contextmanager
     def open_then_delete(self, box_no, delete=True):
-        """Open a mailbox with an advisory file lock."""
+        """Open a mailbox, then delete when done."""
         box_path = self.path_to_mailbox(box_no)
         with box_path.open("r") as fd:
             yield fd

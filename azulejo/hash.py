@@ -6,18 +6,14 @@
 import attr
 import numpy as np
 import pandas as pd
-import xxhash
 from loguru import logger
 
 # module imports
 from .common import DIRECTIONAL_CATEGORY
-from .common import remove_tmp_columns
+from .common import hash_array
 
 
 # helper functions
-def _hash_array(kmer):
-    """Return a hash of an array."""
-    return xxhash.xxh32_intdigest(kmer.tobytes())
 
 
 def _cum_val_count(arr):
@@ -129,7 +125,7 @@ def calculate_disambig_hashes(df):
                     logger.warning(
                         f"Something is wrong upstream of base {ambig_base}"
                     )
-                upstream_hash[row_no] = _hash_array(
+                upstream_hash[row_no] = hash_array(
                     np.array([upstream_unambig, ambig_base, occur_upstream])
                 )
             if pd.notna(downstream_unambig):
@@ -137,7 +133,7 @@ def calculate_disambig_hashes(df):
                     logger.warning(
                         f"Something is wrong downstream of base {ambig_base}"
                     )
-                downstream_hash[row_no] = _hash_array(
+                downstream_hash[row_no] = hash_array(
                     np.array(
                         [ambig_base, downstream_unambig, occur_downstream]
                     )
@@ -201,8 +197,8 @@ class SyntenyBlockHasher(object):
         )
         fwd_rev_hashes = np.array(
             [
-                np.apply_along_axis(_hash_array, 1, kmer_mat),
-                np.apply_along_axis(_hash_array, 1, np.flip(kmer_mat, axis=1)),
+                np.apply_along_axis(hash_array, 1, kmer_mat),
+                np.apply_along_axis(hash_array, 1, np.flip(kmer_mat, axis=1)),
             ]
         )
         plus_minus = np.array([["+"] * n_mers, ["-"] * n_mers])

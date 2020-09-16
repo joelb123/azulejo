@@ -23,6 +23,7 @@ from .common import CODE_DICT
 from .common import DISAMBIGUATED_CODE
 from .common import HOMOLOGY_FILE
 from .common import INDIRECT_CODE
+from .common import LOCALLY_UNAMBIGUOUS_CODE
 from .common import NON_AMBIGUOUS_CODE
 from .common import PROTEOMOLOGY_FILE
 from .common import PROTEOSYN_FILE
@@ -30,6 +31,7 @@ from .common import SYNTENY_FILE
 from .common import SYNTENY_FILETYPE
 from .common import UNAMBIGUOUS_CODE
 from .common import dotpath_to_path
+from .common import hash_array
 from .common import log_and_add_to_stats
 from .common import read_tsv_or_parquet
 from .common import write_tsv_or_parquet
@@ -43,25 +45,28 @@ from .merger import AmbiguousMerger
 __ALL__ = ["synteny_anchors"]
 CLUSTER_COLS = ["syn.anchor.id", "syn.anchor.direction"]
 ANCHOR_COLS = [
-    "frag.direction",
+    "path",
+    "syn.code",
+    "syn.anchor.count",
+    "syn.shingle.sub",
+    "hom.cluster",
     "frag.id",
+    "frag.pos",
+    "hom.cl_size",
+    "frag.direction",
     "frag.idx",
     "frag.is_chr",
     "frag.is_plas",
     "frag.is_scaf",
-    "frag.pos",
     "frag.prot_count",
     "frag.start",
-    "hom.cl_size",
-    "hom.cluster",
     "prot.len",
     "prot.m_start",
     "prot.n_ambig",
     "prot.no_stop",
-    "syn.anchor.count",
-    "syn.shingle.sub",
 ]
 MAILBOX_SUBDIR = "mailboxes"
+
 
 # CLI function
 def synteny_anchors(k, peatmer, setname, click_loguru=None):
@@ -133,8 +138,8 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
         INDIRECT_CODE,
         proteomes,
         extra_kwargs={
-            "cluster_writer": cluster_mb.locked_open_for_write,
-            "anchor_writer": anchor_mb.locked_open_for_write,
+            "cluster_mb": cluster_mb,
+            "anchor_mb": anchor_mb,
             "n_proteomes": n_proteomes,
         },
     )
@@ -387,7 +392,7 @@ def merge_unambig_hashes(
     syn = _join_on_col_with_na(syn, unambig, hash_name)
     syn = _join_on_col_with_na(syn, ambig, hash_name)
     syn["syn.code"] = pd.NA
-    syn["syn.code"] = _set_col1_val_where_col2_notna(
+    syn["syn.code"] = _fill_col1_val_where_col2_notna(
         syn["syn.code"], syn["syn.anchor.id"], UNAMBIGUOUS_CODE
     )
     # Calculate disambiguation hashes and write them out for merge
@@ -426,7 +431,9 @@ def merge_unambig_hashes(
     return {
         "idx": idx,
         "path": dotpath,
-        "syn.anchors.unambig": _count_code(syn["syn.code"], UNAMBIGUOUS_CODE),
+        "syn.anchors.unambiguous": _count_code(
+            syn["syn.code"], UNAMBIGUOUS_CODE
+        ),
     }
 
 
@@ -455,7 +462,7 @@ def merge_disambig_hashes(
     syn["syn.anchor.count"] = syn["syn.anchor.count"].fillna(
         syn["tmp.disambig.anchor.count"]
     )
-    syn["syn.code"] = _set_col1_val_where_col2_notna(
+    syn["syn.code"] = _fill_col1_val_where_col2_notna(
         syn["syn.code"], syn["tmp.disambig.anchor.id"], DISAMBIGUATED_CODE
     )
     # Delete some non-needed tmp columns
@@ -466,7 +473,7 @@ def merge_disambig_hashes(
         "tmp.disambig.down",
     ]
     syn = syn.drop(columns=non_needed_cols)
-    # null hashes where already assigned
+    # null hashes are already assigned
     syn[hash_name][syn["syn.anchor.id"].notna()] = pd.NA
     write_tsv_or_parquet(syn, outpath / SYNTENY_FILE, remove_tmp=False)
     # Write out non-ambiguous hashes
@@ -485,7 +492,7 @@ def merge_disambig_hashes(
     return {
         "idx": idx,
         "path": dotpath,
-        "syn.anchors.disambig": _count_code(
+        "syn.anchors.disambiguated": _count_code(
             syn["syn.code"], DISAMBIGUATED_CODE
         ),
     }
@@ -497,8 +504,8 @@ def merge_nonambig_hashes(
     ambig=None,
     hasher=None,
     n_proteomes=None,
-    cluster_writer=None,
-    anchor_writer=None,
+    cluster_mb=None,
+    anchor_mb=None,
 ):
     """Merge disambiguated synteny hashes into proteomes per-proteome."""
     idx, dotpath = args
@@ -516,10 +523,9 @@ def merge_nonambig_hashes(
     syn["syn.anchor.count"] = syn["syn.anchor.count"].fillna(
         syn["tmp.nonambig.anchor.count"]
     )
-    syn["syn.code"] = _set_col1_val_where_col2_notna(
+    syn["syn.code"] = _fill_col1_val_where_col2_notna(
         syn["syn.code"], syn["tmp.nonambig.anchor.id"], INDIRECT_CODE
     )
-    syn[hash_name][syn["syn.anchor.id"].notna()] = pd.NA
     #
     # Do the nonambig (w.r.t. this proteome) and ambig
     #
@@ -533,11 +539,8 @@ def merge_nonambig_hashes(
     ambig_counts = syn["tmp.ambig.anchor.id"].map(
         syn["tmp.ambig.anchor.id"].value_counts()
     )
-    syn["syn.code"][ambig_counts == 1] = NON_AMBIGUOUS_CODE
+    syn["syn.code"][ambig_counts == 1] = LOCALLY_UNAMBIGUOUS_CODE
     syn["syn.code"][ambig_counts > 1] = AMBIGUOUS_CODE
-    n_nonambig = (ambig_counts == 1).sum()
-    n_ambig = (ambig_counts > 1).sum()
-    syn[hash_name][syn["syn.anchor.id"].notna()] = pd.NA
     #
     # Hsh footprint and direction are anchor properties, where set
     #
@@ -547,9 +550,9 @@ def merge_nonambig_hashes(
             "syn.hash.direction": "syn.anchor.direction",
         }
     )
-    # syn = _set_col1_val_where_col2_notna(syn,
+    # syn = _fill_col1_val_where_col2_notna(syn,
     #        "syn.anchor.footprint", "syn.anchor.id", pd.NA)
-    # syn = _set_col1_val_where_col2_notna(syn,
+    # syn = _fill_col1_val_where_col2_notna(syn,
     #        "syn.anchor.direction", "syn.anchor.id", pd.NA)
     #
     # Do shingling and write synteny blocks
@@ -559,15 +562,16 @@ def merge_nonambig_hashes(
     shingle_base = np.array([np.nan] * n_proteins)
     shingle_sub = np.array([np.nan] * n_proteins)
     shingle_count = np.array([np.nan] * n_proteins)
-    for id_tuple, subframe in syn.groupby(
-        by=["syn.anchor.count", "syn.anchor.id"]
-    ):
-        anchor_count, anchor_id = id_tuple
-        anchor_frame_list = []
+    for anchor_count, subframe in syn.groupby(by=["syn.anchor.count"]):
         for unused_i, row in subframe.iterrows():
+            anchor_id = row["syn.anchor.id"]
+            if pd.isnull(anchor_id):
+                continue
             footprint = row["syn.anchor.footprint"]
+            count = row["syn.anchor.count"]
+            code = row["syn.code"]
             row_no = row["tmp.i"]
-            anchor_subframe = syn.iloc[row_no : row_no + footprint].copy()
+            anchor_frame = syn.iloc[row_no : row_no + footprint].copy()
             shingle_base[row_no : row_no + footprint] = anchor_id
             shingle_count[row_no : row_no + footprint] = anchor_count
             subs = hasher.shingle(
@@ -576,13 +580,14 @@ def merge_nonambig_hashes(
                 row[hash_name],
             )
             shingle_sub[row_no : row_no + footprint] = subs
-            anchor_subframe["syn.shingle.sub"] = subs
-            anchor_frame_list.append(anchor_subframe)
-        anchor_frame = pd.concat(anchor_frame_list, axis=1)
-        with anchor_writer(anchor_id) as fh:
-            anchor_frame[ANCHOR_COLS].dropna().to_csv(
-                fh, header=False, sep="\t"
-            )
+            anchor_frame["syn.shingle.sub"] = subs
+            anchor_frame["syn.code"] = code
+            anchor_frame["syn.anchor.count"] = count
+            anchor_frame["path"] = dotpath
+            with anchor_mb.locked_open_for_write(anchor_id) as fh:
+                anchor_frame[ANCHOR_COLS].dropna().to_csv(
+                    fh, header=False, sep="\t"
+                )
     syn["syn.shingle.base"] = shingle_base
     syn["syn.shingle.sub"] = shingle_sub
     syn["syn.shingle.count"] = shingle_sub
@@ -593,7 +598,7 @@ def merge_nonambig_hashes(
         syn, outpath / SYNTENY_FILE,
     )
     for cluster_id, subframe in syn.groupby(by=["hom.cluster"]):
-        with cluster_writer(cluster_id) as fh:
+        with cluster_mb.locked_open_for_write(cluster_id) as fh:
             subframe[CLUSTER_COLS].dropna().to_csv(fh, header=False, sep="\t")
     n_assigned = n_proteins - syn["hom.cluster"].isnull().sum()
     # Do histogram of blocks
@@ -612,12 +617,21 @@ def merge_nonambig_hashes(
     n_assigned = syn["hom.cluster"].notna().sum()
     avg_ortho = syn["syn.anchor.count"].mean()
     synteny_pct = in_synteny * 100.0 / n_assigned
+    n_ambig = _count_code(syn["syn.code"], AMBIGUOUS_CODE)
+    n_nonambig = in_synteny - n_ambig
+    nonambig_pct = n_nonambig * 100.0 / n_assigned
     synteny_stats = {
         "idx": idx,
         "path": dotpath,
-        "syn.anchors.indirect": _count_code(syn["syn.code"], INDIRECT_CODE),
-        "syn.anchors.nonambig": n_nonambig,
-        "syn.anchors.ambig": n_ambig,
+        "syn.anchors.indirect_unambiguous": _count_code(
+            syn["syn.code"], INDIRECT_CODE
+        ),
+        "syn.anchors.locally_unambiguous": _count_code(
+            syn["syn.code"], LOCALLY_UNAMBIGUOUS_CODE
+        ),
+        "syn.anchors.ambiguous": n_ambig,
+        "syn.anchors.nonambiguous": n_nonambig,
+        "syn.anchors.nonambig_pct": nonambig_pct,
         "syn.anchors.total": in_synteny,
         "syn.anchors.total_pct": synteny_pct,
         "syn.orthogenomic_pct": avg_ortho * 100.0 / n_proteomes,
@@ -656,29 +670,55 @@ def join_synteny_to_clusters(args, cluster_parent=None, mailbox_reader=None):
     }
 
 
-def write_anchor(args, synteny_parent=None, mailbox_reader=None):
+def write_anchor(args, synteny_parent=None, mailbox_reader=None, logger=None):
     """Read synteny anchor info from mailbox and join it to synteny file."""
     idx = args[0]
-    synteny_path = synteny_parent / f"{idx}.{SYNTENY_FILETYPE}"
+    write_frame = True
     with mailbox_reader(idx) as fh:
         try:
             anchor_frame = pd.read_csv(
                 fh, sep="\t", index_col=0
             ).convert_dtypes()
             in_anchor = len(anchor_frame)
-            write_tsv_or_parquet(anchor_frame, synteny_path)
-        except:
-            logger.debug(f"Error reading synteny mailbox {idx}")
+            code = anchor_frame["syn.code"].iloc[0]
+            count = anchor_frame["syn.anchor.count"].iloc[0]
+        except (IndexError, pd.errors.ParserError):
+            logger.warning(f"Error reading synteny mailbox {idx}")
             in_anchor = 0
-    anchor_frag_counts = [0]
-    # for unused_id_tuple, subframe in anchor_frame.groupby(
-    #    by=["syn.anchor.id", "path"]
-    # ):
-    #    if len(subframe) == 1:
-    #        anchor_frag_counts.append(1)
-    #    else:
-    #        anchor_frag_counts.append(len(subframe["frag.idx"].value_counts()))
-    return {"anchor.id": idx, "in_anchor": in_anchor}
+            code = None
+            count = None
+            write_frame = False
+    anchor_props = {
+        "syn.anchor.id": idx,
+        "syn.code": code,
+        "syn.anchor.m": in_anchor,
+        "syn.anchor.count": count,
+    }
+    if in_anchor > 0:
+        anchor_frame.sort_values(
+            by=["syn.shingle.sub", "frag.idx", "frag.pos"], inplace=True
+        )
+        anchor_frame.sort_values(
+            by=["syn.shingle.sub", "frag.idx", "frag.pos"], inplace=True
+        )
+        for sub_no, subframe in anchor_frame.groupby(by=["syn.shingle.sub"]):
+            anchor_subframe = subframe.copy()
+            del (
+                anchor_subframe["syn.code"],
+                anchor_subframe["syn.anchor.count"],
+                anchor_subframe["syn.shingle.sub"],
+            )
+            anchor_props[f"syn.anchor.{sub_no}.n"] = len(anchor_subframe)
+            anchor_props[f"syn.anchor.{sub_no}.hash"] = hash_array(
+                pd.util.hash_pandas_object(anchor_subframe).to_numpy()
+            )
+            if write_frame:
+                write_tsv_or_parquet(
+                    anchor_subframe,
+                    synteny_parent / f"{idx}.{sub_no}.{SYNTENY_FILETYPE}",
+                    sort_cols=False,
+                )
+    return anchor_props
 
 
 def _concat_without_overlap(df1, df2):
@@ -707,7 +747,7 @@ def _join_on_col_with_na(left, right, col_name):
     return merged
 
 
-def _set_col1_val_where_col2_notna(col1, col2, val):
+def _fill_col1_val_where_col2_notna(col1, col2, val):
     """Set col1 to val  where col2 is not NA if col1 is not set."""
     fill_ser = col1.copy()
     fill_ser[col2.notna()] = val
