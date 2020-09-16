@@ -689,10 +689,10 @@ def write_anchor(args, synteny_parent=None, mailbox_reader=None, logger=None):
             count = None
             write_frame = False
     anchor_props = {
-        "syn.anchor.id": idx,
-        "syn.code": code,
-        "syn.anchor.m": in_anchor,
-        "syn.anchor.count": count,
+        "anchor.id": idx,
+        "code": code,
+        "anchor.n": in_anchor,
+        "anchor.count": count,
     }
     if in_anchor > 0:
         anchor_frame.sort_values(
@@ -708,8 +708,8 @@ def write_anchor(args, synteny_parent=None, mailbox_reader=None, logger=None):
                 anchor_subframe["syn.anchor.count"],
                 anchor_subframe["syn.shingle.sub"],
             )
-            anchor_props[f"syn.anchor.{sub_no}.n"] = len(anchor_subframe)
-            anchor_props[f"syn.anchor.{sub_no}.hash"] = hash_array(
+            anchor_props[f"anchor.{sub_no}.n"] = len(anchor_subframe)
+            anchor_props[f"anchor.{sub_no}.hash"] = hash_array(
                 pd.util.hash_pandas_object(anchor_subframe).to_numpy()
             )
             if write_frame:

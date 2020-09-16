@@ -90,6 +90,7 @@ DTYPE_DICT = {
     "adj_groups": pd.UInt32Dtype(),
     "anchor.id": pd.UInt32Dtype(),
     "clusters": pd.UInt32Dtype(),
+    "code": pd.UInt32Dtype(),
     "fasta_url": pd.StringDtype(),
     "gff_url": pd.StringDtype(),
     "frag.direction": DIRECTIONAL_CATEGORY,
@@ -149,6 +150,7 @@ DTYPE_DICT = {
         {"start": "syn.hash.peatmer", "type": pd.UInt32Dtype()},
         {"start": "syn.hash.kmer", "type": pd.UInt32Dtype()},
         {"start": "syn.anchors.", "type": pd.UInt32Dtype()},
+        {"start": "anchor.", "type": pd.UInt32Dtype()},
     ],
 }
 
