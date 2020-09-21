@@ -30,7 +30,7 @@ from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.10"
+__version__ = "0.9.11"
 INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
     NAME.upper() + "_INSTALL_DIR"
 )
@@ -189,8 +189,16 @@ def install(dependencies, force, accept_licenses):
     default=0.0,
     help="Minimum sequence ID (0-1). [default: lowest]",
 )
+@click.option(
+    "--cluster_file",
+    "-c",
+    type=click.Path(exists=True),
+    default=None,
+    show_default=True,
+    help="Use pre-existing homology clusters.",
+)
 @click.argument("setname")
-def homology(identity, setname):
+def homology(identity, setname, cluster_file):
     """
     Calculate homology clusters, MSAs, trees.
 
@@ -199,7 +207,9 @@ def homology(identity, setname):
         azulejo homology glycines
 
     """
-    undeco_cluster_build_trees(identity, setname, click_loguru=click_loguru)
+    undeco_cluster_build_trees(
+        identity, setname, cluster_file=cluster_file, click_loguru=click_loguru
+    )
 
 
 @cli.command()
@@ -224,14 +234,14 @@ def parquet_to_fasta(parquetfile, fastafile, append):
 @click_loguru.log_elapsed_time(level="info")
 @click_loguru.log_peak_memory_use(level="info")
 @click.option(
-    "-k", default=DEFAULT_K, help="Synteny block length.", show_default=True
+    "-k", default=DEFAULT_K, help="Synteny anchor length.", show_default=True
 )
 @click.option(
     "--peatmer/--kmer",
     default=True,
     is_flag=True,
     show_default=True,
-    help="Allow repeats in block.",
+    help="Allow repeats in anchor.",
 )
 @click.argument("setname")
 def synteny(k, peatmer, setname):
@@ -258,8 +268,8 @@ def taxonomy(rankname):
         rankname = rankname[0]
         try:
             rankval = rankname_to_number(rankname)
-        except ValueError as e:
-            logger.error(e)
+        except ValueError as error_msg:
+            logger.error(error_msg)
             sys.exit(1)
         print(rankval)
 

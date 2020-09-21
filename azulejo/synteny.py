@@ -11,7 +11,7 @@ import dask.bag as db
 import numpy as np
 import pandas as pd
 from dask.diagnostics import ProgressBar
-from loguru import logger
+
 
 # module imports
 from .common import AMBIGUOUS_CODE
@@ -30,6 +30,7 @@ from .common import PROTEOSYN_FILE
 from .common import SYNTENY_FILE
 from .common import SYNTENY_FILETYPE
 from .common import UNAMBIGUOUS_CODE
+from .common import calculate_adjacency_group
 from .common import dotpath_to_path
 from .common import hash_array
 from .common import log_and_add_to_stats
@@ -66,6 +67,30 @@ ANCHOR_COLS = [
     "prot.no_stop",
 ]
 MAILBOX_SUBDIR = "mailboxes"
+PROGRESS_UPDATES = 5.0  # period of progress bar updates
+
+
+class PrintLogger:
+    """This logger only prints."""
+
+    def __init__(self, level=20):
+        self.level = level
+
+    def debug(self, message):
+        if self.level >= 10:
+            print(f"Debug: {message}")
+
+    def info(self, message):
+        if self.level >= 20:
+            print(message)
+
+    def warning(self, message):
+        if self.level >= 30:
+            print(f"Warning: {message}")
+
+    def error(self, message):
+        if self.level >= 40:
+            print(f"ERROR: {message}")
 
 
 # CLI function
@@ -74,6 +99,11 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
     #
     # Marshal input arguments
     #
+    log_to_print = True
+    if log_to_print:
+        logger = PrintLogger()
+    else:
+        from loguru import logger
     if k < 2:
         logger.error("k must be at least 2.")
         sys.exit(1)
@@ -103,6 +133,7 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
             "bag": db.from_sequence(arg_list),
             "merge_args": arg_list,
             "click_loguru": click_loguru,
+            "logger": logger,
         }
     )
     #
@@ -143,6 +174,9 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
             "n_proteomes": n_proteomes,
         },
     )
+    write_tsv_or_parquet(
+        proteomes, set_path / PROTEOSYN_FILE, remove_tmp=False
+    )
     #
     # Write anchors
     #
@@ -152,7 +186,7 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
     anchor_path.mkdir(exist_ok=True)
     logger.info(f"Writing {n_anchors} synteny anchors to {anchor_path}:")
     if not options.quiet:
-        ProgressBar().register()
+        ProgressBar(dt=PROGRESS_UPDATES).register()
     if parallel:
         bag = db.from_sequence(arg_list)
         anchor_stats = bag.map(
@@ -175,7 +209,10 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
     anchor_frame.set_index(["anchor.id"], inplace=True)
     anchor_frame.sort_index(inplace=True)
     write_tsv_or_parquet(
-        anchor_frame, set_path / ANCHORS_FILE, float_format="%5.2f"
+        anchor_frame,
+        set_path / ANCHORS_FILE,
+        float_format="%5.2f",
+        sort_cols=False,
     )
     #
     # Merge synteny into clusters
@@ -187,7 +224,7 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
         f"Joining synteny info to {n_clusters} clusters in {homology_path}:"
     )
     if not options.quiet:
-        ProgressBar().register()
+        ProgressBar(dt=PROGRESS_UPDATES).register()
     if parallel:
         bag = db.from_sequence(arg_list)
         cluster_stats = bag.map(
@@ -209,9 +246,9 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
     cluster_frame = pd.DataFrame.from_dict(cluster_stats)
     cluster_frame.set_index(["clust_id"], inplace=True)
     cluster_frame.sort_index(inplace=True)
-    proteomes = _concat_without_overlap(clusters, cluster_frame)
+    clusters = _concat_without_overlap(clusters, cluster_frame)
     write_tsv_or_parquet(
-        proteomes, set_path / CLUSTERSYN_FILE, float_format="%5.2f"
+        clusters, set_path / CLUSTERSYN_FILE, float_format="%5.2f"
     )
     mean_gene_synteny = (
         proteomes["in_synteny"].sum() * 100.0 / proteomes["size"].sum()
@@ -264,7 +301,7 @@ class PassRunner:
         self.log_ambig = False
 
     def make_pass(
-        self, code, proteomes, extra_kwargs=None,
+        self, code, proteomes, extra_kwargs=None, logger=None,
     ):
         """Make a calculate-merge pass over each proteome."""
         self.std_kwargs["click_loguru"].elapsed_time(self.pass_name)
@@ -297,7 +334,7 @@ class PassRunner:
             kwargs["mailboxes"] = mailboxes
         merge_func = self.merge_function_dict[code]
         if not self.std_kwargs["quiet"]:
-            ProgressBar().register()
+            ProgressBar(dt=PROGRESS_UPDATES).register()
         if self.std_kwargs["parallel"]:
             stats_list = (
                 self.std_kwargs["bag"]
@@ -335,6 +372,7 @@ class PassRunner:
         self.log_ambig = True
 
     def get_total_assigned(self):
+        """Return the total assigned anchors."""
         return sum(self.n_assigned_list)
 
 
@@ -371,8 +409,8 @@ def calculate_synteny_hashes(
         .dropna(how="any")
     )
     unique_hashes = unique_hashes.set_index(hash_name).sort_index()
-    with mailboxes.locked_open_for_write(idx) as fh:
-        unique_hashes.to_csv(fh, header=False, sep="\t")
+    with mailboxes.locked_open_for_write(idx) as file_handle:
+        unique_hashes.to_csv(file_handle, header=False, sep="\t")
     return {
         "idx": idx,
         "path": dotpath,
@@ -426,8 +464,8 @@ def merge_unambig_hashes(
         .sort_index()
     )
     del merged_hashes
-    with mailboxes.locked_open_for_write(idx) as fh:
-        unique_hashes.to_csv(fh, header=False, sep="\t")
+    with mailboxes.locked_open_for_write(idx) as file_handle:
+        unique_hashes.to_csv(file_handle, header=False, sep="\t")
     return {
         "idx": idx,
         "path": dotpath,
@@ -487,8 +525,8 @@ def merge_disambig_hashes(
         .dropna(how="any")
     )
     unique_hashes = unique_hashes.set_index(hash_name).sort_index()
-    with mailboxes.locked_open_for_write(idx) as fh:
-        unique_hashes.to_csv(fh, header=False, sep="\t")
+    with mailboxes.locked_open_for_write(idx) as file_handle:
+        unique_hashes.to_csv(file_handle, header=False, sep="\t")
     return {
         "idx": idx,
         "path": dotpath,
@@ -584,9 +622,9 @@ def merge_nonambig_hashes(
             anchor_frame["syn.code"] = code
             anchor_frame["syn.anchor.count"] = count
             anchor_frame["path"] = dotpath
-            with anchor_mb.locked_open_for_write(anchor_id) as fh:
+            with anchor_mb.locked_open_for_write(anchor_id) as file_handle:
                 anchor_frame[ANCHOR_COLS].dropna().to_csv(
-                    fh, header=False, sep="\t"
+                    file_handle, header=False, sep="\t"
                 )
     syn["syn.shingle.base"] = shingle_base
     syn["syn.shingle.sub"] = shingle_sub
@@ -598,8 +636,10 @@ def merge_nonambig_hashes(
         syn, outpath / SYNTENY_FILE,
     )
     for cluster_id, subframe in syn.groupby(by=["hom.cluster"]):
-        with cluster_mb.locked_open_for_write(cluster_id) as fh:
-            subframe[CLUSTER_COLS].dropna().to_csv(fh, header=False, sep="\t")
+        with cluster_mb.locked_open_for_write(cluster_id) as file_handle:
+            subframe[CLUSTER_COLS].dropna().to_csv(
+                file_handle, header=False, sep="\t"
+            )
     n_assigned = n_proteins - syn["hom.cluster"].isnull().sum()
     # Do histogram of blocks
     anchor_counts = syn["syn.anchor.id"].value_counts()
@@ -645,8 +685,10 @@ def join_synteny_to_clusters(args, cluster_parent=None, mailbox_reader=None):
     cluster_path = cluster_parent / f"{idx}.parq"
     cluster = pd.read_parquet(cluster_path)
     n_cluster = len(cluster)
-    with mailbox_reader(idx) as fh:
-        synteny_frame = pd.read_csv(fh, sep="\t", index_col=0).convert_dtypes()
+    with mailbox_reader(idx) as file_handle:
+        synteny_frame = pd.read_csv(
+            file_handle, sep="\t", index_col=0
+        ).convert_dtypes()
         in_synteny = len(synteny_frame)
     # cluster files are unusual in that I don't bother to version them,
     # so overlapping info has to be deleted each time
@@ -670,54 +712,60 @@ def join_synteny_to_clusters(args, cluster_parent=None, mailbox_reader=None):
     }
 
 
-def write_anchor(args, synteny_parent=None, mailbox_reader=None, logger=None):
+def write_anchor(args, synteny_parent=None, mailbox_reader=None):
     """Read synteny anchor info from mailbox and join it to synteny file."""
     idx = args[0]
-    write_frame = True
-    with mailbox_reader(idx) as fh:
-        try:
-            anchor_frame = pd.read_csv(
-                fh, sep="\t", index_col=0
-            ).convert_dtypes()
-            in_anchor = len(anchor_frame)
-            code = anchor_frame["syn.code"].iloc[0]
-            count = anchor_frame["syn.anchor.count"].iloc[0]
-        except (IndexError, pd.errors.ParserError):
-            logger.warning(f"Error reading synteny mailbox {idx}")
-            in_anchor = 0
-            code = None
-            count = None
-            write_frame = False
+    with mailbox_reader(idx) as file_handle:
+        anchor_frame = pd.read_csv(
+            file_handle, sep="\t", index_col=0
+        ).convert_dtypes()
+    in_anchor = len(anchor_frame)
     anchor_props = {
         "anchor.id": idx,
-        "code": code,
-        "anchor.n": in_anchor,
-        "anchor.count": count,
+        "code": None,
+        "count": None,
+        "n": in_anchor,
+        "n_ambig": None,
     }
     if in_anchor > 0:
-        anchor_frame.sort_values(
-            by=["syn.shingle.sub", "frag.idx", "frag.pos"], inplace=True
+        # Make unique--a bit of a mystery why duplicates exist, will figure out later
+        anchor_frame.drop(
+            anchor_frame[anchor_frame.index.duplicated()].index, inplace=True
         )
+        code_set = set(anchor_frame["syn.code"])
+        anchor_props["count"] = anchor_frame["syn.anchor.count"].iloc[0]
+        anchor_props["n_ambig"] = _count_code(
+            anchor_frame["syn.code"], AMBIGUOUS_CODE
+        )
+        for test_code in CODE_DICT.keys():
+            if test_code in code_set:
+                anchor_props["code"] = test_code
+                break
         anchor_frame.sort_values(
             by=["syn.shingle.sub", "frag.idx", "frag.pos"], inplace=True
         )
         for sub_no, subframe in anchor_frame.groupby(by=["syn.shingle.sub"]):
             anchor_subframe = subframe.copy()
             del (
-                anchor_subframe["syn.code"],
                 anchor_subframe["syn.anchor.count"],
                 anchor_subframe["syn.shingle.sub"],
             )
             anchor_props[f"anchor.{sub_no}.n"] = len(anchor_subframe)
             anchor_props[f"anchor.{sub_no}.hash"] = hash_array(
-                pd.util.hash_pandas_object(anchor_subframe).to_numpy()
+                anchor_subframe.index.to_numpy()
             )
-            if write_frame:
-                write_tsv_or_parquet(
-                    anchor_subframe,
-                    synteny_parent / f"{idx}.{sub_no}.{SYNTENY_FILETYPE}",
-                    sort_cols=False,
-                )
+            (
+                anchor_props[f"anchor.{sub_no}.n_adj"],
+                anchor_props[f"anchor.{sub_no}.adj_groups"],
+                unused_adj_group,
+            ) = calculate_adjacency_group(
+                anchor_subframe["frag.pos"], anchor_subframe["frag.idx"]
+            )
+            write_tsv_or_parquet(
+                anchor_subframe,
+                synteny_parent / f"{idx}.{sub_no}.{SYNTENY_FILETYPE}",
+                sort_cols=False,
+            )
     return anchor_props
 
 
@@ -729,11 +777,11 @@ def _concat_without_overlap(df1, df2):
     return pd.concat([df1, df2], axis=1)
 
 
-def _rename_and_fill_alt(df, key, alt_key):
+def _rename_and_fill_alt(df1, key, alt_key):
     """Rename columns and zero-fill alternate."""
-    ds = df[[key]].rename(columns={key: "hash"})
-    ds["alt_hash"] = df[alt_key].fillna(0)
-    return ds.dropna(how="any")
+    df2 = df1[[key]].rename(columns={key: "hash"})
+    df2["alt_hash"] = df1[alt_key].fillna(0)
+    return df2.dropna(how="any")
 
 
 def _join_on_col_with_na(left, right, col_name):

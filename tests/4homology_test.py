@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """Tests for data ingestion."""
 # standard library imports
-import sys
+import sh
 from pathlib import Path
 
 # third-party imports
 import pytest
-import sh
+import sys
 
 # module imports
-from . import HOMOLOGY_OUTPUTS
 from . import INGEST_OUTPUTS
 from . import find_homology_files
 from . import help_check
@@ -26,7 +25,7 @@ def test_subcommand_help():
 
 
 @print_docstring()
-def test_cluster_build_trees(datadir_mgr):
+def test_homology(datadir_mgr, caplog):
     """Test homology clustering, MSA, and tree building."""
     with datadir_mgr.in_tmp_dir(
         inpathlist=INGEST_OUTPUTS,
@@ -35,9 +34,13 @@ def test_cluster_build_trees(datadir_mgr):
         excludepaths=["logs/"],
     ):
         try:
-            azulejo(["-e", "-q", SUBCOMMAND, "glycines"])
+            output = azulejo(
+                ["-e", SUBCOMMAND, "glycines"], _out=sys.stdout, _tty_out=True
+            )
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail("Homology clustering failed")
+        print(output)
+        print(caplog.text)
         for filestring in find_homology_files():
             assert Path(filestring).stat().st_size > 0

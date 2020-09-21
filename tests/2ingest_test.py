@@ -12,6 +12,7 @@ from . import W05_INPUTS
 from . import help_check
 from . import print_docstring
 
+
 # global constants
 azulejo = sh.Command("azulejo")
 NET_INPUT_FILE = "glyma+glyso.toml"

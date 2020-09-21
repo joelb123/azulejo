@@ -35,10 +35,10 @@ def test_taxonomy(tmp_path):
     """Test taxonomy rank check command."""
     with working_directory(tmp_path):
         try:
-            output = azulejo(["check-taxonomic-rank"])
+            output = azulejo(["taxonomy"])
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail(errors)
         assert int(azulejo(["taxonomy", "species"])) == 130
-        assert int(azulejo(["taxononomy", "subspecies"])) == 131
+        assert int(azulejo(["taxonomy", "subspecies"])) == 131
         assert int(azulejo(["taxonomy", "superspecies"])) == 128

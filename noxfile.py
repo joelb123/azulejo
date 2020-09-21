@@ -32,10 +32,15 @@ def install_with_constraints(session, *args, **kwargs):
 @nox.session(python=["3.8"])
 def tests(session):
     """Run tests with pytest and pytest-cov."""
-    args = session.posargs or ["--cov=azulejo", "-x", "-s"]
+    args = session.posargs or ["--cov=azulejo", "-x", "--capture=tee-sys"]
     session.run("poetry", "install", "--no-dev", external=True)
     install_with_constraints(
-        session, "coverage[toml]", "pytest", "pytest-cov", "pytest-datadir-mgr"
+        session,
+        "coverage[toml]",
+        "pytest",
+        "pytest-cov",
+        "pytest-datadir-mgr",
+        "loguru-caplog",
     )
     session.run("pytest", *args)
 
