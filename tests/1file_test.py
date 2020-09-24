@@ -4,9 +4,6 @@
 import shutil
 from pathlib import Path
 
-# third-party imports
-from loguru import logger
-
 # first-party imports
 from azulejo.common import dotpath_to_path
 from azulejo.ingest import TaxonomicInputTable
@@ -19,8 +16,6 @@ from . import print_docstring
 # global constants
 DOWNLOAD_URL = "https://v1.legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
 SINGLE_INPUT_FILE = "W05.toml"
-
-logger.disable("azulejo")
 
 
 @print_docstring()

@@ -8,9 +8,14 @@ before_install:
    - pip install poetry
 install:
    - poetry install -v
-   - export MAKEFLAGS="-j $(grep -c ^processor /proc/cpuinfo)"
 script:
-   - azulejo install -y all
-   - pytest --cov=azulejo --capture=tee-sys -x
+   - export MAKEFLAGS="-j $(grep -c ^processor /proc/cpuinfo)"
+   - export LOG_TO_PRINT=info
+   - pytest tests/0cli_test.py
+   - pytest tests/1file_test.py
+   - pytest tests/2ingest_test.py
+   - pytest tests/3installer_test.py
+   - pytest tests/4homology_test.py
+   - pytest tests/5synteny_test.py
 after_success:
   - bash <(curl -s https://codecov.io/bash) -X gcov

@@ -13,10 +13,12 @@ from packaging import version
 
 # third-party imports
 import sh
-from loguru import logger
 from progressbar import DataTransferBar
 from requests_download import ProgressTracker
 from requests_download import download as request_download
+
+# module imports
+from .common import logger
 
 # Global constants
 PLATFORM_LIST = ["linux", "bsd", "macos", "unknown"]

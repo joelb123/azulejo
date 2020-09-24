@@ -3,6 +3,7 @@
 # third-party imports
 import pytest
 import sh
+import sys
 
 # module imports
 from . import help_check
@@ -35,7 +36,7 @@ def test_taxonomy(tmp_path):
     """Test taxonomy rank check command."""
     with working_directory(tmp_path):
         try:
-            output = azulejo(["taxonomy"])
+            azulejo(["taxonomy"], _out=sys.stdout)
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail(errors)

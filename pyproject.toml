@@ -226,7 +226,6 @@ disable = """,
 
 [tool.pytest.ini_options]
 addopts = "--capture=tee-sys --cov=azulejo -x"
-log_cli = true
 log_cli_level = "INFO"
 log_cli_format = "%(message)s"
 

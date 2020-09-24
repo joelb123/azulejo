@@ -18,7 +18,6 @@ W05_INPUTS = [
 
 SET_DIR = "glycines"
 PROT_SUBDIRS = ["glyso/W05/", "glyso/PI483463/", "glyma/"]
-N_CLUSTERS = 14617
 N_ANCHORS = 32335
 INGEST_OUTPUTS = [
     f"{SET_DIR}/{f}"

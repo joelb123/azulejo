@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Tests for basic CLI function."""
+"""Tests for installer function."""
+# standard library imports
+import sys
+
 # third-party imports
 import pytest
-
-# first-party imports
 import sh
 
 # module imports
@@ -36,9 +37,8 @@ def test_installer(tmp_path):
     else:
         with working_directory(tmp_path):
             try:
-                output = azulejo(["-q", SUBCOMMAND, "-y", "all"])
+                azulejo([SUBCOMMAND, "-y", "all"], _out=sys.stdout)
             except sh.ErrorReturnCode as errors:
                 print(errors)
                 pytest.fail("Build failed")
-            print(output)
             assert "All dependencies" in azulejo(["install"])

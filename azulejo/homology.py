@@ -15,7 +15,6 @@ from dask.diagnostics import ProgressBar
 
 # first-party imports
 import sh
-from loguru import logger
 
 # module imports
 from .common import CLUSTER_FILETYPE
@@ -30,6 +29,7 @@ from .common import TrimmableMemoryMap
 from .common import calculate_adjacency_group
 from .common import dotpath_to_path
 from .common import group_key_filename
+from .common import logger
 from .common import read_tsv_or_parquet
 from .common import sort_proteome_frame
 from .common import write_tsv_or_parquet
@@ -172,7 +172,7 @@ def cluster_build_trees(
     click_loguru.elapsed_time("Alignment/tree-building")
     hom_mb = DataMailboxes(
         n_boxes=n_proteomes,
-        hom_mb_dir_path=(set_path / "mailboxes" / "clusters2proteomes"),
+        mb_dir_path=(set_path / "mailboxes" / "clusters2proteomes"),
         file_extension="tsv",
     )
     hom_mb.write_tsv_headers(HOMOLOGY_COLS)

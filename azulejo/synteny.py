@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 from dask.diagnostics import ProgressBar
 
-
 # module imports
 from .common import AMBIGUOUS_CODE
 from .common import ANCHOR_HIST_FILE
@@ -34,6 +33,7 @@ from .common import calculate_adjacency_group
 from .common import dotpath_to_path
 from .common import hash_array
 from .common import log_and_add_to_stats
+from .common import logger
 from .common import read_tsv_or_parquet
 from .common import write_tsv_or_parquet
 from .hash import SyntenyBlockHasher
@@ -70,40 +70,13 @@ MAILBOX_SUBDIR = "mailboxes"
 PROGRESS_UPDATES = 5.0  # period of progress bar updates
 
 
-class PrintLogger:
-    """This logger only prints."""
-
-    def __init__(self, level=20):
-        self.level = level
-
-    def debug(self, message):
-        if self.level >= 10:
-            print(f"Debug: {message}")
-
-    def info(self, message):
-        if self.level >= 20:
-            print(message)
-
-    def warning(self, message):
-        if self.level >= 30:
-            print(f"Warning: {message}")
-
-    def error(self, message):
-        if self.level >= 40:
-            print(f"ERROR: {message}")
-
-
 # CLI function
 def synteny_anchors(k, peatmer, setname, click_loguru=None):
     """Calculate synteny anchors."""
     #
     # Marshal input arguments
     #
-    log_to_print = True
-    if log_to_print:
-        logger = PrintLogger()
-    else:
-        from loguru import logger
+
     if k < 2:
         logger.error("k must be at least 2.")
         sys.exit(1)
@@ -133,7 +106,6 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
             "bag": db.from_sequence(arg_list),
             "merge_args": arg_list,
             "click_loguru": click_loguru,
-            "logger": logger,
         }
     )
     #
@@ -251,9 +223,9 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
         clusters, set_path / CLUSTERSYN_FILE, float_format="%5.2f"
     )
     mean_gene_synteny = (
-        proteomes["in_synteny"].sum() * 100.0 / proteomes["size"].sum()
+        clusters["in_synteny"].sum() * 100.0 / clusters["size"].sum()
     )
-    mean_clust_synteny = proteomes["synteny_pct"].mean()
+    mean_clust_synteny = clusters["synteny_pct"].mean()
     logger.info(
         f"Mean anchor coverage: {mean_gene_synteny: .1f}% (on proteins)"
     )
@@ -301,7 +273,7 @@ class PassRunner:
         self.log_ambig = False
 
     def make_pass(
-        self, code, proteomes, extra_kwargs=None, logger=None,
+        self, code, proteomes, extra_kwargs=None,
     ):
         """Make a calculate-merge pass over each proteome."""
         self.std_kwargs["click_loguru"].elapsed_time(self.pass_name)

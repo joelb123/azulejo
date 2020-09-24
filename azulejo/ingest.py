@@ -20,7 +20,6 @@ from dask.diagnostics import ProgressBar
 
 # first-party imports
 import smart_open
-from loguru import logger
 from pathvalidate import ValidationError
 from pathvalidate import validate_filename as pv_validate_filename
 
@@ -38,6 +37,7 @@ from .common import SCAFFOLD_ABBREV
 from .common import SCAFFOLD_SYNONYMS
 from .common import bool_to_y_or_n
 from .common import dotpath_to_path
+from .common import logger
 from .common import sort_proteome_frame
 from .common import y_or_n_to_bool
 from .common import write_tsv_or_parquet

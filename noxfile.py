@@ -40,7 +40,6 @@ def tests(session):
         "pytest",
         "pytest-cov",
         "pytest-datadir-mgr",
-        "loguru-caplog",
     )
     session.run("pytest", *args)
 

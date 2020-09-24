@@ -3,6 +3,7 @@
 # standard library imports
 import contextlib
 import mmap
+import os
 import sys
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xxhash
-from loguru import logger
+from loguru import logger as loguru_logger
 
 # global constants
 NAME = "azulejo"
@@ -120,6 +121,48 @@ NONDEFAULT_DTYPES = {
     ],
 }
 
+# logger function
+
+
+class PrintLogger:
+    """This logger only prints, for testing only."""
+
+    def __init__(self, level):
+        try:
+            self.level = int(level)
+        except ValueError:
+            if level.lower() == "debug":
+                self.level = 10
+            elif level.lower() == "info":
+                self.level = 20
+            elif level.lower() == "warning":
+                self.level = 30
+            elif level.lower() == "error":
+                self.level = 40
+            else:
+                self.level = 20
+
+    def debug(self, message):
+        if self.level <= 10:
+            print(f"Debug: {message}")
+
+    def info(self, message):
+        if self.level <= 20:
+            print(message)
+
+    def warning(self, message):
+        if self.level <= 30:
+            print(f"Warning: {message}")
+
+    def error(self, message):
+        if self.level <= 40:
+            print(f"ERROR: {message}")
+
+
+if "LOG_TO_PRINT" in os.environ:
+    logger = PrintLogger(os.environ["LOG_TO_PRINT"])
+else:
+    logger = loguru_logger
 
 # shared functions
 
@@ -323,7 +366,7 @@ def read_tsv_or_parquet(filepath):
     sys.exit(1)
 
 
-def log_and_add_to_stats(private_logger, stats, new_stats):
+def log_and_add_to_stats(stats, new_stats):
     """Print stats info and write to stats file."""
     with pd.option_context(
         "display.max_rows",
@@ -333,7 +376,7 @@ def log_and_add_to_stats(private_logger, stats, new_stats):
         "display.float_format",
         "{:,.1f}%".format,
     ):
-        private_logger.info(new_stats)
+        logger.info(new_stats)
     overlap_cols = list(set(stats.columns) & set(new_stats.columns))
     return pd.concat([stats.drop(columns=overlap_cols), new_stats], axis=1)
 
