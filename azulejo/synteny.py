@@ -547,12 +547,18 @@ def merge_nonambig_hashes(
         syn["tmp.ambig.anchor.id"].value_counts()
     )
     syn["tmp.ambig.code"] = pd.NA
-    syn["tmp.ambig.code"][ambig_counts == 1] = LOCALLY_UNAMBIGUOUS_CODE
-    if write_ambiguous:
-        syn["tmp.ambig.code"][ambig_counts > 1] = AMBIGUOUS_CODE
-    else:
-        syn["tmp.ambig.anchor.id"][ambig_counts > 1] = pd.NA
-        syn["tmp.ambig.anchor.count"][ambig_counts > 1] = pd.NA
+    for i, row in syn.iterrows():
+        if pd.isnull(row["tmp.ambig.code"]):
+            continue
+        ambig_count = ambig_count.iloc[i]
+        if ambig_count == 1:
+            syn["tmp.ambig.code"].iloc[i] = LOCALLY_UNAMBIGUOUS_CODE
+        elif ambig_count > 1:
+            if write_ambiguous:
+                syn["tmp.ambig.code"].iloc[i] = AMBIGUOUS_CODE
+            else:
+                syn["tmp.ambig.anchor.id"].iloc[i] = pd.NA
+                syn["tmp.ambig.anchor.count"].iloc[i] = pd.NA
     syn["syn.anchor.id"] = syn["syn.anchor.id"].fillna(
         syn["tmp.ambig.anchor.id"]
     )
