@@ -25,6 +25,7 @@ from .common import HOMOLOGY_FILE
 from .common import PROTEINS_FILE
 from .common import PROTEOMES_FILE
 from .common import PROTEOMOLOGY_FILE
+from .common import SPINNER_UPDATE_PERIOD
 from .common import TrimmableMemoryMap
 from .common import calculate_adjacency_group
 from .common import dotpath_to_path
@@ -37,9 +38,7 @@ from .core import homology_cluster
 from .mailboxes import DataMailboxes
 
 # global constants
-
 HOMOLOGY_COLS = ["hom.cluster", "hom.cl_size"]
-PROGRESS_UPDATES = 5.0  # period of progress bar updates
 
 
 def cluster_build_trees(
@@ -186,7 +185,7 @@ def cluster_build_trees(
             f"Calculating MSAs and trees for {len(cluster_paths)} homology"
             " clusters:"
         )
-        ProgressBar(dt=PROGRESS_UPDATES).register()
+        ProgressBar(dt=SPINNER_UPDATE_PERIOD).register()
     if parallel:
         cluster_stats = bag.map(
             parse_cluster,
@@ -259,7 +258,7 @@ def cluster_build_trees(
     hom_stats = []
     if not options.quiet:
         logger.info(f"Joining homology info to {n_proteomes} proteomes:")
-        ProgressBar(dt=PROGRESS_UPDATES).register()
+        ProgressBar(dt=SPINNER_UPDATE_PERIOD).register()
     if parallel:
         hom_stats = bag.map(
             join_homology_to_proteome, mailbox_reader=hom_mb.open_then_delete

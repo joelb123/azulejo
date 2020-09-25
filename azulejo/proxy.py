@@ -11,8 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# first-party imports
-from loguru import logger
+# module imports
+from .common import logger
 
 
 def read_files(setname, synteny=None):

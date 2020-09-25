@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tests for data ingestion."""
 # standard library imports
+import sys
 from pathlib import Path
 
 # third-party imports
@@ -29,8 +30,16 @@ def test_parquet_conversion(datadir_mgr):
     with datadir_mgr.in_tmp_dir(
         inpathlist=[TSV_TEST_FILE], save_outputs=False,
     ):
+        args = ["-q", "-e", SUBCOMMAND, "-w", TSV_TEST_FILE]
+        print(f"azulejo {' '.join(args)}")
         try:
-            output = azulejo(["-q", "-e", SUBCOMMAND, "-w", TSV_TEST_FILE])
+            azulejo(
+                args, _out=sys.stdout,
+            )
+        except sh.ErrorReturnCode as errors:
+            print(errors)
+        try:
+            azulejo(["-q", "-e", SUBCOMMAND, "-w", TSV_TEST_FILE])
         except sh.ErrorReturnCode as errors:
             print(errors)
             pytest.fail("Parquet-to-TSV conversion failed")

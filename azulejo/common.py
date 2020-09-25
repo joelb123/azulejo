@@ -121,7 +121,7 @@ NONDEFAULT_DTYPES = {
     ],
 }
 
-# logger function
+# logger class for use in testing
 
 
 class PrintLogger:
@@ -159,10 +159,19 @@ class PrintLogger:
             print(f"ERROR: {message}")
 
 
+# global variables that are set depending on env vars
 if "LOG_TO_PRINT" in os.environ:
     logger = PrintLogger(os.environ["LOG_TO_PRINT"])
 else:
     logger = loguru_logger
+
+if "SPINNER_UPDATE_PERIOD" in os.environ:
+    try:
+        SPINNER_UPDATE_PERIOD = float(os.environ("SPINNER_UPDATE_PERIOD"))
+    except ValueError:
+        SPINNER_UPDATE_PERIOD = 5.0
+else:
+    SPINNER_UPDATE_PERIOD = 1.0  # period of progress bar updates
 
 # shared functions
 

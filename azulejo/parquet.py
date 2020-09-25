@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 # first-party imports
-from loguru import logger
+from .common import logger
 
 # global constants
 COMPRESSION_TYPES = [

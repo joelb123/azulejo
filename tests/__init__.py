@@ -4,11 +4,13 @@
 import contextlib
 import functools
 import os
+import sys
 from pathlib import Path
 
 # third-party imports
 import pytest
-import sh
+from sh import Command
+from sh import ErrorReturnCode
 
 # global constants
 W05_INPUTS = [
@@ -78,13 +80,14 @@ def working_directory(path):
 def help_check(subcommand):
     """Test help function for subcommand."""
     print(f"Test {subcommand} help.")
+    azulejo = Command("azulejo")
     if subcommand == "global":
         help_command = ["--help"]
     else:
         help_command = [subcommand, "--help"]
     try:
-        output = sh.Command("azulejo")(help_command)
-    except sh.ErrorReturnCode as errors:
+        output = azulejo(help_command)
+    except ErrorReturnCode as errors:
         print(errors)
         pytest.fail(f"{subcommand} help test failed")
     print(output)
@@ -107,3 +110,17 @@ def print_docstring():
         return wrapper
 
     return decorator
+
+
+def run_azulejo(args, component):
+    """Run azulejo with args."""
+    azulejo = Command("azulejo")
+    command_string = " ".join(args)
+    print(f"Testing {component} with" + f'"azulejo {command_string}"')
+    try:
+        azulejo(
+            args, _out=sys.stderr,
+        )
+    except ErrorReturnCode as errors:
+        print(errors)
+        pytest.fail(f"{component} failed")

@@ -153,43 +153,6 @@ version = ">=0.6"
 python = "<3.7"
 
 [[package]]
-name = "boto"
-version = "2.49.0"
-description = "Amazon Web Services Library"
-category = "main"
-optional = false
-python-versions = "*"
-
-[[package]]
-name = "boto3"
-version = "1.15.5"
-description = "The AWS SDK for Python"
-category = "main"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-botocore = ">=1.18.5,<1.19.0"
-jmespath = ">=0.7.1,<1.0.0"
-s3transfer = ">=0.3.0,<0.4.0"
-
-[[package]]
-name = "botocore"
-version = "1.18.5"
-description = "Low-level, data-driven core of boto 3."
-category = "main"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-jmespath = ">=0.7.1,<1.0.0"
-python-dateutil = ">=2.1,<3.0.0"
-
-[package.dependencies.urllib3]
-version = ">=1.20,<1.26"
-python = "<3.4.0 || >=3.5.0"
-
-[[package]]
 name = "certifi"
 version = "2020.6.20"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -605,14 +568,6 @@ i18n = ["Babel (>=0.8)"]
 
 [package.dependencies]
 MarkupSafe = ">=0.23"
-
-[[package]]
-name = "jmespath"
-version = "0.10.0"
-description = "JSON Matching Expressions"
-category = "main"
-optional = false
-python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
 name = "kiwisolver"
@@ -1189,17 +1144,6 @@ python-versions = "*"
 requests = "*"
 
 [[package]]
-name = "s3transfer"
-version = "0.3.3"
-description = "An Amazon S3 Transfer Manager"
-category = "main"
-optional = false
-python-versions = "*"
-
-[package.dependencies]
-botocore = ">=1.12.36,<2.0a.0"
-
-[[package]]
 name = "scipy"
 version = "1.5.2"
 description = "SciPy: Scientific Library for Python"
@@ -1242,22 +1186,20 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
 name = "smart-open"
-version = "2.1.1"
+version = "2.2.0"
 description = "Utils for streaming large files (S3, HDFS, GCS, Azure Blob Storage, gzip, bz2...)"
 category = "main"
 optional = false
 python-versions = ">=3.5.*"
 
 [package.extras]
-all = ["requests", "boto", "boto3", "google-cloud-storage", "azure-storage-blob", "azure-common", "azure-core"]
-aws = ["boto", "boto3"]
+all = ["requests", "boto3", "google-cloud-storage", "azure-storage-blob", "azure-common", "azure-core"]
 azure = ["azure-storage-blob", "azure-common", "azure-core"]
 gcp = ["google-cloud-storage"]
-test = ["mock", "moto", "pathlib2", "responses", "boto3", "google-compute-engine (2.8.12)", "paramiko", "parameterizedtestcase", "pytest", "pytest-rerunfailures"]
+s3 = ["boto3"]
+test = ["mock", "moto", "pathlib2", "responses", "boto3", "paramiko", "parameterizedtestcase", "pytest", "pytest-rerunfailures"]
 
 [package.dependencies]
-boto = "*"
-boto3 = "*"
 requests = "*"
 
 [[package]]
@@ -1519,18 +1461,6 @@ black = [
     {file = "black-20.8b1-py3-none-any.whl", hash = "sha256:70b62ef1527c950db59062cda342ea224d772abdf6adc58b86a45421bab20a6b"},
     {file = "black-20.8b1.tar.gz", hash = "sha256:1c02557aa099101b9d21496f8a914e9ed2222ef70336404eeeac8edba836fbea"},
 ]
-boto = [
-    {file = "boto-2.49.0-py2.py3-none-any.whl", hash = "sha256:147758d41ae7240dc989f0039f27da8ca0d53734be0eb869ef16e3adcfa462e8"},
-    {file = "boto-2.49.0.tar.gz", hash = "sha256:ea0d3b40a2d852767be77ca343b58a9e3a4b00d9db440efb8da74b4e58025e5a"},
-]
-boto3 = [
-    {file = "boto3-1.15.5-py2.py3-none-any.whl", hash = "sha256:0c464a7de522f88b581ca0d41ffa71e9be5e17fbb0456c275421f65b7c5f6a55"},
-    {file = "boto3-1.15.5.tar.gz", hash = "sha256:0fce548e19d6db8e11fd0e2ae7809e1e3282080636b4062b2452bfa20e4f0233"},
-]
-botocore = [
-    {file = "botocore-1.18.5-py2.py3-none-any.whl", hash = "sha256:e3bf44fba058f6df16006b94a67650418a080a525c82521abb3cb516a4cba362"},
-    {file = "botocore-1.18.5.tar.gz", hash = "sha256:7ce7a05b98ffb3170396960273383e8aade9be6026d5a762f5f40969d5d6b761"},
-]
 certifi = [
     {file = "certifi-2020.6.20-py2.py3-none-any.whl", hash = "sha256:8fc0819f1f30ba15bdb34cceffb9ef04d99f420f68eb75d901e9560b8749fc41"},
     {file = "certifi-2020.6.20.tar.gz", hash = "sha256:5930595817496dd21bb8dc35dad090f1c2cd0adfaf21204bf6732ca5d8ee34d3"},
@@ -1763,10 +1693,6 @@ isort = [
 jinja2 = [
     {file = "Jinja2-2.11.2-py2.py3-none-any.whl", hash = "sha256:f0a4641d3cf955324a89c04f3d94663aa4d638abe8f733ecd3582848e1c37035"},
     {file = "Jinja2-2.11.2.tar.gz", hash = "sha256:89aab215427ef59c34ad58735269eb58b1a5808103067f7bb9d5836c651b3bb0"},
-]
-jmespath = [
-    {file = "jmespath-0.10.0-py2.py3-none-any.whl", hash = "sha256:cdf6525904cc597730141d61b36f2e4b8ecc257c420fa2f4549bac2c2d0cb72f"},
-    {file = "jmespath-0.10.0.tar.gz", hash = "sha256:b85d0567b8666149a93172712e68920734333c0ce7e89b78b3e987f71e5ed4f9"},
 ]
 kiwisolver = [
     {file = "kiwisolver-1.2.0-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:443c2320520eda0a5b930b2725b26f6175ca4453c61f739fef7a5847bd262f74"},
@@ -2165,10 +2091,6 @@ requests-download = [
     {file = "requests_download-0.1.2-py2.py3-none-any.whl", hash = "sha256:994d9d332befae6616f562769bab163f08d6404dc7e28fb7bfed4a0a43a754ad"},
     {file = "requests_download-0.1.2.tar.gz", hash = "sha256:92d895a6ca51ea51aa42bab864bddaee31b5601c7e7e1ade4c27b0eb6695d846"},
 ]
-s3transfer = [
-    {file = "s3transfer-0.3.3-py2.py3-none-any.whl", hash = "sha256:2482b4259524933a022d59da830f51bd746db62f047d6eb213f2f8855dcb8a13"},
-    {file = "s3transfer-0.3.3.tar.gz", hash = "sha256:921a37e2aefc64145e7b73d50c71bb4f26f46e4c9f414dc648c6245ff92cf7db"},
-]
 scipy = [
     {file = "scipy-1.5.2-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:cca9fce15109a36a0a9f9cfc64f870f1c140cb235ddf27fe0328e6afb44dfed0"},
     {file = "scipy-1.5.2-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:1c7564a4810c1cd77fcdee7fa726d7d39d4e2695ad252d7c86c3ea9d85b7fb8f"},
@@ -2200,7 +2122,7 @@ six = [
     {file = "six-1.15.0.tar.gz", hash = "sha256:30639c035cdb23534cd4aa2dd52c3bf48f06e5f4a941509c8bafd8ce11080259"},
 ]
 smart-open = [
-    {file = "smart_open-2.1.1.tar.gz", hash = "sha256:51b05acd85ec007e1d4dcdbf2bbf917218a45026f37d559559401114bb5e5840"},
+    {file = "smart_open-2.2.0.tar.gz", hash = "sha256:3e95f4d3edc566aed46d0711c69b1a7b3d14ddf3af61cfa941e76cdb1dfe9918"},
 ]
 smmap = [
     {file = "smmap-3.0.4-py2.py3-none-any.whl", hash = "sha256:54c44c197c819d5ef1991799a7e30b662d1e520f2ac75c9efbeb54a742214cf4"},

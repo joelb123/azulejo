@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """Tests for data ingestion."""
 # standard library imports
-import sys
 from pathlib import Path
 
 # third-party imports
-import pytest
 import sh
 
 # module imports
@@ -14,6 +12,7 @@ from . import SYNTENY_OUTPUTS
 from . import find_homology_files
 from . import help_check
 from . import print_docstring
+from . import run_azulejo
 
 # global constants
 azulejo = sh.Command("azulejo")
@@ -34,16 +33,10 @@ def test_synteny(datadir_mgr):
         outscope="global",
         excludepaths=["logs/"],
     ):
-        args = ["-e", SUBCOMMAND, "glycines"]
-        print(f"azulejo {' '.join(args)}")
-        try:
-            azulejo(
-                args, _out=sys.stdout,
-            )
-        except sh.ErrorReturnCode as errors:
-            print(errors)
-            pytest.fail("Synteny anchor construction failed")
-        print("Checking that output file exist")
+        run_azulejo(
+            ["-e", SUBCOMMAND, "glycines"], "synteny anchor construction"
+        )
+        print("Checking that output files exist")
         for filestring in SYNTENY_OUTPUTS:
             assert Path(filestring).exists()
         print("Copying output files")

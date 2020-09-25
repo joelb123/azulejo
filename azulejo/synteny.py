@@ -26,6 +26,7 @@ from .common import LOCALLY_UNAMBIGUOUS_CODE
 from .common import NON_AMBIGUOUS_CODE
 from .common import PROTEOMOLOGY_FILE
 from .common import PROTEOSYN_FILE
+from .common import SPINNER_UPDATE_PERIOD
 from .common import SYNTENY_FILE
 from .common import SYNTENY_FILETYPE
 from .common import UNAMBIGUOUS_CODE
@@ -67,11 +68,11 @@ ANCHOR_COLS = [
     "prot.no_stop",
 ]
 MAILBOX_SUBDIR = "mailboxes"
-PROGRESS_UPDATES = 5.0  # period of progress bar updates
-
 
 # CLI function
-def synteny_anchors(k, peatmer, setname, click_loguru=None):
+def synteny_anchors(
+    k, peatmer, setname, click_loguru=None, write_ambiguous=True
+):
     """Calculate synteny anchors."""
     #
     # Marshal input arguments
@@ -144,6 +145,7 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
             "cluster_mb": cluster_mb,
             "anchor_mb": anchor_mb,
             "n_proteomes": n_proteomes,
+            "write_ambiguous": write_ambiguous,
         },
     )
     write_tsv_or_parquet(
@@ -158,7 +160,7 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
     anchor_path.mkdir(exist_ok=True)
     logger.info(f"Writing {n_anchors} synteny anchors to {anchor_path}:")
     if not options.quiet:
-        ProgressBar(dt=PROGRESS_UPDATES).register()
+        ProgressBar(dt=SPINNER_UPDATE_PERIOD).register()
     if parallel:
         bag = db.from_sequence(arg_list)
         anchor_stats = bag.map(
@@ -196,7 +198,7 @@ def synteny_anchors(k, peatmer, setname, click_loguru=None):
         f"Joining synteny info to {n_clusters} clusters in {homology_path}:"
     )
     if not options.quiet:
-        ProgressBar(dt=PROGRESS_UPDATES).register()
+        ProgressBar(dt=SPINNER_UPDATE_PERIOD).register()
     if parallel:
         bag = db.from_sequence(arg_list)
         cluster_stats = bag.map(
@@ -306,7 +308,7 @@ class PassRunner:
             kwargs["mailboxes"] = mailboxes
         merge_func = self.merge_function_dict[code]
         if not self.std_kwargs["quiet"]:
-            ProgressBar(dt=PROGRESS_UPDATES).register()
+            ProgressBar(dt=SPINNER_UPDATE_PERIOD).register()
         if self.std_kwargs["parallel"]:
             stats_list = (
                 self.std_kwargs["bag"]
@@ -516,6 +518,7 @@ def merge_nonambig_hashes(
     n_proteomes=None,
     cluster_mb=None,
     anchor_mb=None,
+    write_ambiguous=True,
 ):
     """Merge disambiguated synteny hashes into proteomes per-proteome."""
     idx, dotpath = args
@@ -537,20 +540,26 @@ def merge_nonambig_hashes(
         syn["syn.code"], syn["tmp.nonambig.anchor.id"], INDIRECT_CODE
     )
     #
-    # Do the nonambig (w.r.t. this proteome) and ambig
+    # Do the nonambig (w.r.t. this proteome) and ambig, if requested
     #
     syn = _join_on_col_with_na(syn, ambig, hash_name)
+    ambig_counts = syn["tmp.ambig.anchor.id"].map(
+        syn["tmp.ambig.anchor.id"].value_counts()
+    )
+    syn["tmp.ambig.code"] = pd.NA
+    syn["tmp.ambig.code"][ambig_counts == 1] = LOCALLY_UNAMBIGUOUS_CODE
+    if write_ambiguous:
+        syn["tmp.ambig.code"][ambig_counts > 1] = AMBIGUOUS_CODE
+    else:
+        syn["tmp.ambig.anchor.id"][ambig_counts > 1] = pd.NA
+        syn["tmp.ambig.anchor.count"][ambig_counts > 1] = pd.NA
     syn["syn.anchor.id"] = syn["syn.anchor.id"].fillna(
         syn["tmp.ambig.anchor.id"]
     )
     syn["syn.anchor.count"] = syn["syn.anchor.count"].fillna(
         syn["tmp.ambig.anchor.count"]
     )
-    ambig_counts = syn["tmp.ambig.anchor.id"].map(
-        syn["tmp.ambig.anchor.id"].value_counts()
-    )
-    syn["syn.code"][ambig_counts == 1] = LOCALLY_UNAMBIGUOUS_CODE
-    syn["syn.code"][ambig_counts > 1] = AMBIGUOUS_CODE
+    syn["syn.code"] = syn["syn.code"].fillna(syn["tmp.ambig.code"])
     #
     # Hsh footprint and direction are anchor properties, where set
     #

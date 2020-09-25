@@ -6,12 +6,11 @@
 import attr
 import numpy as np
 import pandas as pd
-from loguru import logger
 
 # module imports
 from .common import DIRECTIONAL_CATEGORY
 from .common import hash_array
-
+from .common import logger
 
 # helper functions
 

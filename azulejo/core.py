@@ -19,7 +19,6 @@ from Bio import SeqIO
 
 # first-party imports
 import sh
-from loguru import logger
 
 # module imports
 from .common import NAME
@@ -27,6 +26,7 @@ from .common import cluster_set_name
 from .common import fasta_records
 from .common import get_paths_from_file
 from .common import homo_degree_dist_filename
+from .common import logger
 from .common import protein_properties_filename
 from .common import write_tsv_or_parquet
 from .protein import Sanitizer

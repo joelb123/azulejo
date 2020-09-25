@@ -12,7 +12,6 @@ from pkg_resources import iter_entry_points
 import click
 from click_plugins import with_plugins
 from click_loguru import ClickLoguru
-from loguru import logger
 
 # module imports
 from .common import NAME
@@ -30,7 +29,7 @@ from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.11"
+__version__ = "0.9.12"
 INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
     NAME.upper() + "_INSTALL_DIR"
 )
@@ -243,8 +242,15 @@ def parquet_to_fasta(parquetfile, fastafile, append):
     show_default=True,
     help="Allow repeats in anchor.",
 )
+@click.option(
+    "--write_ambiguous/--no_write_ambiguous",
+    default=True,
+    is_flag=True,
+    show_default=True,
+    help="Include ambiguous anchors.",
+)
 @click.argument("setname")
-def synteny(k, peatmer, setname):
+def synteny(k, peatmer, setname, write_ambiguous):
     """Calculate synteny anchors.
 
     \b
@@ -253,12 +259,15 @@ def synteny(k, peatmer, setname):
 
     """
     undeco_synteny_anchors(
-        k, peatmer, setname, click_loguru=click_loguru,
+        k,
+        peatmer,
+        setname,
+        click_loguru=click_loguru,
+        write_ambiguous=write_ambiguous,
     )
 
 
 @cli.command()
-@click_loguru.init_logger(logfile=False)
 @click.argument("rankname", nargs=-1)
 def taxonomy(rankname):
     """Check/show taxonomic ranks."""
@@ -269,7 +278,7 @@ def taxonomy(rankname):
         try:
             rankval = rankname_to_number(rankname)
         except ValueError as error_msg:
-            logger.error(error_msg)
+            print(f"ERROR: {error_msg}")
             sys.exit(1)
         print(rankval)
 
