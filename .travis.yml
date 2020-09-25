@@ -8,7 +8,6 @@ before_install:
    - pip install poetry
 install:
    - poetry install -v
-   - azulejo
 script:
    - export NCPUS=$(grep -c ^processor /proc/cpuinfo)
    - echo "NCPUS = $NCPUS"

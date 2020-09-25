@@ -9,7 +9,7 @@ from pathlib import Path
 
 # third-party imports
 import pytest
-from sh import Command
+import sh
 from sh import ErrorReturnCode
 
 # global constants
@@ -80,13 +80,12 @@ def working_directory(path):
 def help_check(subcommand):
     """Test help function for subcommand."""
     print(f"Test {subcommand} help.")
-    azulejo = Command("azulejo")
     if subcommand == "global":
         help_command = ["--help"]
     else:
         help_command = [subcommand, "--help"]
     try:
-        output = azulejo(help_command)
+        output = sh.azulejo(help_command)
     except ErrorReturnCode as errors:
         print(errors)
         pytest.fail(f"{subcommand} help test failed")
@@ -114,11 +113,10 @@ def print_docstring():
 
 def run_azulejo(args, component):
     """Run azulejo with args."""
-    azulejo = Command("azulejo")
     command_string = " ".join(args)
     print(f"Testing {component} with" + f'"azulejo {command_string}"')
     try:
-        azulejo(
+        sh.azulejo(
             args, _out=sys.stderr,
         )
     except ErrorReturnCode as errors:
