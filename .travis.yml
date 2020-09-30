@@ -8,18 +8,19 @@ before_install:
    - pip install poetry
 install:
    - poetry install -v
+   - free
 script:
    - export NCPUS=$(grep -c ^processor /proc/cpuinfo)
    - echo "NCPUS = $NCPUS"
    - export MAKEFLAGS="-j $NCPUS"
    - export LOG_TO_PRINT=info
    - export SPINNER_UPDATE_PERIOD="5.0"
-   - pytest tests/0cli_test.py
-   - pytest tests/1file_test.py
-   - pytest tests/2ingest_test.py
-   - pytest tests/3installer_test.py
-   - pytest -v tests/4homology_test.py
-   - travis_wait 60 pytest -v tests/5synteny_test.py
-   - pytest tests/6parquet_test.py
+   - pytest tests/0cli_test.py || travis_terminate 1;
+   - pytest tests/1file_test.py || travis_terminate 1;
+   - pytest tests/2ingest_test.py || travis_terminate 1;
+   - pytest tests/3installer_test.py || travis_terminate 1;
+   - pytest tests/4homology_test.py || travis_terminate 1;
+   - pytest tests/5synteny_test.py || travis_terminate 1;
+   - pytest tests/6parquet_test.py || travis_terminate 1;
 after_success:
   - bash <(curl -s https://codecov.io/bash) -X gcov

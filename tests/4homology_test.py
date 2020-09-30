@@ -25,22 +25,25 @@ def test_subcommand_help():
 
 
 @print_docstring()
-def test_homology(datadir_mgr):
+def test_homology(datadir_mgr, capsys):
     """Test homology clustering, MSA, and tree building."""
-    with datadir_mgr.in_tmp_dir(
-        inpathlist=INGEST_OUTPUTS,
-        save_outputs=True,
-        outscope="global",
-        excludepaths=["logs/"],
-    ):
-        args = ["-e", SUBCOMMAND, "glycines"]
-        print(f"azulejo {' '.join(args)}")
-        try:
-            azulejo(
-                args, _out=sys.stderr,
-            )
-        except sh.ErrorReturnCode as errors:
-            print(errors)
-            pytest.fail("Homology clustering failed")
-        for filestring in find_homology_files():
-            assert Path(filestring).stat().st_size > 0
+    with capsys.disabled():
+        with datadir_mgr.in_tmp_dir(
+            inpathlist=INGEST_OUTPUTS,
+            save_outputs=True,
+            outscope="global",
+            excludepaths=["logs/"],
+            progressbar=True,
+        ):
+            args = ["-e", SUBCOMMAND, "glycines"]
+
+            print(f"azulejo {' '.join(args)}")
+            try:
+                azulejo(
+                    args, _out=sys.stderr,
+                )
+            except sh.ErrorReturnCode as errors:
+                print(errors)
+                pytest.fail("Homology clustering failed")
+            for filestring in find_homology_files():
+                assert Path(filestring).stat().st_size > 0

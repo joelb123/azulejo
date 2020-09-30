@@ -167,7 +167,7 @@ else:
 
 if "SPINNER_UPDATE_PERIOD" in os.environ:
     try:
-        SPINNER_UPDATE_PERIOD = float(os.environ("SPINNER_UPDATE_PERIOD"))
+        SPINNER_UPDATE_PERIOD = float(os.environ["SPINNER_UPDATE_PERIOD"])
     except ValueError:
         SPINNER_UPDATE_PERIOD = 5.0
 else:

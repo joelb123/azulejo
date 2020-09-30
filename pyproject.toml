@@ -42,7 +42,6 @@ dask = {extras = ["bag"], version = "^2.15.0"}
 matplotlib = "^3.2.1"
 numpy = "^1.18.3"
 pandas = "^1.1.0"
-seaborn = "^0.10.1"
 click_plugins = "^1.1.1"
 sh = "^1.13.1"
 gffpandas = "^1.2.0"
@@ -53,11 +52,12 @@ pathvalidate = "^2.3.0"
 attrs = "^=19.3"
 smart-open = "^2.0.0"
 paramiko = "^2.7.1"
-poetry-dynamic-versioning = "^0.8.1"
 phylopandas = "^0.8.0"
 pyarrow = "^1.0.0"
 click_loguru = "^1.3.0"
 xxhash = "^2.0.0"
+seaborn = "^0.11.0"
+pytest-datadir-mgr = "^1.2.3"
 
 [tool.poetry.dev-dependencies]
 black = {version = "^20.8b1", allow-prereleases = true}
@@ -72,7 +72,7 @@ nox = "^2020.5.24"
 isort = "^5.4.2"
 flynt = "^0.52"
 pytest-cov = "^2.10.1"
-pytest_datadir_mgr = "^1.1.3"
+poetry-dynamic-versioning = "^0.9.0"
 
 [tool.poetry.scripts]
 azulejo = "azulejo:cli"
@@ -225,9 +225,7 @@ disable = """,
    """
 
 [tool.pytest.ini_options]
-addopts = "--capture=tee-sys --cov=azulejo -x"
-log_cli_level = "INFO"
-log_cli_format = "%(message)s"
+addopts = "--cov=azulejo -x"
 
 
 [tool.towncrier]

@@ -23,18 +23,9 @@ def test_subcommand_help():
 
 
 @print_docstring()
-def test_installer(tmp_path):
+def test_installer(tmp_path, capsys):
     """Test installer check and build functions."""
-    try:
-        output = azulejo([SUBCOMMAND])
-    except sh.ErrorReturnCode as errors:
-        print(errors)
-        pytest.fail("Installer test failed")
-    assert "muscle" in output
-    assert "usearch" in output
-    if "All dependencies" in output:
-        print("All dependencies already installed.")
-    else:
+    with capsys.disabled():
         with working_directory(tmp_path):
             try:
                 azulejo([SUBCOMMAND, "-y", "all"], _out=sys.stdout)
