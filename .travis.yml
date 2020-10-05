@@ -1,6 +1,10 @@
 dist: focal
 sudo: false
 language: python
+cache:
+    directories:
+        - $HOME/.cache/pip
+        - $HOME/tests/data
 compiler: gcc
 python:
    - "3.8"
