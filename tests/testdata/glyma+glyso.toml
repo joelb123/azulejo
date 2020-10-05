@@ -50,15 +50,5 @@ for genetic studies of several traits, including indeterminacy, seed size, pod n
 per plant, and seed color (Xie et al., 2019)."""
 citation_url =  "https://doi.org/10.1038/s41467-019-09142-9"
 
-[glycines.glyso.PI483463]
-rank = "strain"
-gff = "glyso.PI483463.gnm1.ann1.3Q3Q.gene_models_main.gff3.gz"
-fasta = "glyso.PI483463.gnm1.ann1.3Q3Q.protein_primaryTranscript.faa.gz"
-uri = "https://v1.legumefederation.org/data/index/public/Glycine_soja/PI483463.gnm1.ann1.3Q3Q/"
-origin = "Shanxi Sheng, China"
-comments = """
-Glycine soja accession PI 483463 has been identified as being unusually
-salt-tolerant (Lee et al., 2009)."""
-citation_url = "https://doi.org/10.1093/jhered/esp027"
 
 

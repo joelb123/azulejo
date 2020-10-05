@@ -10,9 +10,84 @@ from pathlib import Path
 import attr
 import numpy as np
 import numpy.ma as ma
+from memory_tempfile import MemoryTempfile
 
-# global constant
+# module imports
+from .common import SCRATCH_DEV
+from .common import append_slash
+from .common import disk_usage_mb
+from .common import free_mb
+from .common import is_writable
+
+# global constants
 MAX_LINE_LEN = 144
+
+
+# shared functions
+
+
+class SpaceAwareTempDevices:
+    """Allocate and collect stats on the fastest device that will hold your data."""
+
+    class TempDirAllocator:
+        """Reserve space and collect usage stats on a space-aware temp device."""
+
+        def __init(self, space_needed_mb=None):
+            """Select the fastest device with enough memory."""
+            self.space_needed = space_needed_mb
+            self.dev = fallback_dir
+            if self.space_needed is not None:
+                if space_needed_mb < FREE_MEM_MB:
+                    memdev_list = MemoryTempfile(
+                        filesystem_types=["tmpfs", "shm"]
+                    ).get_usable_mem_tempdir_paths()
+                    for memdev in memdev_list:
+                        self.initial_space_free = free_mb(memdev)
+                        if self.initial_space_free >= space_needed_mb:
+                            self.dev = memdev
+                            break
+                if self.dev == fallback_dir and SCRATCH_DEV is not None:
+                    self.initial_space_free = free_mb(SCRATCH_DEV)
+                    if self.initial_space_free >= space_needed_mb:
+                        self.dev = SCRATCH_DEV
+            if self.dev == fallback_dir:
+                self.initial_space_free = free_mb(self.dev)
+
+    def __init__(
+        self, scratch_dev=None, fallback_dev="/tmp/", addl_fs_types=None
+    ):
+        """Create a list of writable tmp devices and space allocations on them."""
+        self.fallback_dev = fallback_dev
+        self.scratch_dev = scratch_dev
+        fs_types = ["tmpfs", "shm"]
+        if addl_fs_types is not None:
+            fs_types += addl_fs_types
+        self.memdev_list = [
+            append_slash(dev)
+            for dev in MemoryTempfile(
+                filesystem_types=fs_types
+            ).get_usable_mem_tempdir_paths()
+            if is_writable(dev)
+        ]
+        logger.debug(f"Memory devices are {self.memdev_list}")
+        if self.scratch_dev is not None:
+            if not is_writable(self.scratch_dev):
+                logger.warn(
+                    f"Scratch device {self.scratch_dev} is not writable."
+                )
+                self.scratch_dev = None
+            else:
+                logger.debug(f"Scratch device is {self.scratch_dev}")
+        if not is_writable(self.fallback_dev):
+            logger.error(
+                f"fallback working device {self.fallback_dev} is not writable!"
+            )
+            sys.exit(1)
+        self.allocatable_devices = self.memdev_list.copy()
+        if self.scratch_dev is not None:
+            self.allocatable_devices.append(self.scratch_dev)
+        self.allocations = {k: 0 for k in self.allocatable_devices}
+        self.min_free = {k: free_mb(k) for k in self.allocatable_devices}
 
 
 @attr.s

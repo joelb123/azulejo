@@ -5,6 +5,7 @@ import contextlib
 import mmap
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 # third-party imports
@@ -12,6 +13,8 @@ import numpy as np
 import pandas as pd
 import xxhash
 from loguru import logger as loguru_logger
+from memory_tempfile import MemoryTempfile
+
 
 # global constants
 NAME = "azulejo"
@@ -55,7 +58,7 @@ PROTEOSYN_FILE = "proteomes.hom.syn.parq"
 PROTEINS_FILE = "proteins.parq"
 SYNTENY_FILE = "proteins.hom.syn.parq"
 ANCHORS_FILE = "anchors.tsv"
-SYNTENY_FILETYPE = "tsv"
+SYNTENY_FILETYPE = "parq"
 COLLECTION_FILE = "collection.json"
 COLLECTION_HOM_FILE = "collection.hom.json"
 COLLECTION_SYN_FILE = "collection.hom.syn.json"
@@ -121,6 +124,8 @@ NONDEFAULT_DTYPES = {
     ],
 }
 
+MEGABYTES = 1024.0 * 1024.0
+
 # logger class for use in testing
 
 
@@ -159,21 +164,42 @@ class PrintLogger:
             print(f"ERROR: {message}")
 
 
-# global variables that are set depending on env vars
+def is_writable(dev):
+    """Returns whether a device is writable or not."""
+    try:
+        testdir = tempfile.mkdtemp(prefix=NAME + "-", dir=append_slash(dev))
+        Path(testdir).rmdir()
+    except OSError:
+        return False
+    return True
+
+
+# global variables that are set depending on envvars
+# Don't use loguru, just print.  Useful for testing.
 if "LOG_TO_PRINT" in os.environ:
     logger = PrintLogger(os.environ["LOG_TO_PRINT"])
 else:
     logger = loguru_logger
-
+# Update period on spinners.  Also useful for testing.
 if "SPINNER_UPDATE_PERIOD" in os.environ:
     try:
         SPINNER_UPDATE_PERIOD = float(os.environ["SPINNER_UPDATE_PERIOD"])
     except ValueError:
         SPINNER_UPDATE_PERIOD = 5.0
 else:
-    SPINNER_UPDATE_PERIOD = 1.0  # period of progress bar updates
-
-# shared functions
+    SPINNER_UPDATE_PERIOD = 1.0
+# Fast scratch disk (e.g., SSD or /dev/shm), if other than /tmp
+if "SCRATCH_DEV" in os.environ and is_writable(os.environ["SCRATCH_DEV"]):
+    SCRATCH_DEV = os.environ["SCRATCH_DEV"]
+else:
+    SCRATCH_DEV = "/tmp"
+# Build disk for installer, needs to allow exe bit set
+if "BUILD_DEV" in os.environ and is_writable(os.environ["BUILD_DEV"]):
+    BUILD_DEV = os.environ["BUILD_DEV"]
+else:
+    BUILD_DEV = MemoryTempfile(
+        preferred_paths=["/run/user/{uid}"], fallback=True
+    ).get_usable_mem_tempdir_paths()[0]
 
 
 def enforce_canonical_dtypes(frame):
@@ -205,6 +231,56 @@ def enforce_canonical_dtypes(frame):
             except ValueError:
                 logger.warning(f"Cannot cast {col} to {should_be_type}")
     return frame
+
+
+def free_mb(dev):
+    """"Return the number of free MB on dev."""
+    fs_stats = os.statvfs(dev)
+    free_space_mb = int(
+        np.rint((fs_stats.f_bsize * fs_stats.f_bfree) / MEGABYTES)
+    )
+    return free_space_mb
+
+
+def append_slash(dev):
+    """Append a final slash, if needed."""
+    if not dev.endswith("/"):
+        dev += "/"
+    return dev
+
+
+def disk_usage_mb(pathstr):
+    """Calculate the size used in MB by a path."""
+    path = Path(pathstr)
+    if not path.exists():
+        logger.error(f"Path '{path}' does not exist for disk usage")
+        return 0
+    total_size = np.array(
+        [p.stat().st_size for p in path.rglob("*") if not p.is_symlink()]
+    ).sum()
+    return int(np.rint(total_size / MEGABYTES))
+
+
+class MinSpaceTracker:
+    """Keep track of the minimum space available on a (memory) device."""
+
+    def __init__(self, device):
+        """Remember the device and initialize minimum space."""
+        self.device = Path(device)
+        self.initial_space = free_mb(self.device)
+        self.min_space = self.initial_space
+
+    def check(self):
+        """Update the minimimum space available."""
+        self.min_space = min(self.min_space, free_mb(self.device))
+
+    def report_min(self):
+        """Report the minimum space available."""
+        return self.min_space
+
+    def report_used(self):
+        """Report change from initial space."""
+        return self.initial_space - self.min_space
 
 
 def cluster_set_name(stem, identity):

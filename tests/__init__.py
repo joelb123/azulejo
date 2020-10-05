@@ -19,8 +19,7 @@ W05_INPUTS = [
 ]
 
 SET_DIR = "glycines"
-PROT_SUBDIRS = ["glyso/W05/", "glyso/PI483463/", "glyma/"]
-N_ANCHORS = 32335
+PROT_SUBDIRS = ["glyso/W05/", "glyma/"]
 INGEST_OUTPUTS = [
     f"{SET_DIR}/{f}"
     for f in (
@@ -35,7 +34,6 @@ HOMOLOGY_OUTPUTS = [
         [
             "clusters.parq",
             "proteomes.hom.parq",
-            "groupkeys-2.tsv",
             "cluster_hist.tsv",
             "homology-stats.tsv",
         ]
@@ -43,7 +41,7 @@ HOMOLOGY_OUTPUTS = [
     )
 ]
 
-SYNTENY_OUTPUTS = [  # [f"{SET_DIR}/synteny/{i}.parq" for i in range(N_ANCHORS)] +
+SYNTENY_OUTPUTS = [
     f"{SET_DIR}/{f}"
     for f in (
         ["clusters.syn.parq", "proteomes.hom.syn.parq"]

@@ -18,11 +18,16 @@ from requests_download import ProgressTracker
 from requests_download import download as request_download
 
 # module imports
+from .common import MinSpaceTracker
+from .common import BUILD_DEV
+from .common import free_mb
+from .common import is_writable
 from .common import logger
 
 # Global constants
 PLATFORM_LIST = ["linux", "bsd", "macos", "unknown"]
 EXECUTABLE_EXTS = ".sh"
+MEGABYTES = 1024.0 * 1024.0
 
 
 def default_version_splitter(instring):
@@ -376,7 +381,18 @@ class DependencyInstaller(object):
         """Install a particular dependency."""
         logger.info(f"installing {dep}")
         dep_dict = self.dependency_dict[dep]
-        with tempfile.TemporaryDirectory() as tmp:
+        build_dev_path = BUILD_DEV
+        if not is_writable(build_dev_path):
+            logger.error(f"Build directory {build_dev_path} is not writable")
+            sys.exit(1)
+        initial_free_mb = free_mb(build_dev_path)
+        free_tracker = MinSpaceTracker(build_dev_path)
+        logger.debug(
+            f"building on {build_dev_path} with {free_tracker.report_min()} MB free"
+        )
+        with tempfile.TemporaryDirectory(
+            prefix="installer-", dir=build_dev_path
+        ) as tmp:
             tmppath = Path(tmp)
             logger.debug(f'build directory: "{tmppath}"')
             os.chdir(tmppath)
@@ -389,6 +405,7 @@ class DependencyInstaller(object):
                 self._download_untar(dep)
             elif "download_binaries" in dep_dict:
                 self._download_binaries(dep)
+            free_tracker.check()
             #
             # Change to the work directory.
             #
@@ -441,6 +458,7 @@ class DependencyInstaller(object):
                     os.chdir(workpath / newdir)
                     self._make(dep)
                     os.chdir(workpath)
+            free_tracker.check()
             #
             # Install the executables.
             #
@@ -448,3 +466,7 @@ class DependencyInstaller(object):
                 self._make_install(dep)
             elif "copy_binaries" in dep_dict:
                 self._copy_binaries(dep)
+            logger.info(
+                f"Build of {dep} on {build_dev_path} used"
+                + f" {free_tracker.report_used()}/{free_tracker.initial_space} MB"
+            )
