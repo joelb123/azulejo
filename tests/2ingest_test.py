@@ -26,22 +26,23 @@ def test_subcommand_help():
 
 
 @print_docstring()
-def test_net_data_ingestion(datadir_mgr):
+def test_net_data_ingestion(datadir_mgr, capsys):
     """Test ingesting compressed data from https."""
-    with datadir_mgr.in_tmp_dir(
-        inpathlist=W05_INPUTS + [NET_INPUT_FILE],
-        save_outputs=True,
-        outscope="global",
-        excludepaths=["logs/"],
-    ):
-        args = ["-e", SUBCOMMAND, NET_INPUT_FILE]
-        print(f"azulejo {' '.join(args)}")
-        try:
-            azulejo(
-                args, _out=sys.stderr,
-            )
-        except sh.ErrorReturnCode as errors:
-            print(errors)
-            pytest.fail("Ingestion failed")
-        for filestring in INGEST_OUTPUTS:
-            assert Path(filestring).exists()
+    with capsys.disabled():
+        with datadir_mgr.in_tmp_dir(
+            inpathlist=W05_INPUTS + [NET_INPUT_FILE],
+            save_outputs=True,
+            outscope="global",
+            excludepaths=["logs/"],
+        ):
+            args = ["-e", SUBCOMMAND, NET_INPUT_FILE]
+            print(f"azulejo {' '.join(args)}")
+            try:
+                azulejo(
+                    args, _out=sys.stderr,
+                )
+            except sh.ErrorReturnCode as errors:
+                print(errors)
+                pytest.fail("Ingestion failed")
+            for filestring in INGEST_OUTPUTS:
+                assert Path(filestring).exists()

@@ -7,7 +7,8 @@ python:
 before_install:
    - pip install poetry
 install:
-   - poetry install -v
+   - poetry install -v --no-dev
+   - pip install -v sh coverage[toml] nox pytest pytest-cov
    - free
    - df -h
 script:
@@ -19,7 +20,7 @@ script:
    - export SPINNER_UPDATE_PERIOD="5.0"
    - export TEST_DIR=/dev/shm/pytest
    - #pytest tests/0cli_test.py || travis_terminate 1;
-   - #pytest tests/1file_test.py || travis_terminate 1;
+   - pytest tests/1file_test.py::setup_datadir || travis_terminate 1;
    - mkdir $TEST_DIR
    - pytest --basetemp=$TEST_DIR tests/2ingest_test.py || travis_terminate 1;
    - rm -r $TEST_DIR; mkdir $TEST_DIR
@@ -30,4 +31,5 @@ script:
    - rm -r $TEST_DIR; mkdir $TEST_DIR
    - pytest --basetemp=$TEST_DIR  tests/6parquet_test.py || travis_terminate 1;
 after_success:
-  - bash <(curl -s https://codecov.io/bash) -X gcov
+  - echo "Should upload coverage here"
+  - #bash <(curl -s https://codecov.io/bash) -X gcov

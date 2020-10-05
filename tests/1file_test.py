@@ -19,7 +19,7 @@ SINGLE_INPUT_FILE = "W05.toml"
 
 
 @print_docstring()
-def test_setup(request):
+def test_setup_datadir(request, datadir_mgr, capsys):
     """Clean datadir and copy in static data."""
     testdir = Path(request.fspath.dirpath())
     datadir = testdir / "data"
@@ -27,19 +27,20 @@ def test_setup(request):
         shutil.rmtree(datadir)  # remove anything left in data directory
     filesdir = testdir / "testdata"
     shutil.copytree(filesdir, datadir)
+    with capsys.disabled():
+        datadir_mgr.download(
+            download_url=DOWNLOAD_URL,
+            files=W05_INPUTS,
+            scope="global",
+            md5_check=False,
+            gunzip=True,
+            progressbar=True,
+        )
 
 
 @print_docstring()
 def test_input_table_parsing(datadir_mgr):
     """Test input table parsing."""
-    datadir_mgr.download(
-        download_url=DOWNLOAD_URL,
-        files=W05_INPUTS,
-        scope="global",
-        md5_check=False,
-        gunzip=True,
-        progressbar=False,
-    )
     with datadir_mgr.in_tmp_dir(
         inpathlist=W05_INPUTS + [SINGLE_INPUT_FILE],
         save_outputs=True,
