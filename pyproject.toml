@@ -58,6 +58,8 @@ click_loguru = "^1.3.0"
 xxhash = "^2.0.0"
 seaborn = "^0.11.0"
 memory-tempfile = "^2.2.3"
+progressbar2 = "^3.53.1"
+requests_download = "^0.1.2"
 
 [tool.poetry.dev-dependencies]
 black = {version = "^20.8b1", allow-prereleases = true}

@@ -8,13 +8,13 @@ before_install:
    - pip install poetry
 install:
    - poetry install -v --no-dev
-   - pip install -v sh coverage[toml] nox pytest pytest-cov
+   - pip install -v sh coverage[toml] nox pytest pytest-cov pytest-datadir-mgr
    - free
    - df -h
 script:
    - export NCPUS=$(grep -c ^processor /proc/cpuinfo)
-   - export FREE_MB=$(free -m | grep Mem | awk '{print $3')
-   - echo "${NCPUS) cpus, ${FREE_MB} MB free"
+   - export FREE_MB=$(free -m | grep Mem | awk '{print $3}')
+   - echo "${NCPUS} cpus, ${FREE_MB} MB free"
    - export MAKEFLAGS="-j $NCPUS"
    - export LOG_TO_PRINT=info
    - export SPINNER_UPDATE_PERIOD="5.0"
