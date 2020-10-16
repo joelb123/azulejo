@@ -11,26 +11,43 @@ from azulejo.ingest import read_from_url
 
 # module imports
 from . import W05_INPUTS
+from . import W82_INPUTS
 from . import print_docstring
 
 # global constants
-DOWNLOAD_URL = "https://v1.legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
+W05_URL = "https://v1.legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
 SINGLE_INPUT_FILE = "W05.toml"
+W82_URL = "https://v1.legumefederation.org/data/index/public/Glycine_max/Wm82.gnm4.ann1.T8TQ/"
 
 
 @print_docstring()
-def test_setup_datadir(request, datadir_mgr, capsys):
-    """Clean datadir and copy in static data."""
+def test_clean_datadir(request):
+    """Clean up datadir."""
     testdir = Path(request.fspath.dirpath())
     datadir = testdir / "data"
     if datadir.exists():
         shutil.rmtree(datadir)  # remove anything left in data directory
+
+
+@print_docstring()
+def test_setup_datadir(request, datadir_mgr, capsys):
+    """Copy in and download static data."""
+    testdir = Path(request.fspath.dirpath())
+    datadir = testdir / "data"
     filesdir = testdir / "testdata"
     shutil.copytree(filesdir, datadir)
     with capsys.disabled():
         datadir_mgr.download(
-            download_url=DOWNLOAD_URL,
+            download_url=W05_URL,
             files=W05_INPUTS,
+            scope="global",
+            md5_check=False,
+            gunzip=True,
+            progressbar=True,
+        )
+        datadir_mgr.download(
+            download_url=W82_URL,
+            files=W82_INPUTS,
             scope="global",
             md5_check=False,
             gunzip=True,

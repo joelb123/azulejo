@@ -58,7 +58,7 @@ PROTEOSYN_FILE = "proteomes.hom.syn.parq"
 PROTEINS_FILE = "proteins.parq"
 SYNTENY_FILE = "proteins.hom.syn.parq"
 ANCHORS_FILE = "anchors.tsv"
-SYNTENY_FILETYPE = "parq"
+SYNTENY_FILETYPE = "tsv"
 COLLECTION_FILE = "collection.json"
 COLLECTION_HOM_FILE = "collection.hom.json"
 COLLECTION_SYN_FILE = "collection.hom.syn.json"
@@ -92,6 +92,7 @@ YES_NO = pd.CategoricalDtype(categories=["y", "n"])
 SYNTENY_CATEGORY = pd.CategoricalDtype(categories=CODE_DICT.keys())
 DEFAULT_DTYPE = pd.UInt32Dtype()
 NONDEFAULT_DTYPES = {
+    "anchor.subframe.ok": pd.BooleanDtype(),
     "code": SYNTENY_CATEGORY,
     "fasta_url": pd.StringDtype(),
     "gff_url": pd.StringDtype(),
@@ -103,11 +104,12 @@ NONDEFAULT_DTYPES = {
     "frag.len": pd.UInt64Dtype(),
     "frag.orig_id": pd.StringDtype(),
     "frag.start": pd.UInt64Dtype(),
+    "gff.feature": pd.CategoricalDtype(),
+    "gff.id": pd.CategoricalDtype(),
     "path": pd.CategoricalDtype(),
     "phy.*": pd.CategoricalDtype(),
     "preference": pd.StringDtype(),
     "prot.m_start": pd.BooleanDtype(),
-    "prot.n_ambig": pd.BooleanDtype(),
     "prot.no_stop": pd.BooleanDtype(),
     "prot.seq": pd.StringDtype(),
     "syn.anchor.direction": DIRECTIONAL_CATEGORY,
@@ -228,8 +230,9 @@ def enforce_canonical_dtypes(frame):
         if not is_correct_type:
             try:
                 frame[col] = frame[col].astype(should_be_type)
-            except ValueError:
+            except (ValueError, TypeError) as cast_err:
                 logger.warning(f"Cannot cast {col} to {should_be_type}")
+                logger.warning(cast_err)
     return frame
 
 

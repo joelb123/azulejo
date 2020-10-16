@@ -56,6 +56,9 @@ COMPRESSION_EXTENSIONS = (
     "bz2",
 )
 
+POSSIBLE_FEATURES = ("mRNA", "CDS")
+POSSIBLE_ID_COLS = ("ID", "gene", "Name", "protein_id", "Parent")
+
 MINIMUM_PROTEINS = 100
 
 
@@ -131,7 +134,7 @@ def ingest_sequences(input_toml, click_loguru=None):
     parallel = user_options["parallel"]
     input_obj = TaxonomicInputTable(Path(input_toml), write_table=False)
     input_table = input_obj.input_table
-    logger.info(f"Set name: {input_obj.setname}")
+    logger.info(f"Output directory: {input_obj.setname}/")
     set_path = Path(input_obj.setname)
     arg_list = []
     for unused_i, row in input_table.iterrows():
@@ -142,10 +145,14 @@ def ingest_sequences(input_toml, click_loguru=None):
         logger.info(f"Extracting FASTA/GFF info for {len(arg_list)} genomes:")
         ProgressBar().register()
     if parallel:
-        file_stats = bag.map(read_fasta_and_gff).compute()
+        file_stats = bag.map(
+            read_fasta_and_gff, verbose=options.verbose
+        ).compute()
     else:
         for args in arg_list:
-            file_stats.append(read_fasta_and_gff(args))
+            file_stats.append(
+                read_fasta_and_gff(args, verbose=options.verbose)
+            )
     del arg_list
     seq_stats = pd.DataFrame.from_dict([s[0] for s in file_stats]).set_index(
         "path"
@@ -173,8 +180,10 @@ def ingest_sequences(input_toml, click_loguru=None):
                 )
             )
     proteome_table_path = set_path / PROTEOMES_FILE
-    logger.info(f'Writing table of proteomes to "{proteome_table_path}')
-    logger.info("edit it to change preferences")
+    logger.info(
+        f'Edit table of proteomes at "{proteome_table_path}"'
+        + " to change preferences"
+    )
     write_tsv_or_parquet(proteomes, proteome_table_path)
     idx_start = 0
     for df in [s[2] for s in file_stats]:
@@ -186,7 +195,9 @@ def ingest_sequences(input_toml, click_loguru=None):
     frags = fragalyzer.assign_frag_properties(frags)
     frags_path = set_path / FRAGMENTS_FILE
     if not frags_path.exists():
-        logger.info(f'Writing "{frags_path}", edit it to rename fragments')
+        logger.info(
+            f'Edit fragment table at "{frags_path}" to rename fragments'
+        )
         write_tsv_or_parquet(frags, frags_path)
     else:
         new_frags_path = set_path / ("new." + FRAGMENTS_FILE)
@@ -196,37 +207,93 @@ def ingest_sequences(input_toml, click_loguru=None):
         write_tsv_or_parquet(frags, new_frags_path)
 
 
-def read_fasta_and_gff(args):
+def read_fasta_and_gff(args, verbose=False):
     """Read corresponding sequence and position files and construct consolidated tables."""
     dotpath, fasta_url, gff_url = args
     out_path = dotpath_to_path(dotpath)
-
     with read_from_url(fasta_url) as fasta_fh:
-        unused_stem, unused_path, prop_frame, file_stats = cleanup_fasta(
+        unused_stem, unused_path, fasta_props, proteome_stats = cleanup_fasta(
             out_path, fasta_fh, dotpath, write_fasta=False, write_stats=False
         )
-    if len(prop_frame) < MINIMUM_PROTEINS:
+    n_fasta = len(fasta_props)
+    if n_fasta < MINIMUM_PROTEINS:
         logger.error(f"For FASTA file at URL'{fasta_url}")
-        logger.error(f"Number of proteins read {len(prop_frame)} is too small")
+        logger.error(
+            f"Number of proteins read {len(fasta_props)} is too small"
+        )
         sys.exit(1)
     with filepath_from_url(gff_url) as local_gff_file:
         annotation = gffpd.read_gff3(local_gff_file)
-    features = annotation.filter_feature_of_type(
-        ["mRNA"]
-    ).attributes_to_columns()
-    if len(features) < MINIMUM_PROTEINS:
-        logger.error(f"For GFF file at URL'{fasta_url}")
-        logger.error(f"Number of records read {len(features)} is too small")
+    # We prefer mRNAs to CDS for reasons related to overlaps,
+    # but non-euks don't usually have mRNA features in GFF.
+    # Sometimes features like CDS are near-duplicates, so take
+    # the first entry.
+    n_features = 0
+    for feat_type in POSSIBLE_FEATURES:
+        filtered_features = annotation.filter_feature_of_type([feat_type])
+        n_features = len(filtered_features.df)
+        if n_features > MINIMUM_PROTEINS:
+            if verbose:
+                logger.debug(
+                    f"Using {n_features} features of type '{feat_type}' in {gff_url}"
+                )
+            break
+    if n_features < MINIMUM_PROTEINS:
+        logger.error(
+            f"Not enough {n_features} of types"
+            + f" {POSSIBLE_FEATURES} in GFF file {gff_url}"
+        )
         sys.exit(1)
-    del annotation
+    proteome_stats["gff.feature"] = feat_type
+    try:
+        non_uniq_feat_cols = filtered_features.attributes_to_columns()
+    except ValueError as val_err:
+        logger.error(val_err)
+        logger.error(
+            f"Badly-formed {feat_type} features in GFF file {gff_url}"
+        )
+        sys.exit(1)
+    # sometimes gene names are in ID, other times they're in gene
+    n_joint = 0
+    n_missing_in_gff = 0
+    for id_col in POSSIBLE_ID_COLS:
+        if id_col not in non_uniq_feat_cols.columns:
+            continue
+        feat_cols = non_uniq_feat_cols.drop_duplicates(subset=[id_col])
+        in_both = feat_cols[id_col].isin(fasta_props.index)
+        n_joint = in_both.astype(int).sum()
+        if n_joint > MINIMUM_PROTEINS:
+            if verbose:
+                logger.debug(
+                    f"Found {n_joint} FASTA IDs in GFF feature '{id_col}'"
+                )
+            n_missing_in_gff = n_fasta - n_joint
+            if n_missing_in_gff > 0:
+                logger.warning(
+                    f"{n_missing_in_gff} FASTA IDs not found in GFF file {gff_url}"
+                )
+            break
+    n_uniq_features = len(feat_cols)
+    proteome_stats["gff.dups"] = n_features - n_uniq_features
+    if n_joint < MINIMUM_PROTEINS:
+        logger.error(
+            f"Not enough ID's found ({n_joint}) that match FASTA IDS"
+            + f" from {POSSIBLE_ID_COLS} features in GFF file {gff_url}"
+        )
+        sys.exit(1)
+    proteome_stats["gff.id"] = id_col
+    proteome_stats["gff.missing"] = n_missing_in_gff
+    # Drop any features not found in sequence file, e.g., zero-length
+    features = feat_cols[in_both]
+    del annotation, filtered_features, feat_cols, in_both, non_uniq_feat_cols
     features.drop(
         features.columns.drop(
-            ["seq_id", "start", "strand", "ID"]
+            ["seq_id", "start", "strand", id_col]
         ),  # drop EXCEPT these
         axis=1,
         inplace=True,
     )  # drop non-essential columns
-    features = features.set_index("ID")
+    features = features.set_index(id_col)
     features = features.rename(
         columns={
             "start": "frag.start",
@@ -241,7 +308,7 @@ def read_fasta_and_gff(args):
         features["tmp.strand"], dtype=DIRECTIONAL_CATEGORY
     )
     # Drop any features not found in sequence file, e.g., zero-length
-    features = features[features.index.isin(prop_frame.index)]
+    features = features[features.index.isin(fasta_props.index)]
     # sort fragments by largest value
     frag_counts = features["frag.id"].value_counts()
     n_frags = len(frag_counts)
@@ -273,9 +340,9 @@ def read_fasta_and_gff(args):
     del frag_id_range
     # join GFF info to FASTA info
     joined_path = out_path / PROTEINS_FILE
-    features = features.join(prop_frame)
+    features = features.join(fasta_props)
     write_tsv_or_parquet(features, joined_path, sort_cols=False)
-    return file_stats, frag_stats, frags
+    return proteome_stats, frag_stats, frags
 
 
 @attr.s
@@ -387,7 +454,7 @@ class TaxonomicInputTable:
         self.setname = _validate_filename(list(tree.keys())[0])
         root_path = Path(self.setname)
         if not root_path.exists():
-            logger.info(f"Creating directory for set {self.setname}")
+            logger.debug(f"Creating directory for set {self.setname}")
             root_path.mkdir(parents=True)
         self._Node = attr.make_class(
             "Node", ["path", "name", "rank", "rank_val"]

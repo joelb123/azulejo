@@ -24,12 +24,13 @@ from .installer import DependencyInstaller
 from .parquet import parquet_to_tsv as undeco_parquet_to_tsv
 from .proxy import calculate_proxy_genes as undeco_calculate_proxy_genes
 from .synteny import synteny_anchors as undeco_synteny_anchors
+from .synteny import unique_anchors as undeco_unique_anchors
 from .taxonomy import print_taxonomic_ranks
 from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.12"
+__version__ = "0.9.13"
 INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
     NAME.upper() + "_INSTALL_DIR"
 )
@@ -39,6 +40,7 @@ else:
     INSTALL_PATH = None
 MUSCLE_VER = "3.8.1551"
 USEARCH_VER = "11.0.667"
+DAGCHAINER_TOOL_VER = "1.0"
 DEPENDENCY_DICT = {
     "muscle": {
         "binaries": ["muscle"],
@@ -71,6 +73,58 @@ DEPENDENCY_DICT = {
         "license": "proprietary non-commercial",
         "license_restrictive": True,
         "license_file": "LICENSE.txt",
+    },
+    "dagchainer_tool": {
+        "binaries": ["dagchainer_tool.sh"],
+        "tarball": (
+            "https://sourceforge.net/projects/dagchainer/files/dagchainer/"
+            + "DAGchainer-r02062008/DAGchainer_r02-06-2008.tar.gz/download"
+        ),
+        "dir": "DAGCHAINER",
+        "required": False,
+        "version": DAGCHAINER_TOOL_VER,
+        "version_command": ["version"],
+        "version": "1.0",
+        "patch": ["-p1", "-i", "dagchainer-0206008.patch"],
+        "make": [],
+        "copy_binaries": [
+            "dagchainer",
+            "dagchainer_tool.sh",
+            "blinkPerl_v1.1.pl",
+            "hash_into_fasta_id.pl",
+            "pairs_to_adjacency.py",
+            "rename_reorder_adjacency.py",
+            "top_blast_hit.awk",
+            "run_DAG_chainer.pl",
+        ],
+        "license": "GPL-2",
+        "license_restrictive": False,
+    },
+    "blast": {
+        "binaries": ["blastx"],
+        "tarball": (
+            "https://sourceforge.net/projects/dagchainer/files/dagchainer/"
+            + "DAGchainer-r02062008/DAGchainer_r02-06-2008.tar.gz/download"
+        ),
+        "dir": "DAGCHAINER",
+        "required": False,
+        "version": DAGCHAINER_TOOL_VER,
+        "version_command": ["-version"],
+        "version": "2.10.1",
+        "version_parser": lambda v: v.split()[1].split("_")[0].rstrip("+"),
+        "patch": ["-p1", "-i", "dagchainer-0206008.patch"],
+        "make": [],
+        "copy_binaries": [
+            "dagchainer",
+            "dagchainer_tool.sh",
+            "blinkPerl_v1.1.pl",
+            "hash_into_fasta_id.pl",
+            "pairs_to_adjacency.py",
+            "rename_reorder_adjacency.py",
+            "top_blast_hit.awk",
+        ],
+        "license": "GPL-2",
+        "license_restrictive": False,
     },
 }
 DEFAULT_K = 2
@@ -243,7 +297,7 @@ def parquet_to_fasta(parquetfile, fastafile, append):
     help="Allow repeats in anchor.",
 )
 @click.option(
-    "--write_ambiguous/--no_write_ambiguous",
+    "--write_ambiguous/--no-write-ambiguous",
     default=True,
     is_flag=True,
     show_default=True,
@@ -264,6 +318,27 @@ def synteny(k, peatmer, setname, write_ambiguous):
         setname,
         click_loguru=click_loguru,
         write_ambiguous=write_ambiguous,
+    )
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click_loguru.log_elapsed_time(level="info")
+@click_loguru.log_peak_memory_use(level="info")
+@click.option(
+    "-k", default=DEFAULT_K, help="Synteny anchor length.", show_default=True
+)
+@click.argument("setname")
+def unique_anchors(setname, k):
+    """Uniqueify synteny anchors.
+
+    \b
+    Example:
+        azulejo unique_anchors glycines
+
+    """
+    undeco_unique_anchors(
+        setname, k,
     )
 
 

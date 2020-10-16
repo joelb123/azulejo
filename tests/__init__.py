@@ -18,6 +18,11 @@ W05_INPUTS = [
     "glyso.W05.gnm1.ann1.T47J.gene_models_main.gff3",
 ]
 
+W82_INPUTS = [
+    "glyma.Wm82.gnm4.ann1.T8TQ.gene_models_main.gff3",
+    "glyma.Wm82.gnm4.ann1.T8TQ.protein_primaryTranscript.faa",
+]
+
 SET_DIR = "glycines"
 PROT_SUBDIRS = ["glyso/W05/", "glyma/"]
 INGEST_OUTPUTS = [

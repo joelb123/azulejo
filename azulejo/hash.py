@@ -30,17 +30,13 @@ def _cum_val_count(arr):
     return out_arr
 
 
-def _run_lengths_and_positions(vec):
-    """Compute vector of runlengths."""
-    uneq_idxs = np.append(np.where(vec[1:] != vec[:-1]), len(vec) - 1)
-    runlengths = np.diff(np.append(-1, uneq_idxs))
-    positions = np.cumsum(np.append(0, runlengths))[:-1]
-    return runlengths, positions
-
-
 def _true_positions_and_runs(bool_vec):
     """Return arrays of positions and lengths of runs of True."""
-    runlengths, positions = _run_lengths_and_positions(bool_vec)
+    uneq_idxs = np.append(
+        np.where(bool_vec[1:] != bool_vec[:-1]), bool_vec.size - 1
+    )
+    runlengths = np.diff(np.append(-1, uneq_idxs))
+    positions = np.cumsum(np.append(0, runlengths))[:-1]
     true_idxs = np.where(bool_vec[positions])
     return positions[true_idxs], runlengths[true_idxs]
 
@@ -177,7 +173,9 @@ class SyntenyBlockHasher(object):
         # Maybe the best code I've ever written--JB
         vec = cluster_series.to_numpy().astype(int)
         if self.peatmer:
-            runlengths, positions = _run_lengths_and_positions(vec)
+            uneq_idxs = np.append(np.where(vec[1:] != vec[:-1]), vec.size - 1)
+            runlengths = np.diff(np.append(-1, uneq_idxs))
+            positions = np.cumsum(np.append(0, runlengths))[:-1]
             n_mers = len(positions) - self.k + 1
             footprints = pd.array(
                 [runlengths[i : i + self.k].sum() for i in range(n_mers)],

@@ -50,6 +50,7 @@ ANCHOR_COLS = [
     "path",
     "syn.code",
     "syn.anchor.count",
+    "syn.anchor.direction",
     "syn.shingle.sub",
     "hom.cluster",
     "frag.id",
@@ -179,14 +180,13 @@ def synteny_anchors(
                 )
             )
     anchor_mb.delete()
-    anchor_frame = pd.DataFrame.from_dict(anchor_stats)
+    anchor_frame = pd.DataFrame.from_dict(
+        [a for a in anchor_stats if a is not None]
+    )
     anchor_frame.set_index(["anchor.id"], inplace=True)
     anchor_frame.sort_index(inplace=True)
     write_tsv_or_parquet(
-        anchor_frame,
-        set_path / ANCHORS_FILE,
-        float_format="%5.2f",
-        sort_cols=False,
+        anchor_frame, set_path / ANCHORS_FILE, sort_cols=False,
     )
     #
     # Merge synteny into clusters
@@ -363,6 +363,7 @@ def calculate_synteny_hashes(
     hom.replace(to_replace={"tmp.nan_group": 0}, value=pd.NA, inplace=True)
     hash_name = hasher.hash_name()
     syn_list = []
+    # TODO --investigate frag.direction sorting,
     for unused_id_tuple, subframe in hom.groupby(
         by=["frag.id", "tmp.nan_group"]
     ):
@@ -550,10 +551,10 @@ def merge_nonambig_hashes(
     for i, row in syn.iterrows():
         if pd.isnull(row["tmp.ambig.code"]):
             continue
-        ambig_count = ambig_count.iloc[i]
-        if ambig_count == 1:
+        ambig_n = ambig_counts.iloc[i]
+        if ambig_n == 1:
             syn["tmp.ambig.code"].iloc[i] = LOCALLY_UNAMBIGUOUS_CODE
-        elif ambig_count > 1:
+        elif ambig_n > 1:
             if write_ambiguous:
                 syn["tmp.ambig.code"].iloc[i] = AMBIGUOUS_CODE
             else:
@@ -707,32 +708,75 @@ def write_anchor(args, synteny_parent=None, mailbox_reader=None):
             file_handle, sep="\t", index_col=0
         ).convert_dtypes()
     in_anchor = len(anchor_frame)
+    if in_anchor == 0:
+        return None
     anchor_props = {
         "anchor.id": idx,
         "code": None,
         "count": None,
         "n": in_anchor,
         "n_ambig": None,
+        "frag.direction": None,
+        "syn.anchor.direction": None,
+        "anchor.subframe.ok": True,
     }
-    if in_anchor > 0:
-        # Make unique--a bit of a mystery why duplicates exist, will figure out later
-        anchor_frame.drop(
-            anchor_frame[anchor_frame.index.duplicated()].index, inplace=True
+    # Make unique--a bit of a mystery why duplicates exist, will figure out later
+    anchor_frame.drop(
+        anchor_frame[anchor_frame.index.duplicated()].index, inplace=True
+    )
+    code_set = set(anchor_frame["syn.code"])
+    anchor_dir_set = set(anchor_frame["syn.anchor.direction"])
+    if len(anchor_dir_set) == 1:
+        anchor_props["syn.anchor.direction"] = list(anchor_dir_set)[0]
+    frag_dir_set = set(anchor_frame["frag.direction"])
+    if len(frag_dir_set) == 1:
+        anchor_props["frag.direction"] = list(frag_dir_set)[0]
+
+    anchor_props["count"] = anchor_frame["syn.anchor.count"].iloc[0]
+    anchor_props["n_ambig"] = _count_code(
+        anchor_frame["syn.code"], AMBIGUOUS_CODE
+    )
+    for test_code in CODE_DICT.keys():
+        if test_code in code_set:
+            anchor_props["code"] = test_code
+            break
+    anchor_frame.sort_values(
+        by=["syn.shingle.sub", "frag.idx", "frag.pos"], inplace=True
+    )
+    bad_subframe = False
+    for sub_no, subframe in anchor_frame.groupby(by=["syn.shingle.sub"]):
+        anchor_subframe = subframe.copy()
+        hom_clust_set = set(anchor_subframe["hom.cluster"])
+        if len(hom_clust_set) == 1:
+            anchor_props[f"anchor.{sub_no}.cluster"] = list(hom_clust_set)[0]
+        else:
+            bad_subframe = True
+        del (
+            anchor_subframe["syn.anchor.count"],
+            anchor_subframe["syn.shingle.sub"],
         )
-        code_set = set(anchor_frame["syn.code"])
-        anchor_props["count"] = anchor_frame["syn.anchor.count"].iloc[0]
-        anchor_props["n_ambig"] = _count_code(
-            anchor_frame["syn.code"], AMBIGUOUS_CODE
+        anchor_props[f"anchor.{sub_no}.n"] = len(anchor_subframe)
+        anchor_props[f"anchor.{sub_no}.hash"] = hash_array(
+            anchor_subframe.index.to_numpy()
         )
-        for test_code in CODE_DICT.keys():
-            if test_code in code_set:
-                anchor_props["code"] = test_code
-                break
-        anchor_frame.sort_values(
-            by=["syn.shingle.sub", "frag.idx", "frag.pos"], inplace=True
+        (
+            anchor_props[f"anchor.{sub_no}.n_adj"],
+            anchor_props[f"anchor.{sub_no}.adj_groups"],
+            unused_adj_group,
+        ) = calculate_adjacency_group(
+            anchor_subframe["frag.pos"], anchor_subframe["frag.idx"]
         )
-        for sub_no, subframe in anchor_frame.groupby(by=["syn.shingle.sub"]):
+        write_tsv_or_parquet(
+            anchor_subframe,
+            synteny_parent / f"{idx}.{sub_no}.{SYNTENY_FILETYPE}",
+            sort_cols=False,
+        )
+    if bad_subframe:
+        sub_no = 0
+        anchor_props["anchor.subframe.ok"] = False
+        for cluster_id, subframe in anchor_frame.groupby(by=["hom.cluster"]):
             anchor_subframe = subframe.copy()
+            anchor_props[f"anchor.{sub_no}.cluster"] = cluster_id
             del (
                 anchor_subframe["syn.anchor.count"],
                 anchor_subframe["syn.shingle.sub"],
@@ -753,6 +797,7 @@ def write_anchor(args, synteny_parent=None, mailbox_reader=None):
                 synteny_parent / f"{idx}.{sub_no}.{SYNTENY_FILETYPE}",
                 sort_cols=False,
             )
+            sub_no += 1
     return anchor_props
 
 
@@ -792,3 +837,45 @@ def _fill_col1_val_where_col2_notna(col1, col2, val):
 def _count_code(code_ser, code):
     """Counts number of occurrances of code in code_ser."""
     return (code_ser == code).sum()
+
+
+def unique_anchors(setname, k):
+    """Reduce to unique anchors."""
+    set_path = Path(setname)
+    anchors = pd.read_csv(set_path / "anchors.tsv", sep="\t")
+    pos_set = [
+        anchors[f"anchor.{i}.hash"].to_numpy().astype(int) for i in range(k)
+    ]
+    intersections = [
+        set(pos_set[i]) & set(pos_set[i + 1]) for i in range(k - 1)
+    ]
+    n_to_remove = [len(inter) for inter in intersections]
+    logger.info(f"removing {n_to_remove[0]} non-unique anchors")
+    n_removed = 0
+    anchors["i"] = range(len(anchors))
+    path = set_path / "synteny"
+    correspondances = {i: {} for i in range(k - 1)}
+    # Get the correspondances in previous rows
+    for i, row in anchors.iterrows():
+        for pos in range(k - 1):
+            hashval = row[f"anchor.{pos}.hash"]
+            if hashval in intersections[pos]:
+                correspondances[pos][hashval] = row["i"]
+    # Delete and symlink current rows
+    n_uniq = 0
+    n_total = 0
+    for i, row in anchors.iterrows():
+        for pos in range(k - 1):
+            hashval = row[f"anchor.{pos+1}.hash"]
+            n_total += row["n"]
+            if hashval in intersections[pos]:
+                n_removed += 1
+                filepath = path / f"{i}.{pos+1}.tsv"
+                if filepath.exists():
+                    filepath.unlink()
+                linkpath = f"{correspondances[pos][hashval]}.{pos}.tsv"
+                filepath.symlink_to(linkpath)
+            else:
+                n_uniq += row["n"]
+    frac_unique = n_uniq * 100.0 / n_total
+    logger.info(f"{n_total} total, {n_uniq} unique ({frac_unique}%)anchors")

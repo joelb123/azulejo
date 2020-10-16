@@ -31,9 +31,6 @@ script:
    - pytest --basetemp=$TEST_DIR  tests/3installer_test.py || travis_terminate 1;
    - pytest tests/4homology_test.py || travis_terminate 1;
    - rm -r $TEST_DIR; mkdir $TEST_DIR
-   - pytest --basetemp=$TEST_DIR  tests/5synteny_test.py || travis_terminate 1;
-   - rm -r $TEST_DIR; mkdir $TEST_DIR
-   - pytest --basetemp=$TEST_DIR  tests/6parquet_test.py || travis_terminate 1;
+   - pytest --basetemp=$TEST_DIR  tests/5synteny_test.py
 after_success:
-  - echo "Should upload coverage here"
   - #bash <(curl -s https://codecov.io/bash) -X gcov

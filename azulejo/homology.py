@@ -318,12 +318,12 @@ def write_protein_fasta(args, clusters=None, fasta_dir=None):
     # write concatenated sequence info
     if clusters is None:
         fasta_path = concat_fasta_path
-        cluster_info = prot_info
+        info_to_fasta(None, fasta_path, append=True, infoobj=prot_info)
     else:
         for cluster_id, subframe in clusters.groupby(by=["cluster_id"]):
             cluster_info = prot_info[prot_info.index.isin(subframe["members"])]
             fasta_path = fasta_dir / f"{cluster_id}.fa"
-    info_to_fasta(None, fasta_path, append=True, infoobj=cluster_info)
+            info_to_fasta(None, fasta_path, append=True, infoobj=cluster_info)
 
 
 def parse_cluster(

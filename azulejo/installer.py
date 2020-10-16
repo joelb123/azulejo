@@ -26,7 +26,7 @@ from .common import logger
 
 # Global constants
 PLATFORM_LIST = ["linux", "bsd", "macos", "unknown"]
-EXECUTABLE_EXTS = ".sh"
+EXECUTABLE_EXTS = (".sh", ".pl", ".awk", ".py")
 MEGABYTES = 1024.0 * 1024.0
 
 
@@ -68,6 +68,9 @@ class DependencyInstaller(object):
         self.force = force
         self.pkg_name = pkg_name
         self.dependencies = tuple(dependency_dict.keys())
+        for dep in self.dependencies:
+            if "required" not in self.dependency_dict[dep]:
+                self.dependency_dict[dep]["required"] = True
         self.versions_checked = False
         if install_path is None:
             self.install_path = Path(sys.executable).parent.parent
@@ -167,15 +170,29 @@ class DependencyInstaller(object):
         else:
             bin_path_state += "not in path."
             logger.debug(f"Bin dir '{self.bin_path}' {bin_path_state}")
-        all_installed = all(
+        all_required = all(
             [
                 self.dependency_dict[d]["installed"]
                 for d in self.dependency_dict
+                if self.dependency_dict[d]["required"]
             ]
         )
-        if all_installed:
-            self.status_msg += "All dependencies are installed.\n"
-        return all_installed
+        all_optional = all(
+            [
+                self.dependency_dict[d]["installed"]
+                for d in self.dependency_dict
+                if not self.dependency_dict[d]["required"]
+            ]
+        )
+        if all_required:
+            if all_optional:
+                optional_str = "and optional"
+            else:
+                optional_str = ""
+            self.status_msg += (
+                f"All required {optional_str} dependencies are installed.\n"
+            )
+        return all_required
 
     def status(self, exe_paths=False):
         """Returns and the installation status message."""
@@ -187,7 +204,11 @@ class DependencyInstaller(object):
         """Install needed dependencies from a list."""
         self.check_all()
         if deplist == ("all",):
-            deplist = self.dependencies
+            deplist = [
+                d
+                for d in self.dependencies
+                if self.dependency_dict[d]["required"]
+            ]
         install_list = [
             dep
             for dep in deplist
@@ -320,6 +341,18 @@ class DependencyInstaller(object):
                     if filename.suffix in EXECUTABLE_EXTS:
                         file_path.chmod(0o755)
 
+    def _patch(self, dep):
+        """Apply a patch."""
+        patch = sh.Command("patch")
+        logger.debug(
+            f"   Applying patch {self.dependency_dict[dep]['patch']} in {Path.cwd()}"
+        )
+        try:
+            patch(self.dependency_dict[dep]["patch"], **self.output_kwargs)
+        except:
+            logger.error(f"patch of {dep} failed.")
+            sys.exit(1)
+
     def _make(self, dep):
         """Run make to build package."""
         make = sh.Command("make")
@@ -444,6 +477,8 @@ class DependencyInstaller(object):
             #
             # Build the executables.
             #
+            if "patch" in dep_dict:
+                self._patch(dep)
             if "configure" in dep_dict:
                 self._configure(dep)
             if "configure_extra_dirs" in dep_dict:

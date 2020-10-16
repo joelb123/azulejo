@@ -33,9 +33,8 @@ rank = "species"
 tax_id = 3847
 name = "Glycine max"
 common_name = "domesticated soybean"
-uri = "https://v1.legumefederation.org/data/index/public/Glycine_max/Wm82.gnm4.ann1.T8TQ/"
-gff = "glyma.Wm82.gnm4.ann1.T8TQ.gene_models_main.gff3.gz"
-fasta = "glyma.Wm82.gnm4.ann1.T8TQ.protein_primaryTranscript.faa.gz"
+gff = "glyma.Wm82.gnm4.ann1.T8TQ.gene_models_main.gff3"
+fasta = "glyma.Wm82.gnm4.ann1.T8TQ.protein_primaryTranscript.faa"
 
 [glycines.glyso.W05]
 rank = "strain"
