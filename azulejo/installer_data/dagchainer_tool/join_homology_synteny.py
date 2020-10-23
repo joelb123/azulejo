@@ -30,10 +30,8 @@ def join_homology_synteny(synfile, homfile):
         hom_counts = subframe["cluster_id"].value_counts()
         if len(hom_counts) == 1:
             n_consistent += 1
-    frac_inconsistent = (n_clusts - n_consistent) * 100.0 / n_clusts
-    print(
-        f"{n_consistent} consistent out of {n_clusts} clusters, {frac_inconsistent}% inconsistent"
-    )
+    n_inconsistent = n_clusts - n_consistent
+    print(f"   Inconsistent:\t{n_inconsistent}")
 
 
 if __name__ == "__main__":

@@ -783,7 +783,7 @@ def write_anchor(args, synteny_parent=None, mailbox_reader=None):
             )
             anchor_props[f"anchor.{sub_no}.n"] = len(anchor_subframe)
             anchor_props[f"anchor.{sub_no}.hash"] = hash_array(
-                anchor_subframe.index.to_numpy()
+                anchor_subframe.index.to_numpy().sort()
             )
             (
                 anchor_props[f"anchor.{sub_no}.n_adj"],
@@ -879,3 +879,17 @@ def unique_anchors(setname, k):
                 n_uniq += row["n"]
     frac_unique = n_uniq * 100.0 / n_total
     logger.info(f"{n_total} total, {n_uniq} unique ({frac_unique}%)anchors")
+
+
+def intersect_anchors(setname, k, compfile):
+    set_path = Path(setname)
+    anchors = pd.read_csv(set_path / "anchors.tsv", sep="\t")
+    pos_list = [
+        anchors[f"anchor.{i}.hash"].to_numpy().astype(int) for i in range(k)
+    ]
+    first_set = set(pos_list[0]) | set(pos_list[1])
+    others = pd.read_csv(compfile, sep="\t")
+    other_set = set(others["hash"].to_numpy().astype(int))
+    intersection = first_set & other_set
+    logger.info(f"{len(intersection)} anchors overlap between sets")
+    print(intersection)

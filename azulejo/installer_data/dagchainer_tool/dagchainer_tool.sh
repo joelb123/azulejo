@@ -102,7 +102,9 @@ histogram() {
   printf '#N\tSize\n'
   cat $1 | sort -k $field -n -t ',' | cut -d ',' -f $field | uniq -c
 }
-#
+field_from_line() {
+  echo "$1"| awk  -v OFS="\t" 'NR=='"$2"'{print $2}'
+}
 perl_defs() {
   #
   # Perl local::lib settings, where Bioperl::SeqIO is installed
@@ -145,10 +147,14 @@ run_ingest() {
   echo
 }
 #
-run_blast_dbs() {
-  echo "blast_dbs--creating BLAST databases"
-  start_time=$(date +%s)
+run_blastall() {
+  e_val=$(get_value e_val)
+  pct_id=$(get_value pct_identity)
+  n_threads=$(get_value blast_threads)
   fasta_ext=$(get_value fasta_ext)
+  echo "blastall--doing half-diagonal BLAST at ${e_val} E-value and ${pct_id}% identity using ${n_threads} threads"
+  start_time=$(date +%s)
+  # create BLAST databases
   for path in ${work_dir}/*.${fasta_ext}; do
     base=$(basename $path .${fasta_ext})
     makeblastdb -in $path -dbtype $(get_value dbtype) \
@@ -156,17 +162,7 @@ run_blast_dbs() {
       $base -out ${blast_db_dir}/$base 1>/dev/null &
   done
   wait
-  end_time=$(date +%s)
-  set_value db_time_s $((end_time-start_time))
-}
-#
-run_blastall() {
-  e_val=$(get_value e_val)
-  pct_id=$(get_value pct_identity)
-  n_threads=$(get_value blast_threads)
-  echo "blastall--doing half-diagonal BLAST at ${e_val} E-value and ${pct_id}% identity using ${n_threads} threads"
-  start_time=$(date +%s)
-  fasta_ext=$(get_value fasta_ext)
+  #
   for qry_path in ${work_dir}/*.${fasta_ext}; do
     qry_base=$(basename $qry_path .${fasta_ext})
     for sbj_path in ${work_dir}/*.${fasta_ext}; do
@@ -199,7 +195,7 @@ run_filter(){
 #
 run_dagchainer() {
   dag_args=$(get_value dagchainer_args)
-  echo "dagchainer--running DAGchainer using args ${dag_args} "
+  echo "dagchainer--running DAGchainer using args \"${dag_args}\""
   start_time=$(date +%s)
   for match_path in ${dag_dir}/*_matches.tsv; do
     run_DAG_chainer.pl $dag_args \
@@ -211,10 +207,12 @@ run_dagchainer() {
   echo "generating single-linkage synteny anchors"
   printf "matches\tscore\trev\tid1\tid2\n" >${work_dir}/synteny_blocks.tsv
   for path in ${dag_dir}/*.aligncoords; do
-    file1=${path%%.x.*}
-    file2=$(basename ${path##*.x.} _matches.tsv.aligncoords)
     cat $path | awk '$1!~/^#/ {print $2 "\t" $6}' \
       >>${work_dir}/homology_pairs.tsv
+  done
+  for path in ${dag_dir}/*.aligncoords; do
+    cat $path | awk '$1!~/^#/ {print $2 "\t" $6}' \
+      >>${work_dir}/synteny_pairs.tsv
     cat $path | grep \#\# | grep -v reverse |
       awk '{print substr($14,0,length($14)-2) "\t" $10 "\t" 1 "\t" $3 "\t" $5}' \
         >>${work_dir}/synteny_blocks.tsv
@@ -222,10 +220,6 @@ run_dagchainer() {
       awk '{print substr($15,0,length($15)-2) "\t" $11 "\t" 1 "\t" $3 "\t" $5}' \
         >>${work_dir}/synteny_blocks.tsv
   done
-  blinkPerl_v1.1.pl -in ${work_dir}/homology_pairs.tsv \
-    -sum ${work_dir}/cluster_sizes.txt \
-    -out ${work_dir}/clusters.txt
-  echo
 }
 #
 run_summarize() {
@@ -235,27 +229,33 @@ run_summarize() {
       echo "creating output directory \"${out_dir}/\""
       mkdir -p $out_dir
   fi
-  rename_reorder_adjacency.py ${work_dir}/clusters.txt ${out_dir}/synteny_anchors.tsv
-  n_anchors=$(cat ${out_dir}/synteny_anchors.tsv | wc -l)
   cp ${work_dir}/synteny_blocks.tsv ${out_dir}/synteny_blocks.tsv
-  n_blocks=$(cat ${out_dir}/synteny_blocks.tsv | wc -l)
-  echo "${n_anchors} anchors produced ${n_blocks} synteny blocks"
-  echo "Computing homology clusters"
-  pairs_to_adjacency.py ${work_dir}/homology_pairs.tsv ${out_dir}/homology_clusters.tsv
-  join_homology_synteny.py ${work_dir}/synteny_anchors.tsv ${work_dir}/homology_clusters.tsv
-  printf "stat\tvalue\n" >${out_dir}/stats.tsv
-  head -2 ${work_dir}/cluster_sizes.txt |
-    sed -e 's/: /\t/' |
-    sed -e 's/\.//' |
-    sed -e 's/Total number of //' \
-      >>${out_dir}/stats.tsv
-  seqids=$(grep seqids ${work_dir}/cluster_sizes.txt | awk '{print $8}')
-  scriptend=$(date +%s)
-  printf "seqids_in_clusters\t$seqids\n" >>${out_dir}/stats.tsv
-  printf "db_time_s\t$(get_value db_time_s)\n" >>${out_dir}/stats.tsv
+  let "n_blocks=$(cat ${out_dir}/synteny_blocks.tsv | wc -l)-1"
+  printf "stat\tvalue\n">${out_dir}/stats.tsv
+  printf "synteny_blocks\t$n_blocks\n" >>${out_dir}/stats.tsv
+  echo "creating homology clusters via adjacency"
+  hom_out=$(pairs_to_adjacency.py ${work_dir}/homology_pairs.tsv ${out_dir}/homology_clusters.tsv)
+  seqs_in_homology=$(field_from_line "$hom_out" 1)
+  printf "seqs_in_homology\t${seqs_in_homology}\n" >>${out_dir}/stats.tsv
+  homology_clusters=$(field_from_line "$hom_out" 2)
+  printf "homology_clusters\t${homology_clusters}\n" >>${out_dir}/stats.tsv
+  largest_homology_cluster=$(field_from_line "$hom_out" 3)
+  printf "largest_homology_cluster\t${largest_homology_cluster}\n" >>${out_dir}/stats.tsv
+  #
+  echo "creating synteny anchors"
+  syn_out=$(pairs_to_adjacency.py ${work_dir}/synteny_pairs.tsv ${out_dir}/synteny_anchors.tsv)
+  seqs_in_synteny=$(field_from_line "$syn_out" 1)
+  printf "seqs_in_synteny\t${seqs_in_synteny}\n" >>${out_dir}/stats.tsv
+  synteny_anchors=$(field_from_line "$syn_out" 2)
+  printf "synteny_anchors\t${synteny_anchors}\n" >>${out_dir}/stats.tsv
+  largest_synteny_anchor=$(field_from_line "$syn_out" 3)
+  printf "largest_synteny_anchor\t${largest_synteny_anchor}\n" >>${out_dir}/stats.tsv
+  syn_consist_out=$(join_homology_synteny.py ${out_dir}/synteny_anchors.tsv ${out_dir}/homology_clusters.tsv)
+  synteny_inconsistencies=$(field_from_line "$syn_consist_out" 1)
+  printf "synteny_inconsistencies\t${synteny_inconsistencies}\n" >>${out_dir}/stats.tsv
+  #
   printf "blast_time_s\t$(get_value blast_time_s)\n" >>${out_dir}/stats.tsv
   printf "dag_time_s\t$(get_value dag_time_s)\n" >>${out_dir}/stats.tsv
-
   echo
   cat ${out_dir}/stats.tsv
 }
@@ -342,13 +342,12 @@ Steps:
    If STEP is not set, the following steps will be run in order,
    otherwise the step is run by itself:
               ingest - get info from matching GFF and FASTA files
-           blast_dbs - create BLAST databases
-            blastall - do all-against-all blast
+            blastall - cluster via BLAST
               filter - reduce to top reciprocal hits above pct_identity
           dagchainer - compute Directed Acyclic Graphs
            summarize - compute synteny stats
 """
-  commandlist="ingest blast_dbs blastall filter dagchainer summarize"
+  commandlist="ingest blastall filter dagchainer summarize"
   if [ "$#" -eq 0 ]; then # run the whole list
     for package in $commandlist; do
       run_$package

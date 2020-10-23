@@ -23,6 +23,7 @@ from .ingest import ingest_sequences as undeco_ingest_sequences
 from .installer import DependencyInstaller
 from .parquet import parquet_to_tsv as undeco_parquet_to_tsv
 from .proxy import calculate_proxy_genes as undeco_calculate_proxy_genes
+from .synteny import intersect_anchors as undeco_intersect_anchors
 from .synteny import synteny_anchors as undeco_synteny_anchors
 from .synteny import unique_anchors as undeco_unique_anchors
 from .taxonomy import print_taxonomic_ranks
@@ -30,7 +31,7 @@ from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.13"
+__version__ = "0.9.14"
 INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
     NAME.upper() + "_INSTALL_DIR"
 )
@@ -90,10 +91,8 @@ DEPENDENCY_DICT = {
         "copy_binaries": [
             "dagchainer",
             "dagchainer_tool.sh",
-            "blinkPerl_v1.1.pl",
             "hash_into_fasta_id.pl",
             "pairs_to_adjacency.py",
-            "rename_reorder_adjacency.py",
             "top_blast_hit.awk",
             "run_DAG_chainer.pl",
         ],
@@ -324,7 +323,6 @@ def synteny(k, peatmer, setname, write_ambiguous):
 @cli.command()
 @click_loguru.init_logger()
 @click_loguru.log_elapsed_time(level="info")
-@click_loguru.log_peak_memory_use(level="info")
 @click.option(
     "-k", default=DEFAULT_K, help="Synteny anchor length.", show_default=True
 )
@@ -340,6 +338,25 @@ def unique_anchors(setname, k):
     undeco_unique_anchors(
         setname, k,
     )
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click_loguru.log_elapsed_time(level="info")
+@click.option(
+    "-k", default=DEFAULT_K, help="Synteny anchor length.", show_default=True
+)
+@click.argument("setname")
+@click.argument("compfile")
+def intersect_anchors(setname, k, compfile):
+    """Intersect two sets of synteny anchors.
+
+    \b
+    Example:
+        azulejo intersect_anchors glycines dagchainer_tool_out/synteny_anchor_summary.tsv
+
+    """
+    undeco_intersect_anchors(setname, k, compfile)
 
 
 @cli.command()
