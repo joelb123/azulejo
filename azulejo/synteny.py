@@ -45,13 +45,13 @@ from .merger import AmbiguousMerger
 
 # global constants
 __ALL__ = ["synteny_anchors"]
-CLUSTER_COLS = ["syn.anchor.id", "syn.anchor.direction"]
+CLUSTER_COLS = ["syn.anchor.id", "syn.anchor.count", "syn.anchor.direction"]
 ANCHOR_COLS = [
     "path",
     "syn.code",
     "syn.anchor.count",
     "syn.anchor.direction",
-    "syn.shingle.sub",
+    "syn.anchor.sub_id",
     "hom.cluster",
     "frag.id",
     "frag.pos",
@@ -72,7 +72,7 @@ MAILBOX_SUBDIR = "mailboxes"
 
 # CLI function
 def synteny_anchors(
-    k, peatmer, setname, click_loguru=None, write_ambiguous=True
+    k, peatmer, setname, click_loguru=None, write_ambiguous=True, shingle=True,
 ):
     """Calculate synteny anchors."""
     #
@@ -147,11 +147,14 @@ def synteny_anchors(
             "anchor_mb": anchor_mb,
             "n_proteomes": n_proteomes,
             "write_ambiguous": write_ambiguous,
+            "shingle": shingle,
         },
     )
     write_tsv_or_parquet(
         proteomes, set_path / PROTEOSYN_FILE, remove_tmp=False
     )
+    # logger.error("exiting now")
+    # sys.exit(1)
     #
     # Write anchors
     #
@@ -180,11 +183,13 @@ def synteny_anchors(
                 )
             )
     anchor_mb.delete()
-    anchor_frame = pd.DataFrame.from_dict(
-        [a for a in anchor_stats if a is not None]
-    )
-    anchor_frame.set_index(["anchor.id"], inplace=True)
-    anchor_frame.sort_index(inplace=True)
+    anchor_stat_list = []
+    for results in anchor_stats:
+        if results is not None:
+            anchor_stat_list += results
+    anchor_frame = pd.DataFrame.from_dict(results)
+    # anchor_frame.set_index(["anchor.id"], inplace=True)
+    # anchor_frame.sort_index(inplace=True)
     write_tsv_or_parquet(
         anchor_frame, set_path / ANCHORS_FILE, sort_cols=False,
     )
@@ -502,6 +507,7 @@ def merge_disambig_hashes(
     unique_hashes = unique_hashes.set_index(hash_name).sort_index()
     with mailboxes.locked_open_for_write(idx) as file_handle:
         unique_hashes.to_csv(file_handle, header=False, sep="\t")
+    # logger.debug(f"{dotpath} has {syn['syn.anchor.id'].notna().sum()} assignments")
     return {
         "idx": idx,
         "path": dotpath,
@@ -520,6 +526,7 @@ def merge_nonambig_hashes(
     cluster_mb=None,
     anchor_mb=None,
     write_ambiguous=True,
+    shingle=True,
 ):
     """Merge disambiguated synteny hashes into proteomes per-proteome."""
     idx, dotpath = args
@@ -544,29 +551,27 @@ def merge_nonambig_hashes(
     # Do the nonambig (w.r.t. this proteome) and ambig, if requested
     #
     syn = _join_on_col_with_na(syn, ambig, hash_name)
-    ambig_counts = syn["tmp.ambig.anchor.id"].map(
-        syn["tmp.ambig.anchor.id"].value_counts()
-    )
-    syn["tmp.ambig.code"] = pd.NA
-    for i, row in syn.iterrows():
-        if pd.isnull(row["tmp.ambig.code"]):
-            continue
-        ambig_n = ambig_counts.iloc[i]
-        if ambig_n == 1:
-            syn["tmp.ambig.code"].iloc[i] = LOCALLY_UNAMBIGUOUS_CODE
-        elif ambig_n > 1:
-            if write_ambiguous:
-                syn["tmp.ambig.code"].iloc[i] = AMBIGUOUS_CODE
-            else:
-                syn["tmp.ambig.anchor.id"].iloc[i] = pd.NA
-                syn["tmp.ambig.anchor.count"].iloc[i] = pd.NA
-    syn["syn.anchor.id"] = syn["syn.anchor.id"].fillna(
-        syn["tmp.ambig.anchor.id"]
-    )
-    syn["syn.anchor.count"] = syn["syn.anchor.count"].fillna(
-        syn["tmp.ambig.anchor.count"]
-    )
-    syn["syn.code"] = syn["syn.code"].fillna(syn["tmp.ambig.code"])
+    n_proteins = len(syn)
+    syn["tmp.i"] = range(n_proteins)
+    ambig_code = syn["syn.code"].copy()
+    ambig_ids = syn["tmp.ambig.anchor.id"].copy()
+    ambig_counts = syn["tmp.ambig.anchor.count"].copy()
+    for unused_ambig_id, subframe in syn.groupby(by=["tmp.ambig.anchor.id"]):
+        ambig_n = len(subframe)
+        for unused_i, row in subframe.iterrows():
+            row_no = row["tmp.i"]
+            if ambig_n == 1:
+                ambig_code.iloc[row_no] = LOCALLY_UNAMBIGUOUS_CODE
+            elif ambig_n > 1:
+                if write_ambiguous:
+                    ambig_code.iloc[row_no] = AMBIGUOUS_CODE
+                else:
+                    ambig_ids.iloc[row_no] = pd.NA
+                    ambig_counts.iloc[row_no] = pd.NA
+    syn["syn.anchor.id"] = syn["syn.anchor.id"].fillna(ambig_ids)
+    syn["syn.anchor.count"] = syn["syn.anchor.count"].fillna(ambig_counts)
+    syn["syn.code"] = syn["syn.code"].fillna(ambig_code)
+    del ambig_code, ambig_ids, ambig_counts
     #
     # Hsh footprint and direction are anchor properties, where set
     #
@@ -576,71 +581,65 @@ def merge_nonambig_hashes(
             "syn.hash.direction": "syn.anchor.direction",
         }
     )
-    # syn = _fill_col1_val_where_col2_notna(syn,
-    #        "syn.anchor.footprint", "syn.anchor.id", pd.NA)
-    # syn = _fill_col1_val_where_col2_notna(syn,
-    #        "syn.anchor.direction", "syn.anchor.id", pd.NA)
+    n_anchors = syn["syn.anchor.id"].notna().sum()  # before shingling
     #
-    # Do shingling and write synteny blocks
+    # Do shingling, if requested
     #
-    n_proteins = len(syn)
-    syn["tmp.i"] = range(n_proteins)
-    shingle_base = np.array([np.nan] * n_proteins)
-    shingle_sub = np.array([np.nan] * n_proteins)
-    shingle_count = np.array([np.nan] * n_proteins)
-    for anchor_count, subframe in syn.groupby(by=["syn.anchor.count"]):
-        for unused_i, row in subframe.iterrows():
-            anchor_id = row["syn.anchor.id"]
-            if pd.isnull(anchor_id):
-                continue
-            footprint = row["syn.anchor.footprint"]
-            count = row["syn.anchor.count"]
-            code = row["syn.code"]
-            row_no = row["tmp.i"]
-            anchor_frame = syn.iloc[row_no : row_no + footprint].copy()
-            shingle_base[row_no : row_no + footprint] = anchor_id
-            shingle_count[row_no : row_no + footprint] = anchor_count
-            subs = hasher.shingle(
-                syn["hom.cluster"][row_no : row_no + footprint],
-                row["syn.anchor.direction"],
-                row[hash_name],
-            )
-            shingle_sub[row_no : row_no + footprint] = subs
-            anchor_frame["syn.shingle.sub"] = subs
-            anchor_frame["syn.code"] = code
-            anchor_frame["syn.anchor.count"] = count
-            anchor_frame["path"] = dotpath
-            with anchor_mb.locked_open_for_write(anchor_id) as file_handle:
-                anchor_frame[ANCHOR_COLS].dropna().to_csv(
-                    file_handle, header=False, sep="\t"
+    if shingle:
+        shingle_id = np.array([np.nan] * n_proteins)
+        shingle_count = np.array([np.nan] * n_proteins)
+        shingle_code = syn["syn.code"].to_numpy()
+        shingle_direction = syn["syn.anchor.direction"].to_numpy()
+        shingle_sub = np.array([np.nan] * n_proteins)
+        for anchor_count, subframe in syn.groupby(by=["syn.anchor.count"]):
+            for unused_i, row in subframe.iterrows():
+                anchor_id = row["syn.anchor.id"]
+                if pd.isnull(anchor_id):
+                    continue
+                first_row = row["tmp.i"]
+                last_row = first_row + row["syn.anchor.footprint"]
+                shingle_id[first_row:last_row] = anchor_id
+                shingle_count[first_row:last_row] = anchor_count
+                shingle_code[first_row:last_row] = row["syn.code"]
+                shingle_direction[first_row:last_row] = row[
+                    "syn.anchor.direction"
+                ]
+                shingle_sub[first_row:last_row] = hasher.shingle(
+                    syn["hom.cluster"][first_row:last_row],
+                    row["syn.anchor.direction"],
+                    row[hash_name],
                 )
-    syn["syn.shingle.base"] = shingle_base
-    syn["syn.shingle.sub"] = shingle_sub
-    syn["syn.shingle.count"] = shingle_sub
+        syn["syn.anchor.id"] = shingle_id
+        syn["syn.anchor.count"] = shingle_count
+        syn["syn.code"] = shingle_code
+        syn["syn.anchor.direction"] = shingle_direction
+        syn["syn.anchor.sub_id"] = shingle_sub
+        del shingle_id, shingle_count, shingle_code, shingle_sub
+    else:
+        subs = np.array([np.nan] * n_proteins)
+        for unused_anchor_id, subframe in syn.groupby(by=["syn.anchor.id"]):
+            for unused_i, row in subframe.iterrows():
+                subs[row["tmp.i"]] = 0
+        syn["syn.anchor.sub_id"] = subs
+        del subs
     # Delete non-needed (but non-tmp) columns
     non_needed_cols = [hash_name]
     syn = syn.drop(columns=non_needed_cols)
+    # Write proteome file
     write_tsv_or_parquet(
         syn, outpath / SYNTENY_FILE,
     )
-    for cluster_id, subframe in syn.groupby(by=["hom.cluster"]):
-        with cluster_mb.locked_open_for_write(cluster_id) as file_handle:
-            subframe[CLUSTER_COLS].dropna().to_csv(
+    # Write anchor info to mailbox
+    for anchor_id, subframe in syn.groupby(by=["syn.anchor.id"]):
+        anchor_frame = subframe.copy()
+        anchor_frame["path"] = dotpath
+        with anchor_mb.locked_open_for_write(anchor_id) as file_handle:
+            anchor_frame[ANCHOR_COLS].to_csv(
                 file_handle, header=False, sep="\t"
             )
-    n_assigned = n_proteins - syn["hom.cluster"].isnull().sum()
-    # Do histogram of blocks
-    anchor_counts = syn["syn.anchor.id"].value_counts()
-    anchor_hist = pd.DataFrame(anchor_counts.value_counts()).sort_index()
-    anchor_hist = anchor_hist.rename(
-        columns={"syn.anchor.id": "hash.self_count"}
-    )
-    anchor_hist["pct_anchors"] = (
-        anchor_hist["hash.self_count"] * anchor_hist.index * 100.0 / n_assigned
-    )
-    del anchor_hist["hash.self_count"]
-    write_tsv_or_parquet(anchor_hist, outpath / ANCHOR_HIST_FILE)
-    # Do histogram of anchors
+    for cluster_id, subframe in syn.groupby(by=["hom.cluster"]):
+        with cluster_mb.locked_open_for_write(cluster_id) as file_handle:
+            subframe[CLUSTER_COLS].to_csv(file_handle, header=False, sep="\t")
     in_synteny = syn["syn.anchor.id"].notna().sum()
     n_assigned = syn["hom.cluster"].notna().sum()
     avg_ortho = syn["syn.anchor.count"].mean()
@@ -660,6 +659,7 @@ def merge_nonambig_hashes(
         "syn.anchors.ambiguous": n_ambig,
         "syn.anchors.nonambiguous": n_nonambig,
         "syn.anchors.nonambig_pct": nonambig_pct,
+        "syn.anchors.base": n_anchors,
         "syn.anchors.total": in_synteny,
         "syn.anchors.total_pct": synteny_pct,
         "syn.orthogenomic_pct": avg_ortho * 100.0 / n_proteomes,
@@ -710,95 +710,104 @@ def write_anchor(args, synteny_parent=None, mailbox_reader=None):
     in_anchor = len(anchor_frame)
     if in_anchor == 0:
         return None
-    anchor_props = {
-        "anchor.id": idx,
-        "code": None,
-        "count": None,
-        "n": in_anchor,
-        "n_ambig": None,
-        "frag.direction": None,
-        "syn.anchor.direction": None,
-        "anchor.subframe.ok": True,
-    }
-    # Make unique--a bit of a mystery why duplicates exist, will figure out later
+    # drop any duplicated ID's--normally shouldn't happen
     anchor_frame.drop(
         anchor_frame[anchor_frame.index.duplicated()].index, inplace=True
     )
-    code_set = set(anchor_frame["syn.code"])
-    anchor_dir_set = set(anchor_frame["syn.anchor.direction"])
-    if len(anchor_dir_set) == 1:
-        anchor_props["syn.anchor.direction"] = list(anchor_dir_set)[0]
-    frag_dir_set = set(anchor_frame["frag.direction"])
-    if len(frag_dir_set) == 1:
-        anchor_props["frag.direction"] = list(frag_dir_set)[0]
-
-    anchor_props["count"] = anchor_frame["syn.anchor.count"].iloc[0]
-    anchor_props["n_ambig"] = _count_code(
-        anchor_frame["syn.code"], AMBIGUOUS_CODE
+    anchor_frame.sort_values(
+        by=["syn.anchor.sub_id", "frag.idx", "frag.pos"], inplace=True
     )
+    # Make a dictionary of common anchor properties, order will be kept
+    anchor_props = {
+        "anchor.id": idx,
+        "sub": None,
+        "code": None,
+        "count": None,
+        "n": None,
+        "n_ambig": None,
+        "n_adj": None,
+        "adj_groups": None,
+        "frag.direction": None,
+        "syn.anchor.direction": None,
+        "anchor.subframe.ok": True,
+        "hash": None,
+    }
+    code_set = set(anchor_frame["syn.code"])
     for test_code in CODE_DICT.keys():
         if test_code in code_set:
             anchor_props["code"] = test_code
             break
-    anchor_frame.sort_values(
-        by=["syn.shingle.sub", "frag.idx", "frag.pos"], inplace=True
-    )
     bad_subframe = False
-    for sub_no, subframe in anchor_frame.groupby(by=["syn.shingle.sub"]):
-        anchor_subframe = subframe.copy()
-        hom_clust_set = set(anchor_subframe["hom.cluster"])
-        if len(hom_clust_set) == 1:
-            anchor_props[f"anchor.{sub_no}.cluster"] = list(hom_clust_set)[0]
-        else:
-            bad_subframe = True
-        del (
-            anchor_subframe["syn.anchor.count"],
-            anchor_subframe["syn.shingle.sub"],
+    prop_list = []
+    for sub_no, subframe in anchor_frame.groupby(by=["syn.anchor.sub_id"]):
+        (subanchor_props, anchor_subframe, bad_subframe) = _subframe_props(
+            anchor_props, subframe, sub_no
         )
-        anchor_props[f"anchor.{sub_no}.n"] = len(anchor_subframe)
-        anchor_props[f"anchor.{sub_no}.hash"] = hash_array(
-            anchor_subframe.index.to_numpy()
-        )
-        (
-            anchor_props[f"anchor.{sub_no}.n_adj"],
-            anchor_props[f"anchor.{sub_no}.adj_groups"],
-            unused_adj_group,
-        ) = calculate_adjacency_group(
-            anchor_subframe["frag.pos"], anchor_subframe["frag.idx"]
-        )
+        if bad_subframe:
+            break
         write_tsv_or_parquet(
             anchor_subframe,
             synteny_parent / f"{idx}.{sub_no}.{SYNTENY_FILETYPE}",
             sort_cols=False,
         )
-    if bad_subframe:
+        prop_list.append(subanchor_props)
+    if bad_subframe:  # Probably means a hash collision
+        logger.error(f"bad anchor set {idx}")
+        prop_list = []
         sub_no = 0
         anchor_props["anchor.subframe.ok"] = False
         for cluster_id, subframe in anchor_frame.groupby(by=["hom.cluster"]):
-            anchor_subframe = subframe.copy()
-            anchor_props[f"anchor.{sub_no}.cluster"] = cluster_id
-            del (
-                anchor_subframe["syn.anchor.count"],
-                anchor_subframe["syn.shingle.sub"],
-            )
-            anchor_props[f"anchor.{sub_no}.n"] = len(anchor_subframe)
-            anchor_props[f"anchor.{sub_no}.hash"] = hash_array(
-                anchor_subframe.index.to_numpy().sort()
-            )
             (
-                anchor_props[f"anchor.{sub_no}.n_adj"],
-                anchor_props[f"anchor.{sub_no}.adj_groups"],
-                unused_adj_group,
-            ) = calculate_adjacency_group(
-                anchor_subframe["frag.pos"], anchor_subframe["frag.idx"]
-            )
+                subanchor_props,
+                anchor_subframe,
+                unused_bad_subframe,
+            ) = _subframe_props(anchor_props, subframe, sub_no)
             write_tsv_or_parquet(
                 anchor_subframe,
                 synteny_parent / f"{idx}.{sub_no}.{SYNTENY_FILETYPE}",
                 sort_cols=False,
             )
             sub_no += 1
-    return anchor_props
+            prop_list.append(subanchor_props)
+    return prop_list
+
+
+def _subframe_props(anchor_props, subframe, sub_no):
+    """Calculate subframe properties and write subframe"""
+    anchor_subframe = subframe.copy()
+    subanchor_props = anchor_props.copy()
+    subanchor_props["sub"] = sub_no
+    anchor_dir_set = set(anchor_subframe["syn.anchor.direction"])
+    if len(anchor_dir_set) == 1:
+        subanchor_props["syn.anchor.direction"] = list(anchor_dir_set)[0]
+    frag_dir_set = set(anchor_subframe["frag.direction"])
+    if len(frag_dir_set) == 1:
+        subanchor_props["frag.direction"] = list(frag_dir_set)[0]
+    subanchor_props["count"] = anchor_subframe["syn.anchor.count"].iloc[0]
+    subanchor_props["n_ambig"] = _count_code(
+        anchor_subframe["syn.code"], AMBIGUOUS_CODE
+    )
+    hom_clust_set = set(anchor_subframe["hom.cluster"])
+    if len(hom_clust_set) == 1:
+        subanchor_props[f"anchor.{sub_no}.cluster"] = list(hom_clust_set)[0]
+    else:
+        bad_subframe = True
+    del (
+        anchor_subframe["syn.anchor.count"],
+        anchor_subframe["syn.anchor.sub_id"],
+    )
+    subanchor_props["n"] = len(anchor_subframe)
+    subanchor_props["hash"] = hash_array(
+        np.sort(anchor_subframe.index.to_numpy())
+    )
+    (
+        subanchor_props["n_adj"],
+        subanchor_props["adj_groups"],
+        unused_adj_group,
+    ) = calculate_adjacency_group(
+        anchor_subframe["frag.pos"], anchor_subframe["frag.idx"]
+    )
+    return subanchor_props, anchor_subframe, bad_subframe
 
 
 def _concat_without_overlap(df1, df2):
@@ -843,11 +852,21 @@ def unique_anchors(setname, k):
     """Reduce to unique anchors."""
     set_path = Path(setname)
     anchors = pd.read_csv(set_path / "anchors.tsv", sep="\t")
-    pos_set = [
+    pos_hashes = [
         anchors[f"anchor.{i}.hash"].to_numpy().astype(int) for i in range(k)
     ]
+    for i in range(k):
+        hash_counts = anchors[f"anchor.{i}.hash"].value_counts()
+        dups = hash_counts[hash_counts > 1]
+        dup_fr = pd.DataFrame(
+            {"n": dups.to_numpy(), "hash_val": dups.index.astype(int)},
+            index=range(len(dups)),
+        )
+        print(dup_fr)
+
+    sys.exit(1)
     intersections = [
-        set(pos_set[i]) & set(pos_set[i + 1]) for i in range(k - 1)
+        set(pos_hashes[i]) & set(pos_hashes[i + 1]) for i in range(k - 1)
     ]
     n_to_remove = [len(inter) for inter in intersections]
     logger.info(f"removing {n_to_remove[0]} non-unique anchors")
@@ -879,6 +898,19 @@ def unique_anchors(setname, k):
                 n_uniq += row["n"]
     frac_unique = n_uniq * 100.0 / n_total
     logger.info(f"{n_total} total, {n_uniq} unique ({frac_unique}%)anchors")
+    #
+    # Do histogram of anchors
+    #
+    anchor_hist = pd.DataFrame(anchors["n"].value_counts().sort_index())
+    # anchor_hist = pd.DataFrame(anchor_counts.value_counts()).sort_index()
+    # anchor_hist = anchor_hist.rename(
+    #    columns={"syn.anchor.id": "hash.self_count"}
+    # )
+    # anchor_hist["pct_anchors"] = (
+    #        anchor_hist["hash.self_count"] * anchor_hist.index * 100.0 / n_assigned
+    # )
+    # del anchor_hist["hash.self_count"]
+    write_tsv_or_parquet(anchor_hist, set_path / ANCHOR_HIST_FILE)
 
 
 def intersect_anchors(setname, k, compfile):
@@ -891,5 +923,8 @@ def intersect_anchors(setname, k, compfile):
     others = pd.read_csv(compfile, sep="\t")
     other_set = set(others["hash"].to_numpy().astype(int))
     intersection = first_set & other_set
-    logger.info(f"{len(intersection)} anchors overlap between sets")
-    print(intersection)
+    logger.info(
+        f"{len(intersection)} anchors overlap between sets {len(first_set)} {len(other_set)}"
+    )
+    for hash_val in intersection:
+        print(hash_val)

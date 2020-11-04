@@ -31,7 +31,7 @@ from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.14"
+__version__ = "0.9.15"
 INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
     NAME.upper() + "_INSTALL_DIR"
 )
@@ -302,8 +302,15 @@ def parquet_to_fasta(parquetfile, fastafile, append):
     show_default=True,
     help="Include ambiguous anchors.",
 )
+@click.option(
+    "--shingle/--no-shingle",
+    default=True,
+    is_flag=True,
+    show_default=True,
+    help="Use only anchor bases.",
+)
 @click.argument("setname")
-def synteny(k, peatmer, setname, write_ambiguous):
+def synteny(k, peatmer, setname, write_ambiguous, shingle):
     """Calculate synteny anchors.
 
     \b
@@ -317,6 +324,7 @@ def synteny(k, peatmer, setname, write_ambiguous):
         setname,
         click_loguru=click_loguru,
         write_ambiguous=write_ambiguous,
+        shingle=shingle,
     )
 
 

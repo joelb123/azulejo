@@ -37,11 +37,15 @@ def pairs_to_adjacency(infile, outfile):
     hash_list = []
     id_list = []
     for i, comp in enumerate(c):
+        component = np.sort(pd.Index(list(comp)).to_numpy())
         id_list.append(i)
         size = len(comp)
         count_list.append(size)
-        hash_list.append(hash_array(np.array(sorted(comp))))
-        for node in comp:
+        hash_list.append(hash_array(component))
+        # if i == 8745:
+        #    print(component)
+        #    print(component.tobytes())
+        for node in component:
             fh.write(f"{n_items}\t{i}\t{size}\t{node}\n")
             n_items += 1
     fh.close()
