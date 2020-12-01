@@ -61,6 +61,7 @@ memory-tempfile = "^2.2.3"
 progressbar2 = "^3.53.1"
 requests_download = "^0.1.2"
 numba = "^0.51.2"
+packaging = "^20.7"
 
 [tool.poetry.dev-dependencies]
 black = {version = "^20.8b1", allow-prereleases = true}

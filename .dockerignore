@@ -1,0 +1,6 @@
+*
+!README.rst
+!azulejo
+!poetry.lock
+!pyproject.toml
+!tests
