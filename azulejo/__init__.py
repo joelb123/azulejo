@@ -25,13 +25,12 @@ from .parquet import parquet_to_tsv as undeco_parquet_to_tsv
 from .proxy import calculate_proxy_genes as undeco_calculate_proxy_genes
 from .synteny import intersect_anchors as undeco_intersect_anchors
 from .synteny import synteny_anchors as undeco_synteny_anchors
-from .synteny import unique_anchors as undeco_unique_anchors
 from .taxonomy import print_taxonomic_ranks
 from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.15"
+__version__ = "0.9.19"
 INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
     NAME.upper() + "_INSTALL_DIR"
 )
@@ -296,21 +295,21 @@ def parquet_to_fasta(parquetfile, fastafile, append):
     help="Allow repeats in anchor.",
 )
 @click.option(
-    "--write_ambiguous/--no-write-ambiguous",
+    "--thorny/--no-thorny",
     default=True,
+    is_flag=True,
+    show_default=True,
+    help="Ignore singletons.",
+)
+@click.option(
+    "--write_ambiguous/--no-write-ambiguous",
+    default=False,
     is_flag=True,
     show_default=True,
     help="Include ambiguous anchors.",
 )
-@click.option(
-    "--shingle/--no-shingle",
-    default=True,
-    is_flag=True,
-    show_default=True,
-    help="Use only anchor bases.",
-)
 @click.argument("setname")
-def synteny(k, peatmer, setname, write_ambiguous, shingle):
+def synteny(k, peatmer, setname, write_ambiguous, thorny):
     """Calculate synteny anchors.
 
     \b
@@ -324,27 +323,7 @@ def synteny(k, peatmer, setname, write_ambiguous, shingle):
         setname,
         click_loguru=click_loguru,
         write_ambiguous=write_ambiguous,
-        shingle=shingle,
-    )
-
-
-@cli.command()
-@click_loguru.init_logger()
-@click_loguru.log_elapsed_time(level="info")
-@click.option(
-    "-k", default=DEFAULT_K, help="Synteny anchor length.", show_default=True
-)
-@click.argument("setname")
-def unique_anchors(setname, k):
-    """Uniqueify synteny anchors.
-
-    \b
-    Example:
-        azulejo unique_anchors glycines
-
-    """
-    undeco_unique_anchors(
-        setname, k,
+        thorny=thorny,
     )
 
 

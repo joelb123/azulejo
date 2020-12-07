@@ -42,9 +42,6 @@ def pairs_to_adjacency(infile, outfile):
         size = len(comp)
         count_list.append(size)
         hash_list.append(hash_array(component))
-        # if i == 8745:
-        #    print(component)
-        #    print(component.tobytes())
         for node in component:
             fh.write(f"{n_items}\t{i}\t{size}\t{node}\n")
             n_items += 1

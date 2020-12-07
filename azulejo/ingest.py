@@ -138,7 +138,13 @@ def ingest_sequences(input_toml, click_loguru=None):
     set_path = Path(input_obj.setname)
     arg_list = []
     for unused_i, row in input_table.iterrows():
-        arg_list.append((row["path"], row["fasta_url"], row["gff_url"],))
+        arg_list.append(
+            (
+                row["path"],
+                row["fasta_url"],
+                row["gff_url"],
+            )
+        )
     bag = db.from_sequence(arg_list)
     file_stats = []
     if not options.quiet:

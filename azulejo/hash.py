@@ -18,7 +18,10 @@ from .common import logger
 def _cum_val_count(arr):
     """Return an array of cumulative counts of values."""
     counts = {}
-    out_arr = pd.array([pd.NA] * len(arr), dtype=pd.UInt32Dtype(),)
+    out_arr = pd.array(
+        [pd.NA] * len(arr),
+        dtype=pd.UInt32Dtype(),
+    )
     for i, val in enumerate(arr):
         if pd.isnull(val):
             continue
@@ -43,7 +46,10 @@ def _true_positions_and_runs(bool_vec):
 
 def _fill_na_with_last_valid(ser, flip=False):
     """Input a series with NA values, returns a series with those values filled."""
-    lv_arr = pd.array([pd.NA] * len(ser), dtype=pd.UInt32Dtype(),)
+    lv_arr = pd.array(
+        [pd.NA] * len(ser),
+        dtype=pd.UInt32Dtype(),
+    )
     if not (ser.isnull().all() or ser.notna().all()):
         null_vec = ser.isnull().to_numpy()
         val_vec = ser.to_numpy()
@@ -65,7 +71,10 @@ def _cum_val_cnt_where_ser2_is_na(ser1, ser2, flip=False):
     """Return the cumulative value count of ser1 in regions where ser2 is NA."""
     if len(ser1) != len(ser2):
         logger.warning(f"Lengths of ser1 and ser2 differ at {ser1}")
-    vc_arr = pd.array([pd.NA] * len(ser1), dtype=pd.UInt32Dtype(),)
+    vc_arr = pd.array(
+        [pd.NA] * len(ser1),
+        dtype=pd.UInt32Dtype(),
+    )
     if not (ser2.isnull().all() or ser2.notna().all()):
         null_vec = ser2.isnull().to_numpy()
         val_vec = ser1.to_numpy()
@@ -86,8 +95,12 @@ def _cum_val_cnt_where_ser2_is_na(ser1, ser2, flip=False):
     return vc_ser
 
 
-def calculate_disambig_hashes(df):
-    """Calculate disambiguation frame (per-fragment)."""
+def calculate_disambig_hashes(df, adj_only=True):
+    """Calculate disambiguation frame (per-fragment).
+
+    if adj_only is True, then disambiguation will be done
+    only for those locations adjacent to an umabiguous hash.
+    """
     hash2_fr = df[["syn.anchor.id", "tmp.ambig.id"]].copy()
     hash2_fr = hash2_fr.rename(columns={"syn.anchor.id": "tmp.anchor.id"})
     hash2_fr["tmp.upstr_anchor"] = _fill_na_with_last_valid(
@@ -120,6 +133,8 @@ def calculate_disambig_hashes(df):
                     logger.warning(
                         f"Something is wrong upstream of base {ambig_base}"
                     )
+                if adj_only and occur_upstream > 1:
+                    continue
                 upstream_hash[row_no] = hash_array(
                     np.array([upstream_unambig, ambig_base, occur_upstream])
                 )
@@ -128,6 +143,8 @@ def calculate_disambig_hashes(df):
                     logger.warning(
                         f"Something is wrong downstream of base {ambig_base}"
                     )
+                if adj_only and occur_upstream > 1:
+                    continue
                 downstream_hash[row_no] = hash_array(
                     np.array(
                         [ambig_base, downstream_unambig, occur_downstream]
@@ -144,6 +161,7 @@ class SyntenyBlockHasher(object):
 
     k = attr.ib(default=3)
     peatmer = attr.ib(default=True)
+    thorny = attr.ib(default=True)
     prefix = attr.ib(default="syn")
 
     def hash_name(self, no_prefix=False):
@@ -152,9 +170,13 @@ class SyntenyBlockHasher(object):
             prefix_str = ""
         else:
             prefix_str = self.prefix + "."
+        if self.thorny:
+            thorny_str = "thorny"
+        else:
+            thorny_str = ""
         if self.peatmer:
-            return f"{prefix_str}hash.peatmer{self.k}"
-        return f"{prefix_str}hash.kmer{self.k}"
+            return f"{prefix_str}hash.{thorny_str}peatmer{self.k}"
+        return f"{prefix_str}hash.{thorny_str}kmer{self.k}"
 
     def shingle(self, cluster_series, direction, hash_val):
         """Return a vector of anchor ID's. """

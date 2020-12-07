@@ -32,4 +32,4 @@ def test_installer(tmp_path, capsys):
             except sh.ErrorReturnCode as errors:
                 print(errors)
                 pytest.fail("Build failed")
-            assert "All dependencies" in azulejo(["install"])
+            assert "All required" in azulejo(["install"])

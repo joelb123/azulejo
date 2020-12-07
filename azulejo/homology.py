@@ -253,7 +253,12 @@ def cluster_build_trees(
     click_loguru.elapsed_time("Joining")
     arg_list = []
     for i, row in proteomes.iterrows():
-        arg_list.append((i, dotpath_to_path(row["path"]),))
+        arg_list.append(
+            (
+                i,
+                dotpath_to_path(row["path"]),
+            )
+        )
     bag = db.from_sequence(arg_list)
     hom_stats = []
     if not options.quiet:
