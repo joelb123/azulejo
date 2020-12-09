@@ -21,6 +21,7 @@ from Bio import SeqIO
 import sh
 
 # module imports
+from .common import CLUSTER_HIST_FILE
 from .common import NAME
 from .common import cluster_set_name
 from .common import fasta_records
@@ -408,7 +409,7 @@ def homology_cluster(
             cluster_hist["clusters"] * cluster_hist.index * 100.0 / total_seqs
         )
         cluster_hist.to_csv(
-            "cluster_hist.tsv", sep="\t", float_format="%06.3f"
+            CLUSTER_HIST_FILE, sep="\t", float_format="%06.3f"
         )
         return n_clusters, run_stats, cluster_hist
     (

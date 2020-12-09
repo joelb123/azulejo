@@ -47,8 +47,9 @@ SAVED_INPUT_FILE = "input.toml"
 # Parquet is also ~100X faster.
 
 CLUSTER_FILETYPE = "parq"
-CLUSTERS_FILE = "clusters.parq"
-CLUSTERSYN_FILE = "clusters.syn.parq"
+CLUSTERS_FILE = "homology_clusters.parq"
+CLUSTERSYN_FILE = "homology_clusters.syn.parq"
+CLUSTER_HIST_FILE = "homology_cluster_hist.tsv"
 FRAGMENTS_FILE = "fragments.tsv"
 ANCHOR_HIST_FILE = "anchor_hist.tsv"
 HOMOLOGY_FILE = "proteins.hom.parq"
@@ -62,7 +63,7 @@ SYNTENY_FILETYPE = "tsv"
 COLLECTION_FILE = "collection.json"
 COLLECTION_HOM_FILE = "collection.hom.json"
 COLLECTION_SYN_FILE = "collection.hom.syn.json"
-EXTERNAL_CLUSTERS_FILE = "clusters-external.tsv"
+EXTERNAL_CLUSTERS_FILE = "homology_clusters-external.tsv"
 
 # fragment-name defs
 PLASTID_STARTS = ["chromop", "chl", "mt", "mi", "rh", "mu", "le", "pl"]
