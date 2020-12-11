@@ -62,6 +62,7 @@ biopython = "^1.78"
 sh = "^1.14.1"
 numba = "^0.52.0"
 gffpandas = { git = "https://github.com/legumeinfo/gffpandas.git", branch = "main" }
+beautifulsoup4 = "^4.9.3"
 
 [tool.poetry.dev-dependencies]
 #black = {version = "^20.8b1", allow-prereleases = true}
@@ -76,7 +77,7 @@ isort = "^5.4.2"
 flynt = "^0.52"
 pytest-cov = "^2.10.1"
 pytest-datadir-mgr = "^1.2.3"
-poetry-dynamic-versioning = "^0.11.0"
+poetry-dynamic-versioning = "^0.12.0"
 
 [tool.poetry.scripts]
 azulejo = "azulejo:cli"

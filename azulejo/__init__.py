@@ -20,6 +20,7 @@ from .core import cluster_in_steps as undeco_cluster_in_steps
 from .homology import cluster_build_trees as undeco_cluster_build_trees
 from .homology import info_to_fasta as undeco_into_to_fasta
 from .ingest import ingest_sequences as undeco_ingest_sequences
+from .ingest import populate_inputs as undeco_populate_inputs
 from .installer import DependencyInstaller
 from .parquet import parquet_to_tsv as undeco_parquet_to_tsv
 from .proxy import calculate_proxy_genes as undeco_calculate_proxy_genes
@@ -586,6 +587,60 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
     undeco_cluster_in_steps(
         seqfile, steps, min_id_freq=min_id_freq, substrs=substrs, dups=dups
     )
+
+
+@cli.command()
+@click_loguru.init_logger()
+@click.option(
+    "--top_only",
+    is_flag=True,
+    default=False,
+    help="Do not write low-level info.",
+)
+@click.option(
+    "--write_top",
+    is_flag=True,
+    default=True,
+    help="Write top-level info.",
+)
+
+def populate_inputs(uri,
+                    grouping,
+                        rank,
+                        name,
+                        fasta_pattern,
+                        gff_pattern,
+                        name_dict,
+                        top_name_dict,
+                        excludes,
+                        preference,
+                        write_top,
+                        top_only,
+                        top_rank,
+                        top_name):
+    """
+    Scan files and create input TOML file.
+
+    \b
+    Example:
+        azulejo populate-inputs site://legfed/Glycine_max/
+
+    """
+    undeco_populate_inputs(uri,
+                        grouping,
+                        rank,
+                        name,
+                        fasta_pattern,
+                        gff_pattern,
+                        name_dict,
+                        top_name_dict,
+                        excludes,
+                        preference,
+                        write_top,
+                        top_only,
+                        top_rank,
+                        top_name)
+
 
 
 @cli.command()

@@ -15,9 +15,9 @@ from . import W82_INPUTS
 from . import print_docstring
 
 # global constants
-W05_URL = "https://legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
+W05_URL = "https://v1.legumefederation.org/data/index/public/Glycine_soja/W05.gnm1.ann1.T47J/"
 SINGLE_INPUT_FILE = "W05.toml"
-W82_URL = "https://legumefederation.org/data/index/public/Glycine_max/Wm82.gnm4.ann1.T8TQ/"
+W82_URL = "https://v1.legumefederation.org/data/index/public/Glycine_max/Wm82.gnm4.ann1.T8TQ/"
 
 
 @print_docstring()
