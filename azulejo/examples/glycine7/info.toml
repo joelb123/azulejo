@@ -1,0 +1,15 @@
+label = "glycine7 - calculate homology and synteny for 7 Glycine genomes"
+notes = """
+This script uses 7 glycine genomes from the Legume Federation Data Store.
+Genome data are downloaded on-the-fly.  The tricky part of this setup is
+that there are four distinct phylogenetic levels represented.
+
+1. genus Glycines
+2. species Glycine max and Glycine soja
+3. three strains of Glycine max, two strains of Glycine soja
+4. three different annotations of Glycine max strain 'Williams 82'
+
+To run this example execute the script "do_glycine7.sh".
+On a modern 12-core workstation, this examples takes about 10 minutes
+including downloads.  Most of the time is spent calculating homology.
+"""

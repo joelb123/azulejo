@@ -19,8 +19,8 @@ from .core import homology_cluster as undeco_homology_cluster
 from .core import cluster_in_steps as undeco_cluster_in_steps
 from .homology import cluster_build_trees as undeco_cluster_build_trees
 from .homology import info_to_fasta as undeco_into_to_fasta
+from .ingest import find_files as undeco_find_files
 from .ingest import ingest_sequences as undeco_ingest_sequences
-from .ingest import populate_inputs as undeco_populate_inputs
 from .installer import DependencyInstaller
 from .parquet import parquet_to_tsv as undeco_parquet_to_tsv
 from .proxy import calculate_proxy_genes as undeco_calculate_proxy_genes
@@ -590,57 +590,119 @@ def cluster_in_steps(seqfile, steps, min_id_freq=0, substrs=None, dups=None):
 
 
 @cli.command()
-@click_loguru.init_logger()
+@click_loguru.init_logger(logfile=False)
 @click.option(
-    "--top_only",
+    "--gff_pattern", "-g", multiple=True, help="Glob pattern for GFF"
+)
+@click.option(
+    "--faa_pattern", "-a", multiple=True, help="Glob for protein FASTA"
+)
+@click.option(
+    "--fna_pattern", "-n", multiple=True, help="Glob for nucleic FASTA"
+)
+@click.option("--exclude", "-e", multiple=True, help="Glob for exclude")
+@click.option(
+    "--preference", "-o", multiple=True, help="Glob for preference order"
+)
+@click.option("--name", "-n", multiple=True, help="Name, one per match")
+@click.option(
+    "--name_from_part",
+    type=int,
+    default=None,
+    help="Path component for name parsing",
+)
+@click.option("--name_split_on", help="Character to split path component on")
+@click.option("--name_format", help="Str.format string for split output")
+@click.option("--rank", "-r", help="Phylogenetic rank of matches")
+@click.option("--parent_rank", "-pr", help="Phylogenetic rank of parent")
+@click.option(
+    "--parent_only",
+    "-po",
     is_flag=True,
     default=False,
-    help="Do not write low-level info.",
+    help="Do not write low-level info",
 )
 @click.option(
-    "--write_top",
+    "--write_parent",
+    "-wp",
     is_flag=True,
     default=True,
-    help="Write top-level info.",
+    help="Write top-level info",
 )
-
-def populate_inputs(uri,
-                    grouping,
-                        rank,
-                        name,
-                        fasta_pattern,
-                        gff_pattern,
-                        name_dict,
-                        top_name_dict,
-                        excludes,
-                        preference,
-                        write_top,
-                        top_only,
-                        top_rank,
-                        top_name):
+@click.option(
+    "--download",
+    "-dl",
+    is_flag=True,
+    default=False,
+    help="Download/decompress files",
+)
+@click.option(
+    "--nucleic",
+    "-nt",
+    is_flag=True,
+    default=False,
+    help="Include nucleic-acid files",
+)
+@click.argument("uri")
+@click.argument("parent_name")
+@click.argument("outfile", type=click.Path(), nargs=-1)
+def find_files(
+    uri,  # file path, http URL, or site://
+    parent_name,  # simple string, must not include spaces
+    outfile,  # file path, optional, print if not used
+    gff_pattern,  # globbing-style pattern, may be repeated
+    faa_pattern,  # "
+    fna_pattern,  # "
+    exclude,  # "
+    preference,  # ", order determines preference
+    name,  # if specified, must be 1:1 with matches
+    name_from_part,
+    name_split_on,
+    name_format,
+    rank,  # applies to all
+    parent_rank,
+    write_parent,
+    parent_only,
+    download,
+    nucleic,
+):
     """
-    Scan files and create input TOML file.
+    Find files at URI and create input TOML file.
 
     \b
+    Usage:
+        azulejo find-files URI PARENT_NAME [OUTFILE]
+        where:
+            URI         ".", http URL, or recognized site:// tags
+            PARENT_CODE Code for parent, without spaces
+            OUTFILE     Name of TOML output file.  If not present,
+                        output will be printed for debugging.
+                        IF this file exists, entries in file will be
+                        added to the exclude list.
     Example:
-        azulejo populate-inputs site://legfed/Glycine_max/
+        azulejo find-files site://legfed/Glycine_max/ glyma glycine_max.toml
 
     """
-    undeco_populate_inputs(uri,
-                        grouping,
-                        rank,
-                        name,
-                        fasta_pattern,
-                        gff_pattern,
-                        name_dict,
-                        top_name_dict,
-                        excludes,
-                        preference,
-                        write_top,
-                        top_only,
-                        top_rank,
-                        top_name)
-
+    undeco_find_files(
+        uri,
+        parent_name,
+        outfile,
+        gff_pattern=gff_pattern,
+        faa_pattern=faa_pattern,
+        fna_pattern=fna_pattern,
+        exclude=exclude,
+        preference=preference,
+        name=name,
+        name_from_part=name_from_part,
+        name_split_on=name_split_on,
+        name_format=name_format,
+        rank=rank,
+        parent_rank=parent_rank,
+        write_parent=write_parent,
+        parent_only=parent_only,
+        download=download,
+        nucleic=nucleic,
+    )
 
 
 @cli.command()

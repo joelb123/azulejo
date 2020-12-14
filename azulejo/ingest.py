@@ -58,26 +58,20 @@ COMPRESSION_EXTENSIONS = (
     "gz",
     "bz2",
 )
-
 POSSIBLE_FEATURES = ("mRNA", "CDS")
 POSSIBLE_ID_COLS = ("ID", "gene", "Name", "protein_id", "Parent")
-
 MINIMUM_PROTEINS = 100
 
-
-DEFAULT_FASTA_PATTERN = "*.fa*"
-DEFAULT_GFF_PATTERN = "*.gf*"
 SITES = {
-    "legfed": {"url": "https://v1.legumefederation.org/data/index/public/",
-               "fasta_pattern": "*protein_primaryTranscript.fa*",
-               "gff_pattern": "*gene_models_main\.gf*",
-               "name_dict": {"parent": 1,
-                                     "split": ".",
-                                     "format": "{0}"},
-               "top_name_dict": {"parent": 2,
-                                        "split": "",
-                                        "format": "{0}"},
-               }
+    "legfed": {
+        "url": "https://v1.legumefederation.org/data/index/public/",
+        "faa_pattern": ("*protein_primaryTranscript.faa.gz",),
+        "fna_pattern": ("*protein_primaryTranscript.fna.gz",),
+        "gff_pattern": ("*gene_models_main.gff3.gz",),
+        "name_from_part": 1,
+        "name_split_on": ".",
+        "name_format": "{0}",
+    }
 }
 
 # helper functions
@@ -649,17 +643,22 @@ def filepath_from_url(url):
             yield tmpfile
 
 
-def _path_to_name(path, format_dict):
+def _path_to_name(path_str, name_from_part, name_split_on, name_format):
     """Extract a genome name from a URI path."""
-    fmt_str = format_dict["format"]
-    component_no = -1 - int(format_dict["parent"])
-    split_char = format_dict["split"]
-    return fmt_str.format(*path.parts[component_no].split(split_char))
+    path = Path(path_str)
+    component_no = -1 - int(name_from_part)
+    component = path.parts[component_no]
+    if name_split_on == "":
+        split = [component]
+    else:
+        split = component.split(name_split_on)
+    return name_format.format(*split)
 
 
 def _replace_spaces(url):
     """Replace spaces in a string with HTML escape."""
     return url.replace(" ", "%20")
+
 
 def _is_dir(path):
     """Return true if path is a directory."""
@@ -680,7 +679,7 @@ def _url_paths(url, base_len=None):
         logger.error(f"Unable to retrieve URL {url}")
         sys.exit(1)
     try:
-        soup = BeautifulSoup(resp, 'html.parser')
+        soup = BeautifulSoup(resp, "html.parser")
     except:
         logger.error("Unable to parse response from {uri}")
         sys.exit(1)
@@ -693,134 +692,193 @@ def _url_paths(url, base_len=None):
     return paths
 
 
-def populate_inputs(uri,
-                           grouping=None,
-                           rank=None,
-                           name=None,
-                           fasta_pattern=None,
-                           gff_pattern=None,
-                           name_dict=None,
-                           top_name_dict=None,
-                           excludes=None,
-                           preference=None,
-                           write_top=True,
-                           top_only=False,
-                           top_rank=None,
-                           top_name=None):
+def find_files(
+    uri,
+    parent_name,
+    outfile,
+    gff_pattern=None,
+    faa_pattern=None,
+    fna_pattern=None,
+    exclude=None,
+    preference=None,
+    name=None,
+    name_from_part=None,
+    name_split_on=None,
+    name_format=None,
+    rank=None,
+    parent_rank=None,
+    write_parent=True,
+    parent_only=False,
+    download=False,
+    nucleic=False,
+):
     """Search a URI for FASTA and GFFs to populate an input file."""
-    if fasta_pattern is None:
-        fasta_pattern = DEFAULT_FASTA_PATTERN
-    if gff_pattern is None:
-        gff_pattern = DEFAULT_GFF_PATTERN
-    if name_dict is None:
-        name_dict = {"parent": 1,
-                     "split": "",
-                     "format": "{0}"
-                     }
-    else:
-        name_dict = json.loads(name_dict)
-    if top_name_dict is None:
-        top_name_dict = {"parent": 2,
-                            "split": "",
-                            "format": "{0}"
-                            }
-    else:
-        top_name_dict = json.loads(top_name_dict)
-    if excludes is None:
-        excludes = []
-    else:
-        excludes = json.loads(excludes)
-    if uri.startswith("site://"):
-        splitsite = uri[8:].split("/")[0]
+    #
+    # Process argument list in order: parameters, site defaults, defaults
+    #
+    if outfile == ():
+        outfile = None
+    name = list(name)
+    if parent_rank is None:
+        parent_rank = "species"
+    if rank is None:
+        rank = "strain"
+    if uri.startswith("site://"):  # get defaults from site dict
+        splitsite = uri[7:].split("/")
         sitename = splitsite[0]
-        sitepath = "/".join(splitsite[0:])
         if sitename not in SITES:
-            logger.error(f"unknown site name {sitename} in {uri}")
+            logger.error(f'unknown site name "{sitename}"')
+            logger.error(f"known sites are {list(SITES.keys())}")
             sys.exit(1)
         sitedict = SITES[sitename]
-        uri = sitedict["uri"] + sitepath
-        fasta_pattern = sitedict["fasta_pattern"]
-        gff_pattern = sitedict["gff_pattern"]
-        name_dict = sitedict["name_dict"]
-        top_name_dict = sitedict["top_name_dict"]
-    if uri is None:
-        uri = "."
-        paths = [str(path) for path in Path(uri).rglob("*")]
-    elif uri.startswith("file://"):
-        paths = [str(path) for path in Path(uri[7:]).rglob("*")]
-    elif "://" not in uri:
-        paths = [str(path) for path in Path(uri).rglob("*")]
+        uri = sitedict["url"] + "/".join(splitsite[1:])
+        if not uri.endswith("/"):
+            uri += "/"
+        default_gff_pattern = sitedict["gff_pattern"]
+        default_faa_pattern = sitedict["faa_pattern"]
+        default_fna_pattern = sitedict["fna_pattern"]
+        default_name_from_part = sitedict["name_from_part"]
+        default_name_split_on = sitedict["name_split_on"]
+        default_name_format = sitedict["name_format"]
+    else:
+        default_gff_pattern = ("*.gf*",)
+        default_faa_pattern = ("*.fa*",)
+        default_fna_pattern = ("*.fn*",)
+        default_name_from_part = 1
+        default_name_split_on = "."
+        default_name_format = "{0}"
+    if gff_pattern == ():
+        gff_pattern = default_gff_pattern
+    if faa_pattern == ():
+        faa_pattern = default_faa_pattern
+    if fna_pattern == ():
+        fna_pattern = default_fna_pattern
+    if name_from_part is None:
+        name_from_part = default_name_from_part
+    if name_split_on is None:
+        name_split_on = default_name_split_on
+    if name_format is None:
+        name_format = default_name_format
+    # TODO-excludes from existing TOML
+    if "://" not in uri:
+        search_path = Path(uri)
+        if not search_path.is_dir():
+            logger.error(
+                f'path "{search_path}" does not exist or is not a directory'
+            )
+            sys.exit(1)
+        paths = [str(path)[len(uri) :] for path in Path(uri).rglob("*")]
     elif uri.startswith("http"):
         paths = _url_paths(uri)
     else:
         logger.error(f"Badly-formed uri {uri}")
         sys.exit(1)
-    last_found = None
-    gff_list = []
-    fasta_list = []
-    for path in paths:
-        for exclude in excludes:
-            if exclude in path:
+    if not parent_only:
+        last_found = None
+        gff_list = []
+        faa_list = []
+        fna_list = []
+        name_list = []
+        pref_list = []
+        n_warnings = 0
+        for path in paths:
+            if any([fnmatch(path, exc) for exc in exclude]):
                 continue
-        if fnmatch(path, fasta_pattern):
-            if last_found == "fasta":
-                logger.warning(f"FASTA files adjacent in list: {fasta_list[-1]} {path}, adjust FASTA PATTERN")
-            else:
-                fasta_list.append(path)
-                last_found = "fasta"
-        if fnmatch(path, gff_pattern):
-            gff_list.append(path)
-            if last_found == "gff":
-                logger.warning(f"GFF files adjacent in list: {gff_list[-1]} {path}, adjust gff_regex")
-            else:
+            if any([fnmatch(path, pat) for pat in gff_pattern]):
+                if last_found == "gff":
+                    n_warnings += 1
+                    logger.warning(
+                        f"GFF files adjacent in list: {gff_list[-1]} {path}, adjust gff_pattern"
+                    )
+                else:
+                    last_found = "gff"
                 gff_list.append(path)
-                last_found = "gff"
-    n_files = min(len(fasta_list), len(gff_list))
-    if len(fasta_list) != len(gff_list):
-        logger.error(f"number of matching FASTA ({len(fasta_list)})" +
-               f" and GFF ({len(gff_list)}) files don't agree")
-        bad_pattern = True
-    else:
-        bad_pattern = False
-    if grouping is None or bad_pattern:
-        if grouping is None:
-            logger.info("The following (fasta, gff) pairs were found:")
-        print("gff\tfasta")
-        for i in range(n_files):
-            print(f"{gff_list[i]}\t{fasta_list[i]}")
-        if bad_pattern:
-            if len(fasta_list) > n_files:
-                logger.error(f"leftover FASTA files: {fasta_list[n_files:]}")
-            else:
-                logger.error(f"leftover GFF files: {gff_list[n_files:]}")
-            sys.exit(1)
-        logger.info("Specify grouping to generate TOML output.")
-        sys.exit(0)
+                if name != []:
+                    name_list.append(name.pop())
+                else:
+                    name_list.append(
+                        _path_to_name(
+                            path, name_from_part, name_split_on, name_format
+                        )
+                    )
+                pref = None
+                if preference != ():
+                    for i, pref_pat in enumerate(preference):
+                        if fnmatch(path, pref_pat):
+                            pref = i
+                            break
+                pref_list.append(pref)
+            if any([fnmatch(path, pat) for pat in faa_pattern]):
+                if last_found == "faa":
+                    n_warnings += 1
+                    logger.warning(
+                        f"faa files adjacent in list: {faa_list[-1]} {path}, adjust faa_pattern"
+                    )
+                else:
+                    last_found = "faa"
+                faa_list.append(path)
+            if nucleic:
+                if any([fnmatch(path, pat) for pat in fna_pattern]):
+                    if last_found == "fna":
+                        n_warnings += 1
+                        logger.warning(
+                            f"fna files adjacent in list: {fna_list[-1]} {path}, adjust fna_pattern"
+                        )
+                    else:
+                        last_found = "fna"
+                    fna_list.append(path)
+        n_files = min(len(faa_list), len(gff_list))
+        if len(faa_list) != len(gff_list):
+            logger.error(
+                f"number of matching faa ({len(faa_list)})"
+                + f" and GFF ({len(gff_list)}) files don't agree"
+            )
+            bad_pattern = True
+        else:
+            bad_pattern = False
+        if outfile is None or bad_pattern:
+            logger.info(f"gff patterns: {gff_pattern}")
+            logger.info(f"faa patterns: {faa_pattern}")
+            if nucleic:
+                logger.info(f"fna patterns: {fna_pattern}")
+            logger.info(f"exclude patterns: {exclude}")
+            for i in range(n_files):
+                print(f"{i}:")
+                print(f"  name: {name_list[i]}")
+                print(f"   gff: {gff_list[i]}")
+                print(f"   faa: {faa_list[i]}")
+                if nucleic:
+                    print(f"   fna: {faa_list[i]}")
+            if bad_pattern:
+                if len(faa_list) > n_files:
+                    logger.error(f"leftover faa files:")
+                    for i, leftover in enumerate(faa_list[n_files:]):
+                        print(f"  {i} {leftover}")
+                else:
+                    logger.error("leftover GFF files")
+                    for i, leftover in enumerate(gff_list[n_files:]):
+                        print(f"   {i}: {leftover}")
+                sys.exit(1)
+            if n_warnings > 0:
+                logger.warning(
+                    f"{n_warnings} warnings produced, check results carefully"
+                )
+            logger.info(f"{n_files} sets of files found.")
+            sys.exit(0)
     #
     # Generate top-level info
     #
-    if write_top:
-        if top_rank is None:
-            top_rank = DEFAULT_top_RANK
-            print(f"[{grouping}]")
-            print(f'rank = "{top_rank}"')
-            if top_name is not None:
-                print(f'name = "{top_name}"')
-    if top_only:
-        sys.exit(0)
-    for i in range(n_files):
-        gff = gff_list[i]
-        fasta = fasta_list[i]
-        if name is None:
-            name = _path_to_name(fasta, name_dict)
-        if top_name is None:
-            top_name = path_to_name(fasta, top_name_dict)
-        print(f"[{grouping}.{top_name}.{name}]")
-        print(f'rank = "{rank}"')
-        if uri != ".":
-            print(f'uri = "{uri}"')
-        print(f'gff = "{gff}"')
-        print(f'fasta = "{fasta}"\n')
-        if preference is not None:
-            print(f'preference = "{preference}"')
-
+    with Path(outfile[0]).open("a+") as outfh:
+        if write_parent:
+            print(f"[{parent_name}]", file=outfh)
+            print(f'rank = "{parent_rank}"\n', file=outfh)
+        if parent_only:
+            sys.exit(0)
+        for i in range(n_files):
+            print(f"[{parent_name}.{name_list[i]}]", file=outfh)
+            print(f'rank = "{rank}"', file=outfh)
+            print(f'uri = "{uri}"', file=outfh)
+            print(f'gff = "{gff_list[i]}"', file=outfh)
+            if pref_list[i] != None:
+                print(f"preference = {pref_list[i]}", file=outfh)
+            print(f'fasta = "{faa_list[i]}"\n', file=outfh)
