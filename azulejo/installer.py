@@ -202,6 +202,12 @@ class DependencyInstaller(object):
 
     def install_list(self, deplist):
         """Install needed dependencies from a list."""
+        for dep in deplist:
+            alldeps = list(self.dependency_dict.keys()) + ["all"]
+            if dep not in alldeps:
+                logger.error(f'"{dep}" is not a recognized dependency')
+                logger.error(f"possible dependencies are {alldeps}")
+                sys.exit(1)
         self.check_all()
         if deplist == ("all",):
             deplist = [

@@ -95,64 +95,7 @@ def _cum_val_cnt_where_ser2_is_na(ser1, ser2, flip=False):
     return vc_ser
 
 
-def calculate_disambig_hashes(df, adj_only=True):
-    """Calculate disambiguation frame (per-fragment).
 
-    if adj_only is True, then disambiguation will be done
-    only for those locations adjacent to an umabiguous hash.
-    """
-    hash2_fr = df[["syn.anchor.id", "tmp.ambig.id"]].copy()
-    hash2_fr = hash2_fr.rename(columns={"syn.anchor.id": "tmp.anchor.id"})
-    hash2_fr["tmp.upstr_anchor"] = _fill_na_with_last_valid(
-        df["syn.anchor.id"]
-    )
-    hash2_fr["tmp.downstr_anchor"] = _fill_na_with_last_valid(
-        df["syn.anchor.id"], flip=True
-    )
-    hash2_fr["tmp.upstr_occur"] = _cum_val_cnt_where_ser2_is_na(
-        df["tmp.ambig.id"], df["syn.anchor.id"]
-    )
-    hash2_fr["tmp.downstr_occur"] = _cum_val_cnt_where_ser2_is_na(
-        df["tmp.ambig.id"], df["syn.anchor.id"], flip=True
-    )
-    hash2_fr["tmp.i"] = range(len(hash2_fr))
-    upstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
-    downstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
-    hash2_fr["tmp.disambig.up"] = pd.NA
-    hash2_fr["tmp.disambig.down"] = pd.NA
-    for unused_id, row in hash2_fr.iterrows():
-        row_no = row["tmp.i"]
-        ambig_base = row["tmp.ambig.id"]
-        upstream_unambig = row["tmp.upstr_anchor"]
-        downstream_unambig = row["tmp.downstr_anchor"]
-        occur_upstream = row["tmp.upstr_occur"]
-        occur_downstream = row["tmp.downstr_occur"]
-        if pd.notna(ambig_base):
-            if pd.notna(upstream_unambig):
-                if not pd.notna(occur_upstream):
-                    logger.warning(
-                        f"Something is wrong upstream of base {ambig_base}"
-                    )
-                if adj_only and occur_upstream > 1:
-                    continue
-                upstream_hash[row_no] = hash_array(
-                    np.array([upstream_unambig, ambig_base, occur_upstream])
-                )
-            if pd.notna(downstream_unambig):
-                if not pd.notna(occur_downstream):
-                    logger.warning(
-                        f"Something is wrong downstream of base {ambig_base}"
-                    )
-                if adj_only and occur_upstream > 1:
-                    continue
-                downstream_hash[row_no] = hash_array(
-                    np.array(
-                        [ambig_base, downstream_unambig, occur_downstream]
-                    )
-                )
-    hash2_fr["tmp.disambig.up"] = upstream_hash
-    hash2_fr["tmp.disambig.down"] = downstream_hash
-    return hash2_fr[["tmp.disambig.up", "tmp.disambig.down"]]
 
 
 @attr.s
@@ -162,6 +105,7 @@ class SyntenyBlockHasher(object):
     k = attr.ib(default=3)
     peatmer = attr.ib(default=True)
     thorny = attr.ib(default=True)
+    disambig_adj_only = attr.ib(default=True)
     prefix = attr.ib(default="syn")
 
     def hash_name(self, no_prefix=False):
@@ -241,3 +185,62 @@ class SyntenyBlockHasher(object):
             ],
             index=cluster_series.index[positions[:n_mers]],
         )
+
+    def calculate_disambig_hashes(self, df):
+        """Calculate disambiguation frame (per-fragment).
+
+        if self.disambig_adj_only is True, then disambiguation will be done
+        only for those locations adjacent to an umabiguous hash.
+        """
+        hash2_fr = df[["syn.anchor.id", "tmp.ambig.id"]].copy()
+        hash2_fr = hash2_fr.rename(columns={"syn.anchor.id": "tmp.anchor.id"})
+        hash2_fr["tmp.upstr_anchor"] = _fill_na_with_last_valid(
+            df["syn.anchor.id"]
+        )
+        hash2_fr["tmp.downstr_anchor"] = _fill_na_with_last_valid(
+            df["syn.anchor.id"], flip=True
+        )
+        hash2_fr["tmp.upstr_occur"] = _cum_val_cnt_where_ser2_is_na(
+            df["tmp.ambig.id"], df["syn.anchor.id"]
+        )
+        hash2_fr["tmp.downstr_occur"] = _cum_val_cnt_where_ser2_is_na(
+            df["tmp.ambig.id"], df["syn.anchor.id"], flip=True
+        )
+        hash2_fr["tmp.i"] = range(len(hash2_fr))
+        upstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
+        downstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
+        hash2_fr["tmp.disambig.up"] = pd.NA
+        hash2_fr["tmp.disambig.down"] = pd.NA
+        for unused_id, row in hash2_fr.iterrows():
+            row_no = row["tmp.i"]
+            ambig_base = row["tmp.ambig.id"]
+            upstream_unambig = row["tmp.upstr_anchor"]
+            downstream_unambig = row["tmp.downstr_anchor"]
+            occur_upstream = row["tmp.upstr_occur"]
+            occur_downstream = row["tmp.downstr_occur"]
+            if pd.notna(ambig_base):
+                if pd.notna(upstream_unambig):
+                    if not pd.notna(occur_upstream):
+                        logger.warning(
+                            f"Something is wrong upstream of base {ambig_base}"
+                        )
+                    if self.disambig_adj_only and occur_upstream > 1:
+                        continue
+                    upstream_hash[row_no] = hash_array(
+                        np.array([upstream_unambig, ambig_base, occur_upstream])
+                    )
+                if pd.notna(downstream_unambig):
+                    if not pd.notna(occur_downstream):
+                        logger.warning(
+                            f"Something is wrong downstream of base {ambig_base}"
+                        )
+                    if self.disambig_adj_only and occur_downstream > 1:
+                        continue
+                    downstream_hash[row_no] = hash_array(
+                        np.array(
+                            [ambig_base, downstream_unambig, occur_downstream]
+                        )
+                    )
+        hash2_fr["tmp.disambig.up"] = upstream_hash
+        hash2_fr["tmp.disambig.down"] = downstream_hash
+        return hash2_fr[["tmp.disambig.up", "tmp.disambig.down"]]

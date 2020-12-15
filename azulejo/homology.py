@@ -106,6 +106,9 @@ def cluster_build_trees(
         del run_stats
         concat_fasta_path.unlink()
     else:  # use pre-existing clusters
+        homology_path = set_path / "homology"
+        if homology_path.exists():
+            shutil.rmtree(homology_path)
         inclusts = pd.read_csv(cluster_file, sep="\t")
         for col in ["cluster_id", "members"]:
             if col not in inclusts.columns:

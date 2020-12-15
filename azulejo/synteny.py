@@ -40,7 +40,6 @@ from .common import logger
 from .common import read_tsv_or_parquet
 from .common import write_tsv_or_parquet
 from .hash import SyntenyBlockHasher
-from .hash import calculate_disambig_hashes
 from .mailboxes import DataMailboxes
 from .mailboxes import ExternalMerge
 from .merger import AmbiguousMerger
@@ -79,25 +78,24 @@ def synteny_anchors(
     click_loguru=None,
     write_ambiguous=True,
     thorny=True,
+    disambig_adj_only=True,
 ):
     """Calculate synteny anchors."""
     #
     # Marshal input arguments
     #
-
     if k < 2:
         logger.error("k must be at least 2.")
         sys.exit(1)
     options = click_loguru.get_global_options()
     user_options = click_loguru.get_user_global_options()
-    parallel = user_options["parallel"]
     set_path = Path(setname)
     file_stats_path = set_path / PROTEOMOLOGY_FILE
     proteomes = read_tsv_or_parquet(file_stats_path)
     n_proteomes = len(proteomes)
     clusters = read_tsv_or_parquet(set_path / CLUSTERS_FILE)
     n_clusters = len(clusters)
-    hasher = SyntenyBlockHasher(k=k, peatmer=peatmer, thorny=thorny)
+    hasher = SyntenyBlockHasher(k=k, peatmer=peatmer, thorny=thorny, disambig_adj_only=disambig_adj_only)
     logger.info(
         f"Calculating {hasher.hash_name(no_prefix=True)} synteny anchors"
         + f" for {n_proteomes} proteomes"
@@ -428,7 +426,6 @@ def merge_unambig_hashes(
     ambig=None,
     hasher=None,
     mailboxes=None,
-    adj_only=None,
 ):
     """Merge unambiguous synteny hashes into proteomes per-proteome."""
     hash_name = hasher.hash_name()
@@ -444,7 +441,7 @@ def merge_unambig_hashes(
     # Calculate disambiguation hashes and write them out for merge
     disambig_frame_list = []
     for unused_frag, subframe in syn.groupby(by=["frag.id"]):
-        disambig_frame_list.append(calculate_disambig_hashes(subframe, adj_only=True))
+        disambig_frame_list.append(hasher.calculate_disambig_hashes(subframe))
     disambig_fr = pd.concat(
         [df for df in disambig_frame_list if df is not None]
     )
@@ -911,14 +908,16 @@ def anchors_to_adjacency(set_path, n_proteomes, mailbox_reader):
     histpath = outpath.parent / (
         outpath.name[: -len(outpath.suffix)] + "_hist.tsv"
     )
-    c = sorted(nx.connected_components(graph), key=len, reverse=True)
+    components = [ c for c in
+                   sorted(nx.connected_components(graph), key=len, reverse=True)
+                    if len(c) > 1]
     fh = outpath.open("w")
     fh.write("idx\tcluster_id\tsize\tmembers\n")
     n_items = 0
     count_list = []
     hash_list = []
     id_list = []
-    for i, comp in enumerate(c):
+    for i, comp in enumerate(components):
         component = np.sort(pd.Index(list(comp)).to_numpy())
         id_list.append(i)
         size = len(comp)
@@ -929,7 +928,7 @@ def anchors_to_adjacency(set_path, n_proteomes, mailbox_reader):
             n_items += 1
     fh.close()
     n_clusts = len(count_list)
-    del graph, c
+    del graph, components
     cluster_counts = pd.DataFrame({"size": count_list})
     largest_cluster = cluster_counts["size"].max()
     cluster_hist = (
@@ -952,83 +951,51 @@ def anchors_to_adjacency(set_path, n_proteomes, mailbox_reader):
                    "syn.anchors.largest": largest_cluster}
     return stats_dict
 
-def unique_anchors(setname, k):
-    """Reduce to unique anchors."""
-    set_path = Path(setname)
-    anchors = pd.read_csv(set_path / "anchors.tsv", sep="\t")
-    pos_hashes = [
-        anchors[f"anchor.{i}.hash"].to_numpy().astype(int) for i in range(k)
-    ]
-    for i in range(k):
-        hash_counts = anchors[f"anchor.{i}.hash"].value_counts()
-        dups = hash_counts[hash_counts > 1]
-        dup_fr = pd.DataFrame(
-            {"n": dups.to_numpy(), "hash_val": dups.index.astype(int)},
-            index=range(len(dups)),
-        )
-        print(dup_fr)
-
-    sys.exit(1)
-    intersections = [
-        set(pos_hashes[i]) & set(pos_hashes[i + 1]) for i in range(k - 1)
-    ]
-    n_to_remove = [len(inter) for inter in intersections]
-    logger.info(f"removing {n_to_remove[0]} non-unique anchors")
-    n_removed = 0
-    anchors["i"] = range(len(anchors))
-    path = set_path / "synteny"
-    correspondances = {i: {} for i in range(k - 1)}
-    # Get the correspondances in previous rows
-    for i, row in anchors.iterrows():
-        for pos in range(k - 1):
-            hashval = row[f"anchor.{pos}.hash"]
-            if hashval in intersections[pos]:
-                correspondances[pos][hashval] = row["i"]
-    # Delete and symlink current rows
-    n_uniq = 0
-    n_total = 0
-    for i, row in anchors.iterrows():
-        for pos in range(k - 1):
-            hashval = row[f"anchor.{pos+1}.hash"]
-            n_total += row["n"]
-            if hashval in intersections[pos]:
-                n_removed += 1
-                filepath = path / f"{i}.{pos+1}.tsv"
-                if filepath.exists():
-                    filepath.unlink()
-                linkpath = f"{correspondances[pos][hashval]}.{pos}.tsv"
-                filepath.symlink_to(linkpath)
+def intersect_anchors(set1_file, set2_file):
+    set1_path = Path(set1_file)
+    set2_path = Path(set2_file)
+    set1_fr = pd.read_csv(set1_path, sep="\t", index_col=0)
+    set2_fr = pd.read_csv(set2_path, sep="\t", index_col=0)
+    set1_dict = {}
+    for cluster_id, subframe in set1_fr.groupby(by=["cluster_id"]):
+        set1_dict[cluster_id] = set(subframe["members"].to_numpy())
+    set2_dict = {}
+    for cluster_id, subframe in set2_fr.groupby(by=["cluster_id"]):
+        set2_dict[cluster_id] = set(subframe["members"].to_numpy())
+    identity_sets = []
+    s1_subset = []
+    s2_subset = []
+    incongruent = []
+    for key1 in set1_dict:
+        s1 = set1_dict[key1]
+        for key2 in set2_dict:
+            s2 = set2_dict[key2]
+            if len(s1.intersection(s2)) == 0:
+                continue
+            elif s1 == s2:
+                identity_sets.append((key1, key2,))
+                break
+            elif s1.issubset(s2):
+                s1_subset.append((key1, key2,))
+                break
+            elif s2.issubset(s1):
+                s2_subset.append((key1, key2,))
+                break
             else:
-                n_uniq += row["n"]
-    frac_unique = n_uniq * 100.0 / n_total
-    logger.info(f"{n_total} total, {n_uniq} unique ({frac_unique}%)anchors")
-    #
-    # Do histogram of anchors
-    #
-    anchor_hist = pd.DataFrame(anchors["n"].value_counts().sort_index())
-    # anchor_hist = pd.DataFrame(anchor_counts.value_counts()).sort_index()
-    # anchor_hist = anchor_hist.rename(
-    #    columns={"syn.anchor.id": "hash.self_count"}
-    # )
-    # anchor_hist["pct_anchors"] = (
-    #        anchor_hist["hash.self_count"] * anchor_hist.index * 100.0 / n_assigned
-    # )
-    # del anchor_hist["hash.self_count"]
-    write_tsv_or_parquet(anchor_hist, set_path / ANCHOR_HIST_FILE)
+                incongruent.append((key1, key2,))
 
-
-def intersect_anchors(setname, k, compfile):
-    set_path = Path(setname)
-    anchors = pd.read_csv(set_path / "anchors.tsv", sep="\t")
-    pos_list = [
-        anchors[f"anchor.{i}.hash"].to_numpy().astype(int) for i in range(k)
-    ]
-    first_set = set(pos_list[0]) | set(pos_list[1])
-    others = pd.read_csv(compfile, sep="\t")
-    other_set = set(others["hash"].to_numpy().astype(int))
-    intersection = first_set & other_set
-    logger.info(
-        f"{len(intersection)} anchors overlap between sets {len(first_set)} {len(other_set)}"
-    )
-    for hash_val in intersection:
-        print(hash_val)
+    logger.info(f"set 1 ({set1_file}): {len(set1_dict)}")
+    logger.info(f"set 2 ({set2_file}): {len(set2_dict)}")
+    min_sets = min(len(set1_dict), len(set2_dict))
+    id_len = len(identity_sets)
+    id_pct = id_len*100./min_sets
+    logger.info(f"identity: {id_len} ({id_pct:.1f}%)")
+    s1_len = len(s1_subset)
+    s1_pct = s1_len * 100./min_sets
+    logger.info(f"set 1 is subset: {s1_len} ({s1_pct:.1f}%)")
+    s2_len = len(s2_subsets)
+    s1_pct = s2_len * 100./min_sets
+    logger.info(f"set 2 is subset: {s1_len} ({s2_pct:.1f}%)")
+    incon_len = len(incongruent)
+    incon_pct = incon_len * 100./min_sets
+    logger.info(f"incongruent: {incon_len}({incon_pct}%)")

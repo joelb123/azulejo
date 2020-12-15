@@ -309,8 +309,15 @@ def parquet_to_fasta(parquetfile, fastafile, append):
     show_default=True,
     help="Include ambiguous anchors.",
 )
+@click.option(
+    "--disambig_adj_only/--disambig_all",
+    default=True,
+    is_flag=True,
+    show_default=True,
+    help="Disambig only anchors adj to unambig.",
+)
 @click.argument("setname")
-def synteny(k, peatmer, setname, write_ambiguous, thorny):
+def synteny(k, peatmer, setname, write_ambiguous, thorny, disambig_adj_only):
     """Calculate synteny anchors.
 
     \b
@@ -325,26 +332,24 @@ def synteny(k, peatmer, setname, write_ambiguous, thorny):
         click_loguru=click_loguru,
         write_ambiguous=write_ambiguous,
         thorny=thorny,
+        disambig_adj_only=disambig_adj_only,
     )
 
 
 @cli.command()
 @click_loguru.init_logger()
 @click_loguru.log_elapsed_time(level="info")
-@click.option(
-    "-k", default=DEFAULT_K, help="Synteny anchor length.", show_default=True
-)
 @click.argument("setname")
 @click.argument("compfile")
-def intersect_anchors(setname, k, compfile):
+def intersect_anchors(setname, compfile):
     """Intersect two sets of synteny anchors.
 
     \b
     Example:
-        azulejo intersect_anchors glycines dagchainer_tool_out/synteny_anchor_summary.tsv
+        azulejo intersect_anchors glycine7/synteny_anchors.tsv dagchainer_tool_out/synteny_anchors.tsv
 
     """
-    undeco_intersect_anchors(setname, k, compfile)
+    undeco_intersect_anchors(setname, compfile)
 
 
 @cli.command()
