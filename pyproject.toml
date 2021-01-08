@@ -63,6 +63,8 @@ sh = "^1.14.1"
 numba = "^0.52.0"
 gffpandas = { git = "https://github.com/legumeinfo/gffpandas.git", branch = "main" }
 beautifulsoup4 = "^4.9.3"
+fastaq = "^0.30"
+amas = "^1.0"
 
 [tool.poetry.dev-dependencies]
 #black = {version = "^20.8b1", allow-prereleases = true}

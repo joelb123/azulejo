@@ -171,7 +171,7 @@ def synteny_anchors(
     )
     adjacency_stats = anchors_to_adjacency(set_path, n_proteomes, join_mb.open_then_delete)
     logger.info(f"adjacency_stats: {adjacency_stats}")
-    sys.exit(0)
+    return
     #
     # Write anchors
     #
@@ -966,24 +966,27 @@ def intersect_anchors(set1_file, set2_file):
     s1_subset = []
     s2_subset = []
     incongruent = []
+    match_keys = list(set2_dict.keys())
     for key1 in set1_dict:
         s1 = set1_dict[key1]
-        for key2 in set2_dict:
+        for i, key2 in enumerate(match_keys):
             s2 = set2_dict[key2]
             if len(s1.intersection(s2)) == 0:
                 continue
             elif s1 == s2:
                 identity_sets.append((key1, key2,))
+                match_keys.pop(i)
                 break
             elif s1.issubset(s2):
                 s1_subset.append((key1, key2,))
+                match_keys.pop(i)
                 break
             elif s2.issubset(s1):
                 s2_subset.append((key1, key2,))
+                match_keys.pop(i)
                 break
             else:
                 incongruent.append((key1, key2,))
-
     logger.info(f"set 1 ({set1_file}): {len(set1_dict)}")
     logger.info(f"set 2 ({set2_file}): {len(set2_dict)}")
     min_sets = min(len(set1_dict), len(set2_dict))
@@ -993,9 +996,9 @@ def intersect_anchors(set1_file, set2_file):
     s1_len = len(s1_subset)
     s1_pct = s1_len * 100./min_sets
     logger.info(f"set 1 is subset: {s1_len} ({s1_pct:.1f}%)")
-    s2_len = len(s2_subsets)
-    s1_pct = s2_len * 100./min_sets
-    logger.info(f"set 2 is subset: {s1_len} ({s2_pct:.1f}%)")
+    s2_len = len(s2_subset)
+    s2_pct = s2_len * 100./min_sets
+    logger.info(f"set 2 is subset: {s2_len} ({s2_pct:.1f}%)")
     incon_len = len(incongruent)
     incon_pct = incon_len * 100./min_sets
     logger.info(f"incongruent: {incon_len}({incon_pct}%)")

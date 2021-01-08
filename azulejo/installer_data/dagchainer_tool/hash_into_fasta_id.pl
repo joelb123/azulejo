@@ -6,26 +6,27 @@ use Bio::SeqIO;
 use Getopt::Long;
 
 my $usage = <<EOS;
-  Synopsis: hash_into_fasta_id.pl [options] -fasta FILE -hash FILE
+  Put key-value pairs from a hash file into FASTA IDS
+
+  Usage:
+      hash_into_fasta_id.pl [options] -fasta FASTAFILE -hash HASHFILE
   
-  Read a key-value hash file and a fasta file. 
-  Swap the IDs with the values from the hash file.
-  
-  Required:
-  -fasta     (string) Fasta file
-  -hash      (string) Key-value hash file, where first column has IDs from fasta file
+  Arguments:
+      -fasta     (string) Fasta file
+       -hash     (string) Key-value file where first column is FASTA IDs
   
   Options:
-  -suff_regex (string) quoted portion of regular expression to use to exclude the last 
-               part of a feature name during the match. 
-               For example, if a gene "ASDF" has a splice variant "-mRNA-1" :
-                 ASDF-mRNA-1    
-               then supply "\\-mRNA-\\d+" ; then ASDF will be replaced by the hashed gene name.
-  -keep_definition  (boolean) the defline in the fasta file will be retained in the output.
-  -out_file  (string) write to this file; otherwise, to stdout.
-  
-  -help   (boolean) This message.
-  
+      -suff_regex       (string) quoted portion of regular expression to use to
+                        exclude the last part of a feature name during the match.
+                        For example, if a gene "ASDF" has a splice variant "-mRNA-1"
+                        with ID "ASDF-mRNA-1", then supply "\\-mRNA-\\d+";
+                        then ASDF will be replaced by the hashed gene name.
+      -keep_definition  (boolean) the defline in the fasta file will be retained in the output.
+      -out_file         (string) write to this file; otherwise, to stdout.
+      -help             (boolean) This message.
+
+  Dependencies:
+      Bio::SeqIO
 EOS
 
 my ($fasta_file, $hash_file, $suff_regex, $out_file, $keep_definition, $help);

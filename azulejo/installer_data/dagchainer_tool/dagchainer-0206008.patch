@@ -26,7 +26,7 @@ index 014b629..c538f1f 100644
 -
 +	c++ -O3 -march=native -o ${PROG} dagchainer.cpp -std=c++98
 +	strip ${PROG}
-
+ 
 diff --git a/dagchainer.cpp b/dagchainer.cpp
 index 7a03c50..34a4e53 100644
 --- a/dagchainer.cpp
@@ -58,9 +58,18 @@ index 7a03c50..34a4e53 100644
  #include <getopt.hh>
  #else
 diff --git a/run_DAG_chainer.pl b/run_DAG_chainer.pl
-index 8491386..b4475b1 100755
+index 8491386..75f24d1 100755
 --- a/run_DAG_chainer.pl
 +++ b/run_DAG_chainer.pl
+@@ -129,7 +129,7 @@ main: {
+ 		my $match_list_aref = $mol_pair_to_list{$molpair};
+ 		
+ 		## Create input file to cpp program.
+-		my $filename = "$mol_1.vs.$mol_2.delcher..input";
++		my $filename = "/tmp/$mol_1.vs.$mol_2.delcher.input";
+ 		
+ 		my @pairIndexToAccs;
+ 		open (ART, ">$filename") or die "Can't open file.\n";
 @@ -425,7 +425,7 @@ sub run_DAG_chainer {
  	}
  	

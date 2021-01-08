@@ -299,7 +299,7 @@ class DependencyInstaller(object):
         logger.debug(f"   configuring {dep} in {Path.cwd()}")
         configure = sh.Command("./configure")
         try:
-            configure(**self.output_kwargs)
+            configure(self.dependency_dict[dep]["configure"], **self.output_kwargs)
         except:
             logger.error(f"configure of {dep} failed.")
             sys.exit(1)

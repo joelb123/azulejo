@@ -3,7 +3,8 @@
 # Configuration and run script for dagchainer 
 #
 set -e # stop on errors
-version="1.0"
+NPROC=$(nproc)
+version="1.1"
 script_name="$(basename "${BASH_SOURCE}")"
 script_dir=''
 pushd "$(dirname "$(readlink -f "$BASH_SOURCE")")" >/dev/null && {
@@ -34,7 +35,7 @@ error_exit() {
   echo >&2 "   $BASH_COMMAND"
 }
 trap error_exit EXIT
-TOP_DOC="""Compute synteny among sets of GFF/FASTA files
+TOP_DOC="""Compute synteny among sets of GFF/FASTA files using DAGchainer
 
 Usage:
         ${pkg} COMMAND [COMMAND_OPTIONS]
@@ -48,7 +49,7 @@ Commands (in order they are usually run):
               clean - Delete work directory
 
 Variables (accessed by \"config\" command):
-      blast_threads - threads to use in searches [default: 4]
+      blast_threads - threads to use in searches [default: ${NPROC}]
     dagchainer_args - Argument for DAGchainer command
              dbtype - Database type, either 'nucl' or 'prot'
               e_val - Maximum BLAST score permitted in matches
@@ -126,14 +127,14 @@ run_ingest() {
   gff_files="$(ls *.${gff_ext})"
   fasta_files="$(ls *.${fasta_ext})"
   n_fasta=$(howmany "$fasta_files")
-  echo "ingest--combining info from ${n_gff}  ${gff_ext} and ${n_fasta} ${fasta_ext} files"
+  echo "ingest--combine data from ${n_fasta} ${gff_ext} and ${fasta_ext} files"
   for path in $gff_files; do
     base=$(basename $path .${gff_ext})
     base_no_ann=$(echo $base | perl -pe 's/\.ann\d+\.\w+//')
     cat $path | awk -v OFS="\t" '$3=="mRNA" {print $1, $4, $5, $9}' |
       perl -pe 's/ID=([^;]+);.+/$1/' >${work_dir}/${base_no_ann}.bed
   done
-  echo "adding positional information to FASTA ids"
+  # add positional information to FASTA ids
   for path in ${work_dir}/*.bed; do
     base=$(basename $path .bed)
     cat $path | awk '{print $4 "\t" $1 "__" $4 "__" $2 "__" $3 }' \
@@ -183,7 +184,7 @@ run_blastall() {
 #
 run_filter(){
   pct_id=$(get_value pct_identity)
-  echo "filtering top hits at ${pct_id}% sequence identity"
+  echo "filter--downselect top hits at ${pct_id}% sequence identity"
   for blast_path in ${blast_out_dir}/*; do
     outfilebase=$(basename $blast_path .bln)
     cat $blast_path | \
@@ -204,7 +205,7 @@ run_dagchainer() {
   wait
   end_time=$(date +%s)
   set_value dag_time_s $((end_time-start_time))
-  echo "generating single-linkage synteny anchors"
+  #generate single-linkage synteny anchors
   printf "matches\tscore\trev\tid1\tid2\n" >${work_dir}/synteny_blocks.tsv
   for path in ${dag_dir}/*.aligncoords; do
     cat $path | awk '$1!~/^#/ {print $2 "\t" $6}' \
@@ -322,7 +323,7 @@ init() {
   echo "setting run configuration parameters"
   echo
   set_value e_val "1e-10"
-  set_value blast_threads 4
+  set_value blast_threads $NPROC
   set_value pct_identity 95
   set_value dagchainer_args ""
   set_value fasta_ext "fna"
@@ -341,7 +342,7 @@ Usage:
 Steps:
    If STEP is not set, the following steps will be run in order,
    otherwise the step is run by itself:
-              ingest - get info from matching GFF and FASTA files
+              ingest - get info from matching GFF and FNA files
             blastall - cluster via BLAST
               filter - reduce to top reciprocal hits above pct_identity
           dagchainer - compute Directed Acyclic Graphs

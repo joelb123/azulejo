@@ -66,7 +66,7 @@ SITES = {
     "legfed": {
         "url": "https://v1.legumefederation.org/data/index/public/",
         "faa_pattern": ("*protein_primaryTranscript.faa.gz",),
-        "fna_pattern": ("*protein_primaryTranscript.fna.gz",),
+        "fna_pattern": ("*transcript_primaryTranscript.fna.gz",),
         "gff_pattern": ("*gene_models_main.gff3.gz",),
         "name_from_part": 1,
         "name_split_on": ".",
@@ -827,43 +827,61 @@ def find_files(
                     else:
                         last_found = "fna"
                     fna_list.append(path)
-        n_files = min(len(faa_list), len(gff_list))
-        if len(faa_list) != len(gff_list):
-            logger.error(
-                f"number of matching faa ({len(faa_list)})"
-                + f" and GFF ({len(gff_list)}) files don't agree"
-            )
-            bad_pattern = True
+        if nucleic:
+            n_sets = min(len(faa_list), len(gff_list), len(fna_list))
+            n_longest = max(len(faa_list), len(gff_list), len(fna_list))
         else:
-            bad_pattern = False
-        if outfile is None or bad_pattern:
+            n_sets = min(len(faa_list), len(gff_list))
+            n_longest = max(len(faa_list), len(gff_list), len(fna_list))
+        bad_pattern = n_sets != n_longest
+        if outfile is None or n_sets == 0 or bad_pattern:
+            logger.info(f"uri: {uri}")
             logger.info(f"gff patterns: {gff_pattern}")
             logger.info(f"faa patterns: {faa_pattern}")
             if nucleic:
                 logger.info(f"fna patterns: {fna_pattern}")
             logger.info(f"exclude patterns: {exclude}")
-            for i in range(n_files):
+            if n_sets == 0:
+                logger.error("No matching sets found")
+            else:
+                logger.info(f"{n_sets} matching sets found")
+            for i in range(n_sets):
                 print(f"{i}:")
                 print(f"  name: {name_list[i]}")
                 print(f"   gff: {gff_list[i]}")
                 print(f"   faa: {faa_list[i]}")
                 if nucleic:
-                    print(f"   fna: {faa_list[i]}")
+                    print(f"   fna: {fna_list[i]}")
             if bad_pattern:
-                if len(faa_list) > n_files:
-                    logger.error(f"leftover faa files:")
-                    for i, leftover in enumerate(faa_list[n_files:]):
-                        print(f"  {i} {leftover}")
-                else:
-                    logger.error("leftover GFF files")
-                    for i, leftover in enumerate(gff_list[n_files:]):
-                        print(f"   {i}: {leftover}")
+                logger.error("Unmatched files:")
+                for i in range(n_sets, n_longest):
+                    if len(gff_list) > i:
+                        gff_path = gff_list[i]
+                        name = name_list[i]
+                    else:
+                        gff_path = "None"
+                        name = None
+                    logger.error(f"{i}:")
+                    logger.error(f"  name: {name}")
+                    logger.error(f"   gff: {gff_path}")
+                    if len(faa_list) > i:
+                        faa_path = faa_list[i]
+                    else:
+                        faa_path = "None"
+                    logger.error(f"   faa: {faa_path}")
+                    if nucleic:
+                        if len(fna_list) > i:
+                            fna_path = fna_list[i]
+                        else:
+                            fna_path = "None"
+                        logger.error(f"   fna: {fna_path}")
+
                 sys.exit(1)
             if n_warnings > 0:
                 logger.warning(
                     f"{n_warnings} warnings produced, check results carefully"
                 )
-            logger.info(f"{n_files} sets of files found.")
+            logger.info(f"{n_sets} sets of files found.")
             sys.exit(0)
     #
     # Generate top-level info
@@ -874,11 +892,13 @@ def find_files(
             print(f'rank = "{parent_rank}"\n', file=outfh)
         if parent_only:
             sys.exit(0)
-        for i in range(n_files):
+        for i in range(n_sets):
             print(f"[{parent_name}.{name_list[i]}]", file=outfh)
             print(f'rank = "{rank}"', file=outfh)
             print(f'uri = "{uri}"', file=outfh)
             print(f'gff = "{gff_list[i]}"', file=outfh)
             if pref_list[i] != None:
                 print(f"preference = {pref_list[i]}", file=outfh)
+            if nucleic:
+                print(f'fna = "{fna_list[i]}"\n', file=outfh)
             print(f'fasta = "{faa_list[i]}"\n', file=outfh)
