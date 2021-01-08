@@ -32,12 +32,12 @@ jobs:
         export LOG_TO_PRINT=info
         export SPINNER_UPDATE_PERIOD="5.0"
         export TEST_DIR=/dev/shm/pytest
-        pytest tests/0cli_test.py 
-        pytest tests/1file_test.py::test_setup_datadir 
+        poetry run pytest tests/0cli_test.py 
+        poetry run pytest tests/1file_test.py::test_setup_datadir 
         mkdir $TEST_DIR
-        pytest --basetemp=$TEST_DIR tests/2ingest_test.py
+        poetry run pytest --basetemp=$TEST_DIR tests/2ingest_test.py
         rm -r $TEST_DIR; mkdir $TEST_DIR
-        pytest --basetemp=$TEST_DIR  tests/3installer_test.py 
-        pytest tests/4homology_test.py
+        poetry run pytest --basetemp=$TEST_DIR  tests/3installer_test.py 
+        poetry run pytest tests/4homology_test.py
         rm -r $TEST_DIR; mkdir $TEST_DIR
-        pytest --basetemp=$TEST_DIR  tests/5synteny_test.py
+        poetry run pytest --basetemp=$TEST_DIR  tests/5synteny_test.py

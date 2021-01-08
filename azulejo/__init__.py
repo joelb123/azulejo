@@ -207,7 +207,7 @@ DEPENDENCY_DICT = {
                       "--without-lapack",
                       "--without-internal",
                       "--with-projects=disable-testsuite-compilation.txt"],
-        "make": ["-j", os.cpu_count()],
+        "make": [],
         "copy_binaries": [
             "ReleaseMT/bin/blastn",
             "ReleaseMT/bin/make_db",
