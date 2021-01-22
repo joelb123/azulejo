@@ -4,27 +4,50 @@
 
 azulejo
 =======
-``azulejo`` azulejo tiles phylogenetic space with subtrees
-normalizes and validates genomic data files prior to further processing
-or inclusion in a data store such as that of the
-`Legume Federation <https://www.legumefederation.org/en/data-store/>`_.
+``azulejo`` azulejo combines homology and synteny information to
+tile phylogenetic space.
+The inputs to ``azulejo`` are FASTA files of nucleotide-space
+sequences of primary-transcript protein genes and their associated GFF files.
+Outputs are sets of proxy gene fragments chosen for 
+their concordance in multiple sequence alignments, along with
+subtrees.
 
 Prerequisites
 -------------
-Python 3.6 or greater is required. This package is tested under Linux using Python 3.8.
+Python 3.7 or greater is required. ``azulejo`` is tested under Linux 
+using Python 3.8 and 3.9 and under MacOS Big Sur using XCode command-line tools
+system Python (currently 3.8). Mac users should see the `instructions
+on configuring their systems <macos.rst>`_.  Installation on BSD is not
+supported because many of the python dependencies lack BSD wheels.
 
-``azulejo`` relies on `usearch <https://www.drive5.com/usearch/download.html>`_ for 
-clustering and `MUSCLE <https://www.drive5.com/muscle/downloads.htm>`_ for sequence
-alignment and initial tree-building.  ``usearch`` is free for individual, non-commercial
-use, while ``MUSCLE`` is in the public domain.  Both can be downloaded and installed
-by the ``azulejo install`` subcommand.  You will be asked to accept the license terms
-for ``usearch`` by the install procedure.
+We recommend you install ``azulejo`` into its own virtual environment due
+to the large number of python dependencies.  The easiest way for most 
+users to install and maintain up-to-date virtual environments is via the
+tool `pipx<https://pipxproject.github.io/pipx/>`_.  If your system does
+not have ``pipx`` installed, you can do so via the commands::
+
+        python3 -m pip install --user --upgrade pip
+        python3 -m pip install --user --upgrade pipx
+        python3 -m pipx ensurepath
+
+Follow any instructions that the last command produces about starting a new
+shell if necessary.  
+
+If you choose to have ``azulejo`` compile and install its binary dependencies,
+you will need compilers, ``make``, and ``cmake``  and standard headers
+for ``zlib`` and ``bz2``.  All linux systems configured for development will have
+these available.  We test compilation under gcc version 10.2 on linux and
+clang 12.0.0 on MacOS.  We use program-guided optimization for one of the
+binary dependencies, and we believe that gcc 10 does a much better job
+of optimization than gcc 9, so it may benefit you to upgrade your compiler
+if needed.
 
 Installation for Users
 ----------------------
-Install via pip or (better yet) `pipx <https://pipxproject.github.io/pipx/>`_: ::
+Once the prerequisite has been met, you may then install ``azulejo`` 
+in its own virtual environment by issuing the command::
 
-     pipx install azulejo
+        pipx install azulejo
 
 ``azulejo`` contains some long commands and many options.  To enable command-line
 completion for ``azulejo`` commands, execute the following command if you are using
@@ -32,11 +55,78 @@ completion for ``azulejo`` commands, execute the following command if you are us
 
     eval "$(_AZULEJO_COMPLETE=source_bash azulejo)"
 
-Then you should run ``azulejo install`` to see if you have the binary dependencies
-installed.  If not, ``azulejo install all`` will install them for you.
+Then you should run ``azulejo install`` and check the versions of all binary
+dependencies that may installed system-wide.
 
-For Developers
---------------
+
+Environmental Variables
+-----------------------
+``azulejo`` recognizes the following environmental variables:
+
+* AZULEJO_INSTALL_DIR
+This is a writable directory for installation of binary dependencies.  Binaries
+will go into the ``bin`` directory.  The default is the virtual environment
+directory.
+
+* BUILD_DEV
+This is the directory used for building binary dependencies.  Default is the
+first memory device found for linux (e.g., `/run/shm`) or `/tmp` for MacOS.
+Set this if compilation fails because it runs out of memory.
+
+* SCRATCH_DEV
+This is the directory used for temporary merging of lists.  The default is
+`/tmp`, but you may set it to a fast memory based device if you have enough
+memory.
+
+* MAKEOPTS
+These are the arguments to the ``make`` and ``make install`` commands when
+building dependencies.  It's good to set this to the number of processors
+on your system via the command ``export MAKEOPTS="-j $(nproc)"`` to speed
+up installation.  The only time this variable is used is during
+``azulejo install``.
+
+* SPINNER_UPDATE_PERIOD
+This is the number of seconds between updates of the spinner.  This
+defaults to 1, but it is advisable to set it higher for automated testing
+so as not to exceed logfile character limits.
+
+* LOG_TO_PRINT
+If set, the logger will be a simple print without using the more
+complex functions of ``loguru`` such as colors and logging to files.
+This is sometimes useful in automated testing.
+
+
+
+Installation of Binary Dependencies
+-----------------------------------
+``azulejo`` requires `MMseqs <https://github.com/soedinglab/MMseqs2>`_ 
+for homology clustering and `MUSCLE <https://www.drive5.com/muscle/downloads.htm>`_
+for sequence alignment and initial tree-building.
+``azulejo`` installs binaries into the virtualenv by default, so
+any systemwide installations of these packages will not get clobbered by the install.
+In particular, ``muscle`` is PGO-optimized, which gives nearly a factor of 2 higher
+performance than prebuilt binaries.  We recommand you set ``MAKEOPTS`` as explained
+above, then issue the command ``azulejo install all`` to ensure you get correct versions
+optimized for your hardware.
+
+
+There are three optional dependencies that can be installed via ``azulejo install`` 
+that are of interest only to a small subset of users who wish to compare against
+other homology clustering and synteny methods.  
+`usearch <https://www.drive5.com/usearch/download.html>`_ 
+is a licensed homology clustering program that is free for individual, non-commercial
+use that can be downloaded and installed by the ``azulejo install usearch``
+command after accepting the license terms.  ``azulejo install dagchainer-tool`` gets you
+a somewhat crude Bash script that uses BLAST homology clustering followed by 
+synteny calculation via `DAGchainer <https://dagchainer.sourceforge.net>`_.  
+``dagchainer-tool`` will need the dependency of ``perl`` with ``bioperl`` installed.
+``dagchainer_tool`` increases the sequence ID length as part of its processing, so
+if any of your sequence IDS are longer than about 30 characters, they will violate BLAST's
+hard limit of 50 characters in sequence ID fields.  In that case you will need
+to install a patched version of BLAST using the command ``azulejo install blast-longids``.
+
+Installation For Developers
+---------------------------
 If you plan to develop ``azulejo``, you'll need to install
 the `poetry <https://python-poetry.org>`_ dependency manager.
 If you haven't previously installed ``poetry``, execute the command: ::

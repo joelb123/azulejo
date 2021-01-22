@@ -1,0 +1,29 @@
+diff --git a/svnversion.h b/svnversion.h
+index 0a8ca88..30ea660 100644
+--- a/svnversion.h
++++ b/svnversion.h
+@@ -1 +1 @@
+-"1551"
++"1551.99"
+diff --git a/subfams.cpp b/subfams.cpp
+index 62cad34..fd1a482 100644
+--- a/subfams.cpp
++++ b/subfams.cpp
+@@ -1,7 +1,7 @@
+ #include "muscle.h"
+ #include "distfunc.h"
+ 
+-const float INFINITY = float(1e29);
++const float REALLY_BIG = float(1e29); // clashes with math.h on OSX
+ const unsigned NILL = uInsane;
+ 
+ static float *ShortestPathEstimate;
+@@ -43,7 +43,7 @@ static void InitializeSingleSource(DistFunc &DF, unsigned uIndex)
+ 
+ 	for (unsigned i = 0; i < uNodeCount; ++i)
+ 		{
+-		ShortestPathEstimate[i] = INFINITY;
++		ShortestPathEstimate[i] = REALLY_BIG;
+ 		Predecessor[i] = NILL;
+ 		}
+ 	ShortestPathEstimate[uIndex] = 0;

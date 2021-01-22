@@ -1,0 +1,99 @@
+diff --git a/configure b/configure
+index 7e82586..857af1a 100755
+--- a/configure
++++ b/configure
+@@ -1,3 +1,92 @@
+ #!/bin/sh
+-srcdir=`dirname $0`
+-exec $srcdir/configure.orig --without-debug --with-strip --with-openmp --with-mt --without-vdb --without-gnutls --without-gcrypt --with-build-root=$srcdir/ReleaseMT ${1+"$@"}
++exec ./configure.orig \
++	--without-debug \
++	--with-strip \
++	--with-mt \
++	--without-vdb \
++	--without-gnutls \
++	--without-gcrypt \
++	--with-build-root=$(dirname $0)/ReleaseMT \
++	--with-lfs \
++	--with-64 \
++	--with-autodep \
++	--with-bincopy \
++	--with-pch \
++	--without-gmp \
++	--without-sss \
++	--without-lmdb \
++	--without-openssl \
++	--without-krb5 \
++	--without-ngs \
++	--without-sssdb \
++	--without-suffix \
++	--without-hostspec \
++	--without-symbols \
++	--without-sybase \
++	--without-lzo \
++	--without-check \
++	--without-gl2ps \
++	--without-fastcgi \
++	--without-magic \
++	--without-sablot \
++	--without-libexslt \
++	--without-zorba \
++	--without-oechem \
++	--without-bdb \
++	--without-sp \
++	--without-orbacus \
++	--without-perl \
++	--without-ctools \
++	--without-ftgl \
++	--without-hiredis \
++	--without-mysql \
++	--without-muparser \
++	--without-opengl \
++	--without-runpath \
++	--without-mesa \
++	--without-glut \
++	--without-glew \
++	--without-wxwidgets \
++	--without-wxwidgets-ucs \
++	--without-freetype \
++	--without-python \
++	--without-boost \
++	--without-sqlite3 \
++	--without-icu \
++	--without-expat \
++	--without-libxml \
++	--without-libxslt \
++	--without-xerces \
++	--without-hdf5 \
++	--without-xalan \
++	--without-gif \
++	--without-jpeg \
++	--without-tiff \
++	--without-png \
++	--without-xpm \
++	--without-curl \
++	--without-mimetic \
++	--without-gui \
++	--without-local-lbsm \
++	--without-ncbi-crypt \
++	--without-connext \
++	--without-avro \
++	--without-sasl2 \
++	--without-cereal \
++	--without-gbench \
++	--without-mongodb \
++	--without-cassandra \
++	--without-nghttp2 \
++	--without-h2o \
++	--without-influxdb \
++	--without-protobuf \
++	--without-grpc \
++	--without-msgsl \
++	--without-apache-arrow \
++	--without-libxlsxwriter \
++	--without-cppkafka \
++	--without-aws-sdk \
++	--without-lapack \
++	--without-internal \
++	--with-projects=disable-testsuite-compilation.txt \
++	${1+"$@"}

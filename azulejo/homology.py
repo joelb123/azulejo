@@ -25,6 +25,7 @@ from .common import HOMOLOGY_FILE
 from .common import PROTEINS_FILE
 from .common import PROTEOMES_FILE
 from .common import PROTEOMOLOGY_FILE
+from .common import SEARCH_PATHS
 from .common import SPINNER_UPDATE_PERIOD
 from .common import TrimmableMemoryMap
 from .common import calculate_adjacency_group
@@ -373,7 +374,11 @@ def parse_cluster(
         ]
         if neighbor_joining:
             muscle_args += ["-cluster2", "neighborjoining"]  # adds 20%
-    muscle = sh.Command("muscle")
+    try:
+        muscle = sh.Command("muscle", search_paths=SEARCH_PATHS)
+    except sh.CommandNotFound:
+        logger.error("muscle must be installed first.")
+        sys.exit(1)
     muscle(muscle_args)
     # fasta_path.unlink()
     clusters["prot.idx"] = clusters["path"].map(file_dict)

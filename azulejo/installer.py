@@ -20,6 +20,7 @@ from requests_download import download as request_download
 # module imports
 from .common import MinSpaceTracker
 from .common import BUILD_DEV
+from .common import SEARCH_PATHS
 from .common import free_mb
 from .common import is_writable
 from .common import logger
@@ -81,10 +82,7 @@ class DependencyInstaller(object):
         else:
             self.bin_path = bin_path
         self.bin_path_exists = self.bin_path.exists()
-        self.bin_path_writable = os.access(self.bin_path, os.W_OK)
-        self.bin_path_in_path = str(self.bin_path) in os.environ["PATH"].split(
-            ":"
-        )
+        self.install_path_writable = os.access(self.install_path, os.W_OK)
         system = platform.system()
         if system == "Linux":
             self.platform = "linux"
@@ -106,6 +104,9 @@ class DependencyInstaller(object):
         else:
             self.output_kwargs = {"_out": sys.stdout, "_err": sys.stderr}
         self.status_msg = None
+        self.work_path = None
+        self.build_path = None
+        self.makeopts = []
 
     def check_all(self, exe_paths=False):
         """Check all depenencies for existence and version."""
@@ -117,25 +118,28 @@ class DependencyInstaller(object):
             version_command = self.dependency_dict[dep]["version_command"]
             self.dependency_dict[dep]["installed"] = not self.force
             for binary in self.dependency_dict[dep]["binaries"]:
-                if sh.which(binary) == None:
+                if sh.which(binary, paths=SEARCH_PATHS) == None:
                     self.dependency_dict[dep]["installed"] = False
                     exe = binary
                     ver_str = "not installed."
                 else:
-                    exe = sh.Command(binary)
-                    ver_out = exe(*version_command, _err_to_out=True).rstrip(
-                        "\n"
-                    )
-                    if "version_parser" in self.dependency_dict[dep]:
-                        installed_version = version.parse(
-                            self.dependency_dict[dep]["version_parser"](
-                                ver_out
+                    exe = sh.Command(binary, search_paths=SEARCH_PATHS)
+                    try:
+                        ver_out = exe(
+                            *version_command, _err_to_out=True
+                        ).rstrip("\n")
+                        if "version_parser" in self.dependency_dict[dep]:
+                            installed_version = version.parse(
+                                self.dependency_dict[dep]["version_parser"](
+                                    ver_out
+                                )
                             )
-                        )
-                    else:
-                        installed_version = version.parse(
-                            default_version_splitter(ver_out)
-                        )
+                        else:
+                            installed_version = version.parse(
+                                default_version_splitter(ver_out)
+                            )
+                    except sh.ErrorReturnCode_1:
+                        installed_version = version.parse("0.0")
                     if installed_version == target_version:
                         ver_str = (
                             f"at recommended version {installed_version}."
@@ -161,15 +165,10 @@ class DependencyInstaller(object):
             bin_path_state = "exists, "
         else:
             bin_path_state = "doesn't exist, "
-        if self.bin_path_writable:
+        if self.install_path_writable:
             bin_path_state += "writable, "
         else:
             bin_path_state += "not writable, "
-        if self.bin_path_in_path:
-            bin_path_state += "in path."
-        else:
-            bin_path_state += "not in path."
-            logger.debug(f"Bin dir '{self.bin_path}' {bin_path_state}")
         all_required = all(
             [
                 self.dependency_dict[d]["installed"]
@@ -223,24 +222,23 @@ class DependencyInstaller(object):
         if len(install_list):
             if not self.bin_path_exists:
                 logger.error(
-                    f"Installation directory {self.bin_path} does not"
+                    f"Installation directory {self.install_path} does not"
                     " exist."
                 )
                 sys.exit(1)
-            if not self.bin_path_writable:
+            if not self.install_path_writable:
                 logger.error(
-                    f"Installation directory {self.bin_path} is not"
+                    f"Installation directory {self.install_path} is not"
                     " writable."
-                )
-                sys.exit(1)
-            if not self.bin_path_in_path:
-                logger.error(
-                    f"Installation directory {self.bin_path} is not in"
-                    " PATH."
                 )
                 sys.exit(1)
         for dep in install_list:
             self.install(dep)
+
+    def _get_makeopts(self):
+        """Get options for make from MAKEOPTS envvar."""
+        if "MAKEOPTS" in os.environ:
+            self.makeopts = os.environ["MAKEOPTS"].split()
 
     def _git(self, dep):
         """Git clone from list."""
@@ -295,13 +293,36 @@ class DependencyInstaller(object):
         )
 
     def _configure(self, dep):
-        """Run make to build package."""
+        """Run configure to generate a makefile."""
         logger.debug(f"   configuring {dep} in {Path.cwd()}")
+        config_args = [f"--prefix={self.install_path}"] + self.dependency_dict[
+            dep
+        ]["configure"]
         configure = sh.Command("./configure")
+        logger.debug(f"   configure {config_args} in {Path.cwd()}")
         try:
-            configure(self.dependency_dict[dep]["configure"], **self.output_kwargs)
+            configure(config_args, **self.output_kwargs)
         except:
             logger.error(f"configure of {dep} failed.")
+            sys.exit(1)
+
+    def _cmake(self, dep):
+        """Run cmake to generate makefiles."""
+        self.build_path = Path(self.work_path.parent / "build")
+        self.build_path.mkdir()
+        cmake_args = [
+            f"-DCMAKE_INSTALL_PREFIX={self.install_path}",
+            "-S",
+            ".",
+            "-B",
+            str(self.build_path),
+        ] + self.dependency_dict[dep]["cmake"]
+        logger.debug(f"   running cmake {cmake_args} on {dep} in {Path.cwd()}")
+        cmake = sh.Command("cmake")
+        try:
+            cmake(cmake_args, **self.output_kwargs)
+        except:
+            logger.error(f"cmake of {dep} failed.")
             sys.exit(1)
 
     def _copy_in_files(self, out_head, pkgname, dep, force=True):
@@ -322,14 +343,23 @@ class DependencyInstaller(object):
                     subdir_parts = root_parts[3:]
                 else:
                     subdir_parts = root_parts[2:]
+                if len(subdir_parts) > 0 and subdir_parts[-1] == "__pycache__":
+                    continue
                 out_path = out_head.joinpath(*subdir_parts)
                 if not out_path.exists() and len(files) > 0:
-                    logger.info(f'Creating "{str(out_path)}" directory')
+                    logger.debug(f'Creating "{str(out_path)}" directory')
                     out_path.mkdir(0o755, parents=True)
                 for filename in files:
-                    data_string = pkgutil.get_data(
-                        __name__, str(root / filename)
-                    ).decode("UTF-8")
+                    logger.debug(f"Copying {filename}")
+                    try:
+                        data_string = pkgutil.get_data(
+                            __name__, str(root / filename)
+                        ).decode("UTF-8")
+                    except UnicodeDecodeError:
+                        logger.warning(
+                            f"File {filename} contained an undecodable string, skipping"
+                        )
+                        continue
                     file_path = out_path / filename
                     if file_path.exists() and not force:
                         logger.error(
@@ -350,23 +380,22 @@ class DependencyInstaller(object):
     def _patch(self, dep):
         """Apply a patch."""
         patch = sh.Command("patch")
-        logger.debug(
-            f"   Applying patch {self.dependency_dict[dep]['patch']} in {Path.cwd()}"
-        )
-        try:
-            patch(self.dependency_dict[dep]["patch"], **self.output_kwargs)
-        except:
-            logger.error(f"patch of {dep} failed.")
-            sys.exit(1)
+        for patch_file in self.dependency_dict[dep]["patches"]:
+            patch_args = ["-p1", "-i", patch_file]
+            logger.debug(f"   patch {patch_args} in {Path.cwd()}")
+            try:
+                patch(patch_args, **self.output_kwargs)
+            except:
+                logger.error(f"patch {patch_file} of {dep} failed.")
+                sys.exit(1)
 
     def _make(self, dep):
         """Run make to build package."""
         make = sh.Command("make")
-        logger.debug(
-            f"   making {self.dependency_dict[dep]['make']} in {Path.cwd()}"
-        )
+        make_args = self.dependency_dict[dep]["make"] + self.makeopts
+        logger.debug(f"   make {make_args} in {Path.cwd()}")
         try:
-            make(self.dependency_dict[dep]["make"], **self.output_kwargs)
+            make(make_args, **self.output_kwargs)
         except:
             logger.error(f"make of {dep} failed.")
             sys.exit(1)
@@ -374,11 +403,10 @@ class DependencyInstaller(object):
     def _make_install(self, dep):
         """Run make install to install a package."""
         make = sh.Command("make")
-        logger.info(f"   installing {dep} into {self.bin_path}")
+        make_args = self.dependency_dict[dep]["make_install"] + self.makeopts
+        logger.debug(f"   make install {make_args} in {Path.cwd()}")
         try:
-            make.install(
-                self.dependency_dict[dep]["make_install"], **self.output_kwargs
-            )
+            make.install(make_args, **self.output_kwargs)
         except:
             logger.error(f"make install of {dep} failed.")
 
@@ -455,11 +483,12 @@ class DependencyInstaller(object):
             if not dirpath.is_dir():
                 raise ValueError(f'directory "{dirpath}" is not a directory.')
             os.chdir(dirpath)
-            workpath = Path.cwd()
+            self.work_path = Path.cwd()
+            self.build_path = self.work_path
             #
             # Copy in any additional files.
             #
-            self._copy_in_files(workpath, self.pkg_name, dep, force=True)
+            self._copy_in_files(self.work_path, self.pkg_name, dep, force=True)
             #
             # Check licensing
             #
@@ -483,29 +512,36 @@ class DependencyInstaller(object):
             #
             # Build the executables.
             #
-            if "patch" in dep_dict:
+            self._get_makeopts()
+            if "patches" in dep_dict:
                 self._patch(dep)
+            if "cmake" in dep_dict:
+                self._cmake(dep)
             if "configure" in dep_dict:
+                os.chdir(self.build_path)
                 self._configure(dep)
             if "configure_extra_dirs" in dep_dict:
                 for newdir in dep_dict["configure_extra_dirs"]:
-                    os.chdir(workpath / newdir)
+                    os.chdir(self.build_path / newdir)
                     self._configure(dep)
-                    os.chdir(workpath)
+                    os.chdir(self.build_path)
             if "make" in dep_dict:
+                os.chdir(self.build_path)
                 self._make(dep)
             if "make_extra_dirs" in dep_dict:
                 for newdir in dep_dict["make_extra_dirs"]:
-                    os.chdir(workpath / newdir)
+                    os.chdir(self.build_path / newdir)
                     self._make(dep)
-                    os.chdir(workpath)
+                    os.chdir(self.build_path)
             free_tracker.check()
             #
             # Install the executables.
             #
             if "make_install" in dep_dict:
+                os.chdir(self.build_path)
                 self._make_install(dep)
             elif "copy_binaries" in dep_dict:
+                os.chdir(self.build_path)
                 self._copy_binaries(dep)
             logger.info(
                 f"Build of {dep} on {build_dev_path} used"

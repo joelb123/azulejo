@@ -2,19 +2,21 @@
 """azulejo -- tile phylogenetic space with subtrees."""
 # standard library imports
 import locale
-import os
 import sys
 import warnings
-from pathlib import Path
 from pkg_resources import iter_entry_points
 
 # third-party imports
 import click
+import sh
 from click_plugins import with_plugins
 from click_loguru import ClickLoguru
 
 # module imports
+from .common import INSTALL_PATH
+from .common import SEARCH_PATHS
 from .common import NAME
+from .common import logger
 from .core import homology_cluster as undeco_homology_cluster
 from .core import cluster_in_steps as undeco_cluster_in_steps
 from .homology import cluster_build_trees as undeco_cluster_build_trees
@@ -31,18 +33,16 @@ from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.9.19"
-INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
-    NAME.upper() + "_INSTALL_DIR"
-)
-if INSTALL_ENVIRON_VAR in os.environ:
-    INSTALL_PATH = Path(os.environ[INSTALL_ENVIRON_VAR])
-else:
-    INSTALL_PATH = None
+__version__ = "0.10.0"
 MUSCLE_VER = "3.8.1551"
 USEARCH_VER = "11.0.667"
-DAGCHAINER_TOOL_VER = "1.0"
-BLAST_VER = "2.11.0"
+DAGCHAINER_TOOL_VER = "1.2"
+BLAST_MINOR = "2.11"
+BLAST_VER = f"{BLAST_MINOR}.0"
+BLAST_PATCHED = f"{BLAST_MINOR}.99"
+MMSEQS_VER = "12.0"
+MMSEQS_HASH = "113e3212c137d026e297c7540e1fcd039f6812b1"
+MMSEQS_SHORT_HASH = MMSEQS_HASH[:4]
 DEPENDENCY_DICT = {
     "muscle": {
         "binaries": ["muscle"],
@@ -52,7 +52,8 @@ DEPENDENCY_DICT = {
             + ".tar.gz"
         ),
         "dir": ".",
-        "version": MUSCLE_VER,
+        "patches": ["infinity_fix.patch"],
+        "version": MUSCLE_VER + ".99",
         "version_command": ["-version"],
         "version_parser": lambda v: v.split()[1],
         "make": ["muscle-pgo"],
@@ -64,6 +65,7 @@ DEPENDENCY_DICT = {
         "binaries": ["usearch"],
         "dir": ".",
         "version": USEARCH_VER,
+        "required": False,
         "version_command": ["-version"],
         "version_parser": lambda v: v.split()[1].split("_")[0],
         "download_binaries": {
@@ -76,8 +78,8 @@ DEPENDENCY_DICT = {
         "license_restrictive": True,
         "license_file": "LICENSE.txt",
     },
-    "dagchainer_tool": {
-        "binaries": ["dagchainer_tool.sh"],
+    "dagchainer-tool": {
+        "binaries": ["dagchainer-tool.sh"],
         "tarball": (
             "https://sourceforge.net/projects/dagchainer/files/dagchainer/"
             + "DAGchainer-r02062008/DAGchainer_r02-06-2008.tar.gz/download"
@@ -86,12 +88,11 @@ DEPENDENCY_DICT = {
         "required": False,
         "version": DAGCHAINER_TOOL_VER,
         "version_command": ["version"],
-        "version": "1.1",
-        "patch": ["-p1", "-i", "dagchainer-0206008.patch"],
+        "patches": ["dagchainer-0206008.patch"],
         "make": [],
         "copy_binaries": [
             "dagchainer",
-            "dagchainer_tool.sh",
+            "dagchainer-tool.sh",
             "hash_into_fasta_id.pl",
             "pairs_to_adjacency.py",
             "top_blast_hit.awk",
@@ -100,120 +101,45 @@ DEPENDENCY_DICT = {
         "license": "GPL-2",
         "license_restrictive": False,
     },
-    "blast": {
+    "blast-longids": {
         "binaries": ["blastn"],
         "tarball": (
-            "https://ftp.ncbi.nih.gov/blast/executables/blast+/" +
-             BLAST_VER + "/ncbi-blast-" + BLAST_VER + "+-src.tar.gz"
+            "https://ftp.ncbi.nih.gov/blast/executables/blast+/"
+            + BLAST_VER
+            + "/ncbi-blast-"
+            + BLAST_VER
+            + "+-src.tar.gz"
         ),
-        "dir": ("ncbi-blast-"+BLAST_VER + "+-src/c++"),
+        "dir": ("ncbi-blast-" + BLAST_VER + "+-src/c++"),
         "required": False,
         "version_command": ["-version"],
-        "version": BLAST_VER,
+        "version": BLAST_PATCHED,
         "version_parser": lambda v: v.split()[1].split("_")[0].rstrip("+"),
-        "patch": ["-p1", "-i", "blast_longer_ids.patch"],
-        "configure": [#"--with-static-exe",
-                      #"--with-static",
-                      "--with-openmp",
-                      "--with-openmp",
-                      "--with-mt",
-                      "--with-lfs",
-                      "--with-64",
-                      "--with-autodep",
-                      "--with-bincopy",
-                      "--with-strip",
-                      "--with-pch",
-                      "--without-gmp",
-                      "--without-sss",
-                      "--without-lmdb",
-                      "--without-openssl",
-                      "--without-krb5",
-                      "--without-ngs",
-                      "--without-sssdb",
-                      "--without-max-debug",
-                      "--without-suffix",
-                      "--without-hostspec",
-                      "--without-debug",
-                      "--without-symbols",
-                      "--without-sybase",
-                      "--without-lzo",
-                      "--without-check",
-                      "--without-bz2",
-                      "--without-gl2ps",
-                      "--without-fastcgi",
-                      "--without-magic",
-                      "--without-sablot",
-                      "--without-libexslt",
-                      "--without-zorba",
-                      "--without-oechem",
-                      "--without-bdb",
-                      "--without-sp",
-                      "--without-orbacus",
-                      "--without-perl",
-                      "--without-z",
-                      "--without-ctools",
-                      "--without-gnutls",
-                      "--without-ftgl",
-                      "--without-hiredis",
-                      "--without-mysql",
-                      "--without-muparser",
-                      "--without-opengl",
-                      "--without-runpath",
-                      "--without-mesa",
-                      "--without-glut",
-                      "--without-glew",
-                      "--without-wxwidgets",
-                      "--without-wxwidgets-ucs",
-                      "--without-freetype",
-                      "--without-python",
-                      "--without-boost",
-                      "--without-sqlite3",
-                      "--without-icu",
-                      "--without-expat",
-                      "--without-libxml",
-                      "--without-libxslt",
-                      "--without-xerces",
-                      "--without-hdf5",
-                      "--without-xalan",
-                      "--without-gif",
-                      "--without-jpeg",
-                      "--without-tiff",
-                      "--without-png",
-                      "--without-xpm",
-                      "--without-curl",
-                      "--without-mimetic",
-                      "--without-vdb",
-                      "--without-gui",
-                      "--without-local-lbsm",
-                      "--without-ncbi-crypt",
-                      "--without-connext",
-                      "--without-avro",
-                      "--without-sasl2",
-                      "--without-cereal",
-                      "--without-gbench",
-                      "--without-mongodb",
-                      "--without-cassandra",
-                      "--without-nghttp2",
-                      "--without-h2o",
-                      "--without-influxdb",
-                      "--without-protobuf",
-                      "--without-grpc",
-                      "--without-msgsl",
-                      "--without-apache-arrow",
-                      "--without-libxlsxwriter",
-                      "--without-cppkafka",
-                      "--without-aws-sdk",
-                      "--without-app",
-                      "--without-lapack",
-                      "--without-internal",
-                      "--with-projects=disable-testsuite-compilation.txt"],
+        "patches": ["blast_longer_ids.patch", "configure_settings.patch"],
+        "configure": [],
         "make": [],
-        "copy_binaries": [
-            "ReleaseMT/bin/blastn",
-            "ReleaseMT/bin/make_db",
-            "ReleaseMT/bin/blastx",
-        ],
+        "make_install": [],
         "license": "public domain",
+        "license_restrictive": False,
+    },
+    "mmseqs": {
+        "binaries": ["mmseqs"],
+        "tarball": (
+            f"https://github.com/soedinglab/MMseqs2/archive/{MMSEQS_SHORT_HASH}.tar.gz"
+        ),
+        "dir": (f"MMseqs2-{MMSEQS_HASH}"),
+        "required": True,
+        "version_command": ["version"],
+        "version": MMSEQS_VER,
+        "version_parser": lambda v: v.strip(),
+        "cmake": [
+            "-C",
+            "mmseqs-azulejo-config.cmake",
+            f"-DVERSION_OVERRIDE={MMSEQS_VER}",
+        ],
+        "make": [],
+        "make_install": [],
+        "license": "GPL-3",
         "license_restrictive": False,
     },
 }
@@ -236,12 +162,7 @@ click_loguru = ClickLoguru(
 
 @with_plugins(iter_entry_points(NAME + ".cli_plugins"))
 @click_loguru.logging_options
-@click.group(
-    epilog="Dependencies: "
-    + DependencyInstaller(
-        DEPENDENCY_DICT, pkg_name=NAME, install_path=INSTALL_PATH
-    ).status()
-)
+@click.group()
 @click_loguru.stash_subcommand()
 @click.option(
     "-e",
@@ -828,3 +749,25 @@ def ingest(input_toml):
 def proxy_genes(setname, synteny_type, prefs):
     """Calculate a set of proxy genes."""
     undeco_calculate_proxy_genes(setname, synteny_type, prefs)
+
+
+@cli.command()
+def bindir():
+    """Print path to installed binaries."""
+    print(f"{INSTALL_PATH}/bin")
+
+
+@cli.command()
+@click_loguru.init_logger(logfile=False)
+@click.argument("dagchainer_tool_args", nargs=-1)
+def dagchainer_tool(dagchainer_tool_args):
+    """Run dagchainer_tool script."""
+    dagchainer_tool = sh.Command(
+        "dagchainer-tool.sh", search_paths=SEARCH_PATHS
+    )
+    try:
+        dagchainer_tool(dagchainer_tool_args, _out=sys.stdout, _err=sys.stderr)
+    except sh.ErrorReturnCode_1:
+        logger.error(
+            f"\"dagchainer-tool.sh {' '.join(dagchainer_tool_args)}\" failed"
+        )

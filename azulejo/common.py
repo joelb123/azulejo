@@ -129,6 +129,14 @@ NONDEFAULT_DTYPES = {
 
 MEGABYTES = 1024.0 * 1024.0
 
+INSTALL_ENVIRON_VAR = (  # installs go into "/bin" and other subdirs of this directory
+    NAME.upper() + "_INSTALL_DIR"
+)
+if INSTALL_ENVIRON_VAR in os.environ:
+    INSTALL_PATH = Path(os.environ[INSTALL_ENVIRON_VAR])
+else:
+    INSTALL_PATH = Path(sys.executable).parent.parent
+
 # logger class for use in testing
 
 
@@ -199,10 +207,15 @@ else:
 # Build disk for installer, needs to allow exe bit set
 if "BUILD_DEV" in os.environ and is_writable(os.environ["BUILD_DEV"]):
     BUILD_DEV = os.environ["BUILD_DEV"]
+elif sys.platform == "linux":
+    try:
+        BUILD_DEV = MemoryTempfile(
+            preferred_paths=["/run/user/{uid}"], fallback=True
+        ).get_usable_mem_tempdir_paths()[0]
+    except AttributeError:
+        BUILD_DEV = "/tmp"
 else:
-    BUILD_DEV = MemoryTempfile(
-        preferred_paths=["/run/user/{uid}"], fallback=True
-    ).get_usable_mem_tempdir_paths()[0]
+    BUILD_DEV = "/tmp"
 
 
 def enforce_canonical_dtypes(frame):
@@ -524,3 +537,21 @@ def calculate_adjacency_group(index_series, frag_series):
     )
     n_adj = n_prot - adj_arr.isnull().sum()
     return n_adj, adj_gr_count, adj_arr
+
+
+def get_bin_paths():
+    "Return paths from envvar PATH with binary prepended."
+    search_paths = []
+    for pathstr in os.environ.get("PATH", "").split(os.pathsep):
+        test_path = Path(pathstr).expanduser()
+        if test_path.is_dir():
+            search_paths.append(str(test_path))
+    if len(search_paths) == 0:
+        logger.warning("Empty PATH environmental variable")
+    venv_bin_path = str(INSTALL_PATH.joinpath("bin"))
+    if venv_bin_path not in search_paths:
+        search_paths = [venv_bin_path] + search_paths
+    return tuple(search_paths)
+
+
+SEARCH_PATHS = get_bin_paths()

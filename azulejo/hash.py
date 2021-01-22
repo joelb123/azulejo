@@ -95,9 +95,6 @@ def _cum_val_cnt_where_ser2_is_na(ser1, ser2, flip=False):
     return vc_ser
 
 
-
-
-
 @attr.s
 class SyntenyBlockHasher(object):
     """Synteny-block hashes via reversible-peatmer method."""
@@ -207,8 +204,12 @@ class SyntenyBlockHasher(object):
             df["tmp.ambig.id"], df["syn.anchor.id"], flip=True
         )
         hash2_fr["tmp.i"] = range(len(hash2_fr))
-        upstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
-        downstream_hash = pd.array([pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype())
+        upstream_hash = pd.array(
+            [pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype()
+        )
+        downstream_hash = pd.array(
+            [pd.NA] * len(hash2_fr), dtype=pd.UInt32Dtype()
+        )
         hash2_fr["tmp.disambig.up"] = pd.NA
         hash2_fr["tmp.disambig.down"] = pd.NA
         for unused_id, row in hash2_fr.iterrows():
@@ -227,7 +228,9 @@ class SyntenyBlockHasher(object):
                     if self.disambig_adj_only and occur_upstream > 1:
                         continue
                     upstream_hash[row_no] = hash_array(
-                        np.array([upstream_unambig, ambig_base, occur_upstream])
+                        np.array(
+                            [upstream_unambig, ambig_base, occur_upstream]
+                        )
                     )
                 if pd.notna(downstream_unambig):
                     if not pd.notna(occur_downstream):

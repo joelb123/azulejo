@@ -23,6 +23,7 @@ import sh
 # module imports
 from .common import CLUSTER_HIST_FILE
 from .common import NAME
+from .common import SEARCH_PATHS
 from .common import cluster_set_name
 from .common import fasta_records
 from .common import get_paths_from_file
@@ -277,7 +278,7 @@ def homology_cluster(
 ):
     """Cluster at a global sequence identity threshold."""
     try:
-        usearch = sh.Command("usearch")
+        usearch = sh.Command("usearch", search_paths=SEARCH_PATHS)
     except sh.CommandNotFound:
         logger.error("usearch must be installed first.")
         sys.exit(1)
@@ -408,9 +409,7 @@ def homology_cluster(
         cluster_hist["pct_seqs"] = (
             cluster_hist["clusters"] * cluster_hist.index * 100.0 / total_seqs
         )
-        cluster_hist.to_csv(
-            CLUSTER_HIST_FILE, sep="\t", float_format="%06.3f"
-        )
+        cluster_hist.to_csv(CLUSTER_HIST_FILE, sep="\t", float_format="%06.3f")
         return n_clusters, run_stats, cluster_hist
     (
         cluster_graph,

@@ -47,7 +47,14 @@ from .merger import AmbiguousMerger
 # global constants
 __ALL__ = ["synteny_anchors"]
 CLUSTER_COLS = ["syn.anchor.id", "syn.anchor.count", "syn.anchor.direction"]
-JOIN_COLS = ["member_ids", "syn.anchor.sub_id", "syn.anchor.id", "syn.anchor.count", "syn.code", "frag.idx"]
+JOIN_COLS = [
+    "member_ids",
+    "syn.anchor.sub_id",
+    "syn.anchor.id",
+    "syn.anchor.count",
+    "syn.code",
+    "frag.idx",
+]
 ANCHOR_COLS = [
     "path",
     "syn.code",
@@ -95,7 +102,12 @@ def synteny_anchors(
     n_proteomes = len(proteomes)
     clusters = read_tsv_or_parquet(set_path / CLUSTERS_FILE)
     n_clusters = len(clusters)
-    hasher = SyntenyBlockHasher(k=k, peatmer=peatmer, thorny=thorny, disambig_adj_only=disambig_adj_only)
+    hasher = SyntenyBlockHasher(
+        k=k,
+        peatmer=peatmer,
+        thorny=thorny,
+        disambig_adj_only=disambig_adj_only,
+    )
     logger.info(
         f"Calculating {hasher.hash_name(no_prefix=True)} synteny anchors"
         + f" for {n_proteomes} proteomes"
@@ -169,7 +181,9 @@ def synteny_anchors(
     write_tsv_or_parquet(
         proteomes, set_path / PROTEOSYN_FILE, remove_tmp=False
     )
-    adjacency_stats = anchors_to_adjacency(set_path, n_proteomes, join_mb.open_then_delete)
+    adjacency_stats = anchors_to_adjacency(
+        set_path, n_proteomes, join_mb.open_then_delete
+    )
     logger.info(f"adjacency_stats: {adjacency_stats}")
     return
     #
@@ -388,7 +402,7 @@ def calculate_synteny_hashes(
     hom.replace(to_replace={"tmp.nan_group": 0}, value=pd.NA, inplace=True)
     hash_name = hasher.hash_name()
     syn_list = []
-    if hasher.thorny: # drop rows
+    if hasher.thorny:  # drop rows
         hom = hom[hom["hom.cluster"].notna()]
     for unused_id_tuple, subframe in hom.groupby(
         by=["frag.id", "tmp.nan_group"]
@@ -614,11 +628,11 @@ def merge_nonambig_hashes(
     #
     # Do shingling
     #
-    #shingle_id = np.array([np.nan] * n_proteins)
-    #shingle_count = np.array([np.nan] * n_proteins)
-    #shingle_code = syn["syn.code"].to_numpy()
-    #shingle_direction = syn["syn.anchor.direction"].to_numpy()
-    #shingle_sub = np.array([np.nan] * n_proteins)
+    # shingle_id = np.array([np.nan] * n_proteins)
+    # shingle_count = np.array([np.nan] * n_proteins)
+    # shingle_code = syn["syn.code"].to_numpy()
+    # shingle_direction = syn["syn.anchor.direction"].to_numpy()
+    # shingle_sub = np.array([np.nan] * n_proteins)
     with join_mb.locked_open_for_write(idx) as file_handle:
         for anchor_count, subframe in syn.groupby(by=["syn.anchor.count"]):
             for unused_i, row in subframe.iterrows():
@@ -627,51 +641,55 @@ def merge_nonambig_hashes(
                     continue
                 first_row = row["tmp.i"]
                 last_row = first_row + row["syn.anchor.footprint"]
-                #shingle_id[first_row:last_row] = anchor_id
-                #shingle_count[first_row:last_row] = anchor_count
-                #shingle_code[first_row:last_row] = row["syn.code"]
-                #shingle_direction[first_row:last_row] = row[
+                # shingle_id[first_row:last_row] = anchor_id
+                # shingle_count[first_row:last_row] = anchor_count
+                # shingle_code[first_row:last_row] = row["syn.code"]
+                # shingle_direction[first_row:last_row] = row[
                 #    "syn.anchor.direction"
-                #]
-                #shingle_sub[first_row:last_row] = hasher.shingle(
+                # ]
+                # shingle_sub[first_row:last_row] = hasher.shingle(
                 #    syn["hom.cluster"][first_row:last_row],
                 #    row["syn.anchor.direction"],
                 #    row[hash_name],
-                #)
-                shingle_fr = pd.DataFrame({
-                    "member_ids": syn.iloc[first_row:last_row].index,
-                    "syn.anchor.sub_id":  hasher.shingle(
-                        syn["hom.cluster"][first_row:last_row],
-                        row["syn.anchor.direction"],
-                        row[hash_name])})
+                # )
+                shingle_fr = pd.DataFrame(
+                    {
+                        "member_ids": syn.iloc[first_row:last_row].index,
+                        "syn.anchor.sub_id": hasher.shingle(
+                            syn["hom.cluster"][first_row:last_row],
+                            row["syn.anchor.direction"],
+                            row[hash_name],
+                        ),
+                    }
+                )
                 shingle_fr["syn.anchor.id"] = anchor_id
                 shingle_fr["syn.anchor.count"] = anchor_count
                 shingle_fr["syn.code"] = row["syn.code"]
                 shingle_fr["frag.idx"] = row["frag.idx"]
                 shingle_fr.to_csv(file_handle, header=False, sep="\t")
-    #syn["syn.anchor.id"] = shingle_id
-    #syn["syn.anchor.count"] = shingle_count
-    #syn["syn.code"] = shingle_code
-    #syn["syn.anchor.direction"] = shingle_direction
-    #syn["syn.anchor.sub_id"] = shingle_sub
-    #del shingle_id, shingle_count, shingle_code, shingle_sub
+    # syn["syn.anchor.id"] = shingle_id
+    # syn["syn.anchor.count"] = shingle_count
+    # syn["syn.code"] = shingle_code
+    # syn["syn.anchor.direction"] = shingle_direction
+    # syn["syn.anchor.sub_id"] = shingle_sub
+    # del shingle_id, shingle_count, shingle_code, shingle_sub
     # Delete non-needed (but non-tmp) columns
-    #non_needed_cols = [hash_name]
-    #syn = syn.drop(columns=non_needed_cols)
+    # non_needed_cols = [hash_name]
+    # syn = syn.drop(columns=non_needed_cols)
     # Write proteome file
-    #write_tsv_or_parquet(
+    # write_tsv_or_parquet(
     #    syn,
     #    outpath / SYNTENY_FILE,
-    #)
+    # )
     # Write anchor info to mailbox
-    #for anchor_id, subframe in syn.groupby(by=["syn.anchor.id"]):
+    # for anchor_id, subframe in syn.groupby(by=["syn.anchor.id"]):
     #    anchor_frame = subframe.copy()
     #    anchor_frame["path"] = dotpath
     #    with anchor_mb.locked_open_for_write(anchor_id) as file_handle:
     #        anchor_frame[ANCHOR_COLS].to_csv(
     #            file_handle, header=False, sep="\t"
     #        )
-    #for cluster_id, subframe in syn.groupby(by=["hom.cluster"]):
+    # for cluster_id, subframe in syn.groupby(by=["hom.cluster"]):
     #    with cluster_mb.locked_open_for_write(cluster_id) as file_handle:
     #        subframe[CLUSTER_COLS].to_csv(file_handle, header=False, sep="\t")
     in_synteny = syn["syn.anchor.id"].notna().sum()
@@ -887,14 +905,20 @@ def anchors_to_adjacency(set_path, n_proteomes, mailbox_reader):
     frame_list = []
     for idx in range(n_proteomes):
         with mailbox_reader(idx) as file_handle:
-            frame_list.append(pd.read_csv(
-                file_handle, sep="\t", index_col=0).convert_dtypes())
-    nodes = pd.concat(frame_list,
-                ignore_index=True,
+            frame_list.append(
+                pd.read_csv(
+                    file_handle, sep="\t", index_col=0
+                ).convert_dtypes()
             )
+    nodes = pd.concat(
+        frame_list,
+        ignore_index=True,
+    )
     del frame_list
     graph = nx.Graph()
-    for unused_tuple, subframe in nodes.groupby(by=["syn.anchor.id", "syn.anchor.sub_id"]):
+    for unused_tuple, subframe in nodes.groupby(
+        by=["syn.anchor.id", "syn.anchor.sub_id"]
+    ):
         ids = subframe["member_ids"]
         n_ids = len(ids)
         graph.add_nodes_from(ids)
@@ -908,9 +932,11 @@ def anchors_to_adjacency(set_path, n_proteomes, mailbox_reader):
     histpath = outpath.parent / (
         outpath.name[: -len(outpath.suffix)] + "_hist.tsv"
     )
-    components = [ c for c in
-                   sorted(nx.connected_components(graph), key=len, reverse=True)
-                    if len(c) > 1]
+    components = [
+        c
+        for c in sorted(nx.connected_components(graph), key=len, reverse=True)
+        if len(c) > 1
+    ]
     fh = outpath.open("w")
     fh.write("idx\tcluster_id\tsize\tmembers\n")
     n_items = 0
@@ -946,10 +972,13 @@ def anchors_to_adjacency(set_path, n_proteomes, mailbox_reader):
         {"anchor.id": id_list, "count": count_list, "hash": hash_list}
     )
     clusters.to_csv(summarypath, sep="\t")
-    stats_dict = { "in_anchor": n_items,
-                   "syn.anchors.n": n_clusts,
-                   "syn.anchors.largest": largest_cluster}
+    stats_dict = {
+        "in_anchor": n_items,
+        "syn.anchors.n": n_clusts,
+        "syn.anchors.largest": largest_cluster,
+    }
     return stats_dict
+
 
 def intersect_anchors(set1_file, set2_file):
     set1_path = Path(set1_file)
@@ -974,31 +1003,51 @@ def intersect_anchors(set1_file, set2_file):
             if len(s1.intersection(s2)) == 0:
                 continue
             elif s1 == s2:
-                identity_sets.append((key1, key2,))
+                identity_sets.append(
+                    (
+                        key1,
+                        key2,
+                    )
+                )
                 match_keys.pop(i)
                 break
             elif s1.issubset(s2):
-                s1_subset.append((key1, key2,))
+                s1_subset.append(
+                    (
+                        key1,
+                        key2,
+                    )
+                )
                 match_keys.pop(i)
                 break
             elif s2.issubset(s1):
-                s2_subset.append((key1, key2,))
+                s2_subset.append(
+                    (
+                        key1,
+                        key2,
+                    )
+                )
                 match_keys.pop(i)
                 break
             else:
-                incongruent.append((key1, key2,))
+                incongruent.append(
+                    (
+                        key1,
+                        key2,
+                    )
+                )
     logger.info(f"set 1 ({set1_file}): {len(set1_dict)}")
     logger.info(f"set 2 ({set2_file}): {len(set2_dict)}")
     min_sets = min(len(set1_dict), len(set2_dict))
     id_len = len(identity_sets)
-    id_pct = id_len*100./min_sets
+    id_pct = id_len * 100.0 / min_sets
     logger.info(f"identity: {id_len} ({id_pct:.1f}%)")
     s1_len = len(s1_subset)
-    s1_pct = s1_len * 100./min_sets
+    s1_pct = s1_len * 100.0 / min_sets
     logger.info(f"set 1 is subset: {s1_len} ({s1_pct:.1f}%)")
     s2_len = len(s2_subset)
-    s2_pct = s2_len * 100./min_sets
+    s2_pct = s2_len * 100.0 / min_sets
     logger.info(f"set 2 is subset: {s2_len} ({s2_pct:.1f}%)")
     incon_len = len(incongruent)
-    incon_pct = incon_len * 100./min_sets
+    incon_pct = incon_len * 100.0 / min_sets
     logger.info(f"incongruent: {incon_len}({incon_pct}%)")

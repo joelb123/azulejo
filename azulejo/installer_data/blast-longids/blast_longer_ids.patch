@@ -27,3 +27,16 @@ index dc33e4f..8daf286 100644
              description = "Local ID \"" + 
                            idString +
                            " \" exceeds 50 character limit.";
+diff --git a/src/algo/blast/core/blast_engine.c b/src/algo/blast/core/blast_engine.c
+index 797d17a..05122e8 100644
+--- a/src/algo/blast/core/blast_engine.c
++++ b/src/algo/blast/core/blast_engine.c
+@@ -80,7 +80,7 @@
+ 
+ NCBI_XBLAST_EXPORT const int   kBlastMajorVersion = 2;
+ NCBI_XBLAST_EXPORT const int   kBlastMinorVersion = 11;
+-NCBI_XBLAST_EXPORT const int   kBlastPatchVersion = 0;
++NCBI_XBLAST_EXPORT const int   kBlastPatchVersion = 99;
+ NCBI_XBLAST_EXPORT const char* kBlastReleaseDate = "Oct-15-2020";
+ 
+ /** Structure to be passed to s_BlastSearchEngineCore, containing pointers

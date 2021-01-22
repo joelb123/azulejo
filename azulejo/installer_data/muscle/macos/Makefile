@@ -22,5 +22,5 @@ muscle-pgo:
 	+$(MAKE) PGOFLAGS="$(PGO_GENFLAGS)" muscle
 	./muscle -quiet -in benchmark.fa -out benchmark.faa $(MUSCLE_PROF_FLAGS)
 	rm *.o muscle
-	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/llvm-profdata merge default*.profraw -o default.profdata
+	llvm-profdata merge default*.profraw -o default.profdata
 	+$(MAKE) PGOFLAGS="$(PGO_USEFLAGS)" muscle

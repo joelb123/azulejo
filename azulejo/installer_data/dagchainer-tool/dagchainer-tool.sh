@@ -2,17 +2,13 @@
 #
 # Configuration and run script for dagchainer 
 #
+version="1.2"
+bindir=$(azulejo bindir)
 set -e # stop on errors
-NPROC=$(nproc)
-version="1.1"
-script_name="$(basename "${BASH_SOURCE}")"
-script_dir=''
-pushd "$(dirname "$(readlink -f "$BASH_SOURCE")")" >/dev/null && {
-  script_dir="$PWD"
-  popd >/dev/null
-}
+[ -z "$NPROC" ] && NPROC=$(nproc)
+export PATH=${bindir}:${PATH}
 scriptstart=$(date +%s)
-pkg="${script_name%.sh}"
+pkg="dagchainer_tool"
 PKG="$(echo ${pkg} | tr /a-z/ /A-Z/)"
 PKG_DIR="${PKG}_DIR"
 PKG_WORK_DIR="${PKG}_WORK_DIR"
@@ -35,12 +31,12 @@ error_exit() {
   echo >&2 "   $BASH_COMMAND"
 }
 trap error_exit EXIT
-TOP_DOC="""Compute synteny among sets of GFF/FASTA files using DAGchainer
+TOP_DOC="""Compute synteny among sets of nucleotide FASTA files using DAGchainer
 
 Usage:
-        ${pkg} COMMAND [COMMAND_OPTIONS]
+        azulejo ${pkg} SUBCOMMAND [SUBCOMMAND_OPTIONS]
 
-Commands (in order they are usually run):
+Subommands (in order they are usually run):
             version - Get installed package version
                init - Initialize parameters required for run
              config - View/set run parameters
@@ -48,7 +44,7 @@ Commands (in order they are usually run):
        clear_config - Clear all config variables
               clean - Delete work directory
 
-Variables (accessed by \"config\" command):
+Variables (accessed by \"config\" subcommand):
       blast_threads - threads to use in searches [default: ${NPROC}]
     dagchainer_args - Argument for DAGchainer command
              dbtype - Database type, either 'nucl' or 'prot'
@@ -64,6 +60,11 @@ Environmental variables (may be set externally):
                        \"${root_dir}\"
      ${PKG}_WORK_DIR - Location of working files, currently
                        \"${work_dir}\"
+               NPROC - Number of processes to use, currently
+                         $NPROC
+                       May be set by configure after init.
+Binaries directory:
+  ${bindir}
 """
 #
 # Helper functions begin here
@@ -389,7 +390,7 @@ clean() {
 if [ "$#" -eq 0 ]; then
   trap - EXIT
   echo >&2 "$TOP_DOC"
-  exit 1
+  exit 0
 fi
 # Create directories if needed
 dirlist="root_dir work_dir etc_dir blast_db_dir blast_out_dir dag_dir"
