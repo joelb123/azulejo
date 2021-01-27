@@ -21,6 +21,7 @@ def install_with_constraints(session, *args, **kwargs):
         session.run(
             "poetry",
             "export",
+            "--without-hashes",
             "--dev",
             "--format=requirements.txt",
             f"--output={requirements.name}",
@@ -40,6 +41,7 @@ def tests(session):
         "pytest",
         "pytest-cov",
         "pytest-datadir-mgr",
+        "sh",
     )
     session.run("pytest", *args)
 

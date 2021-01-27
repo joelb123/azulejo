@@ -23,7 +23,7 @@ supported because many of the python dependencies lack BSD wheels.
 We recommend you install ``azulejo`` into its own virtual environment due
 to the large number of python dependencies.  The easiest way for most 
 users to install and maintain up-to-date virtual environments is via the
-tool `pipx<https://pipxproject.github.io/pipx/>`_.  If your system does
+tool `pipx <https://pipxproject.github.io/pipx>`_.  If your system does
 not have ``pipx`` installed, you can do so via the commands::
 
         python3 -m pip install --user --upgrade pip
@@ -63,38 +63,37 @@ Environmental Variables
 -----------------------
 ``azulejo`` recognizes the following environmental variables:
 
-* AZULEJO_INSTALL_DIR
-This is a writable directory for installation of binary dependencies.  Binaries
-will go into the ``bin`` directory.  The default is the virtual environment
-directory.
+AZULEJO_INSTALL_DIR
+  This is a writable directory for installation of binary dependencies.  Binaries
+  will go into the ``bin`` directory.  The default is the virtual environment
+  directory.
 
-* BUILD_DEV
-This is the directory used for building binary dependencies.  Default is the
-first memory device found for linux (e.g., `/run/shm`) or `/tmp` for MacOS.
-Set this if compilation fails because it runs out of memory.
+BUILD_DEV
+  This is the directory used for building binary dependencies.  Default is the
+  first memory device found for linux (e.g., `/run/shm`) or `/tmp` for MacOS.
+  Set this if compilation fails because it runs out of memory.
 
-* SCRATCH_DEV
-This is the directory used for temporary merging of lists.  The default is
-`/tmp`, but you may set it to a fast memory based device if you have enough
-memory.
+SCRATCH_DEV
+  This is the directory used for temporary merging of lists.  The default is
+  `/tmp`, but you may set it to a fast memory based device if you have enough
+  memory.
 
-* MAKEOPTS
-These are the arguments to the ``make`` and ``make install`` commands when
-building dependencies.  It's good to set this to the number of processors
-on your system via the command ``export MAKEOPTS="-j $(nproc)"`` to speed
-up installation.  The only time this variable is used is during
-``azulejo install``.
+MAKEOPTS
+  These are the arguments to the ``make`` and ``make install`` commands when
+  building dependencies.  It's good to set this to the number of processors
+  on your system via the command ``export MAKEOPTS="-j $(nproc)"`` to speed
+  up installation.  The only time this variable is used is during
+  ``azulejo install``.
 
-* SPINNER_UPDATE_PERIOD
-This is the number of seconds between updates of the spinner.  This
-defaults to 1, but it is advisable to set it higher for automated testing
-so as not to exceed logfile character limits.
+SPINNER_UPDATE_PERIOD
+  This is the number of seconds between updates of the spinner.  This
+  defaults to 1, but it is advisable to set it higher for automated testing
+  so as not to exceed logfile character limits.
 
-* LOG_TO_PRINT
-If set, the logger will be a simple print without using the more
-complex functions of ``loguru`` such as colors and logging to files.
-This is sometimes useful in automated testing.
-
+LOG_TO_PRINT
+  If set to a log level such as ``info``, the logger will be a simple print without using the more
+  complex functions of ``loguru`` such as colors and logging to files.
+  This is sometimes useful in automated testing.
 
 
 Installation of Binary Dependencies

@@ -23,8 +23,8 @@ def test_subcommand_help():
 
 
 @print_docstring()
-def test_installer(tmp_path, capsys):
-    """Test installer check and build functions."""
+def test_install_all(tmp_path, capsys):
+    """Test install all required binaries."""
     with capsys.disabled():
         with working_directory(tmp_path):
             try:
@@ -33,3 +33,42 @@ def test_installer(tmp_path, capsys):
                 print(errors)
                 pytest.fail("Build failed")
             assert "All required" in azulejo(["install"])
+
+
+@print_docstring()
+def test_install_dagchainer_tool(tmp_path, capsys):
+    """Test install all required binaries."""
+    with capsys.disabled():
+        with working_directory(tmp_path):
+            try:
+                azulejo([SUBCOMMAND, "dagchainer-tool"], _out=sys.stdout)
+            except sh.ErrorReturnCode as errors:
+                print(errors)
+                pytest.fail("Build failed")
+            assert "dagchainer-tool.sh at recommended" in azulejo(["install"])
+
+
+@print_docstring()
+def test_install_mmseqs(tmp_path, capsys):
+    """Test install all required binaries."""
+    with capsys.disabled():
+        with working_directory(tmp_path):
+            try:
+                azulejo([SUBCOMMAND, "mmseqs"], _out=sys.stdout)
+            except sh.ErrorReturnCode as errors:
+                print(errors)
+                pytest.fail("Build failed")
+            assert "mmseqs at recommended" in azulejo(["install"])
+
+
+@print_docstring()
+def test_install_blast(tmp_path, capsys):
+    """Test install all required binaries."""
+    with capsys.disabled():
+        with working_directory(tmp_path):
+            try:
+                azulejo([SUBCOMMAND, "blast-longids"], _out=sys.stdout)
+            except sh.ErrorReturnCode as errors:
+                print(errors)
+                pytest.fail("Build failed")
+            assert "blastn at recommended" in azulejo(["install"])

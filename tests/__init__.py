@@ -37,9 +37,9 @@ HOMOLOGY_OUTPUTS = [
     f"{SET_DIR}/{f}"
     for f in (
         [
-            "clusters.parq",
+            "homology_clusters.parq",
             "proteomes.hom.parq",
-            "cluster_hist.tsv",
+            "homology_cluster_hist.tsv",
             "homology-stats.tsv",
         ]
         + [f"{subdir}proteins.hom.parq" for subdir in PROT_SUBDIRS]
@@ -49,7 +49,7 @@ HOMOLOGY_OUTPUTS = [
 SYNTENY_OUTPUTS = [
     f"{SET_DIR}/{f}"
     for f in (
-        ["clusters.syn.parq", "proteomes.hom.syn.parq"]
+        ["proteomes.hom.syn.parq"]  # "clusters.syn.parq",
         + [f"{subdir}proteins.hom.syn.parq" for subdir in PROT_SUBDIRS]
     )
 ]
@@ -120,7 +120,8 @@ def run_azulejo(args, component):
     print(f"Testing {component} with" + f'"azulejo {command_string}"')
     try:
         sh.azulejo(
-            args, _out=sys.stderr,
+            args,
+            _out=sys.stderr,
         )
     except ErrorReturnCode as errors:
         print(errors)

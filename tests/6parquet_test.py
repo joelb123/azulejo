@@ -28,13 +28,15 @@ def test_subcommand_help():
 def test_parquet_conversion(datadir_mgr):
     """Test parquet-to-TSV conversion."""
     with datadir_mgr.in_tmp_dir(
-        inpathlist=[TSV_TEST_FILE], save_outputs=False,
+        inpathlist=[TSV_TEST_FILE],
+        save_outputs=False,
     ):
         args = ["-q", "-e", SUBCOMMAND, "-w", TSV_TEST_FILE]
         print(f"azulejo {' '.join(args)}")
         try:
             azulejo(
-                args, _out=sys.stdout,
+                args,
+                _out=sys.stdout,
             )
         except sh.ErrorReturnCode as errors:
             print(errors)

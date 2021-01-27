@@ -56,9 +56,7 @@ def pairs_to_adjacency(infile, outfile):
     cluster_hist.to_csv(histpath, sep="\t", float_format="%5.2f")
     cluster_hist["cluster_pct"] = cluster_hist["n"] * 100.0 / n_clusts
     cluster_hist.to_csv(histpath, sep="\t", float_format="%5.2f")
-    clusters = pd.DataFrame(
-        {"anchor.id": id_list, "count": count_list}
-    )
+    clusters = pd.DataFrame({"anchor.id": id_list, "count": count_list})
     clusters.to_csv(summarypath, sep="\t")
 
 

@@ -40,7 +40,8 @@ def test_data_ingestion(datadir_mgr, capsys):
             print(f"azulejo {' '.join(args)}")
             try:
                 azulejo(
-                    args, _out=sys.stderr,
+                    args,
+                    _out=sys.stderr,
                 )
             except sh.ErrorReturnCode as errors:
                 print(errors)

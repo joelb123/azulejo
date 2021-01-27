@@ -59,7 +59,7 @@ packaging = "^20.7"
 pyarrow = "^2.0.0"
 biopython = "^1.78"
 sh = "^1.14.1"
-gffpandas = { git = "https://github.com/legumeinfo/gffpandas.git", branch = "main" }
+gffpandas-ncgr = "^1.2.1"
 beautifulsoup4 = "^4.9.3"
 fastaq = "^0.30"
 amas = "^1.0"

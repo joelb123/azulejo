@@ -65,7 +65,7 @@ DEPENDENCY_DICT = {
         "binaries": ["usearch"],
         "dir": ".",
         "version": USEARCH_VER,
-        "required": False,
+        "required": True,
         "version_command": ["-version"],
         "version_parser": lambda v: v.split()[1].split("_")[0],
         "download_binaries": {
