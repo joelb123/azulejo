@@ -140,6 +140,8 @@ class DependencyInstaller(object):
                             )
                     except sh.ErrorReturnCode_1:
                         installed_version = version.parse("0.0")
+                    except OSError:
+                        installed_version = version.parse('-1')
                     if installed_version == target_version:
                         ver_str = (
                             f"at recommended version {installed_version}."

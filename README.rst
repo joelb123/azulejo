@@ -55,9 +55,10 @@ completion for ``azulejo`` commands, execute the following command if you are us
 
     eval "$(_AZULEJO_COMPLETE=source_bash azulejo)"
 
-Then you should run ``azulejo install`` and check the versions of all binary
-dependencies that may installed system-wide.
+If you are using ``zsh``, simply replace ``source_bash`` in the above command line
+with ``source_zsh``.
 
+You may next proceed with installing binary dependencies.
 
 Environmental Variables
 -----------------------
@@ -81,9 +82,8 @@ SCRATCH_DEV
 MAKEOPTS
   These are the arguments to the ``make`` and ``make install`` commands when
   building dependencies.  It's good to set this to the number of processors
-  on your system via the command ``export MAKEOPTS="-j $(nproc)"`` to speed
-  up installation.  The only time this variable is used is during
-  ``azulejo install``.
+  on your system before installing required dependencies.  This variable is
+  only used during ``azulejo install``.
 
 SPINNER_UPDATE_PERIOD
   This is the number of seconds between updates of the spinner.  This
@@ -91,9 +91,14 @@ SPINNER_UPDATE_PERIOD
   so as not to exceed logfile character limits.
 
 LOG_TO_PRINT
-  If set to a log level such as ``info``, the logger will be a simple print without using the more
+  If set to a log level such as ``info``, the logger will be a simple print 
+  without using the more
   complex functions of ``loguru`` such as colors and logging to files.
   This is sometimes useful in automated testing.
+
+In addition the optional ``dagchainer-tool`` subcommand recognizes the
+some environmental variables which can be shown via the command
+``azulejo dagchainer-tool --help``.
 
 
 Installation of Binary Dependencies
@@ -104,10 +109,11 @@ for sequence alignment and initial tree-building.
 ``azulejo`` installs binaries into the virtualenv by default, so
 any systemwide installations of these packages will not get clobbered by the install.
 In particular, ``muscle`` is PGO-optimized, which gives nearly a factor of 2 higher
-performance than prebuilt binaries.  We recommand you set ``MAKEOPTS`` as explained
-above, then issue the command ``azulejo install all`` to ensure you get correct versions
-optimized for your hardware.
+performance than prebuilt binaries.  For fastest installation, We recommand you set
+``MAKEOPTS`` and install all required dependencies via the commands::
 
+        export MAKEOPTS=$(python -c 'import multiprocessing as mp; print(mp.cpu_count())')
+        azulejo install all
 
 There are three optional dependencies that can be installed via ``azulejo install`` 
 that are of interest only to a small subset of users who wish to compare against
@@ -134,7 +140,7 @@ If you haven't previously installed ``poetry``, execute the command: ::
 
 Next, get the master branch from GitHub ::
 
-	git clone https://github.com/legumeinfo/azulejo.git
+	git clone https://github.com/joelb123/azulejo.git
 
 Change to the ``azulejo/`` directory and install with poetry: ::
 
@@ -329,36 +335,36 @@ Project Status
     :target: https://pypi.python.org/pypi/azulejo
     :alt: Python package
 
-.. |repo| image:: https://img.shields.io/github/last-commit/legumeinfo/azulejo
-    :target: https://github.com/legumeinfo/azulejo
+.. |repo| image:: https://img.shields.io/github/last-commit/joelb123/azulejo
+    :target: https://github.com/joelb123/azulejo
     :alt: GitHub repository
 
 .. |license| image:: https://img.shields.io/badge/License-BSD%203--Clause-blue.svg
-    :target: https://github.com/legumeinfo/azulejo/blob/master/LICENSE
+    :target: https://github.com/joelb123/azulejo/blob/master/LICENSE
     :alt: License terms
 
 .. |rtd| image:: https://readthedocs.org/projects/azulejo/badge/?version=latest
     :target: http://azulejo.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Server
 
-.. |travis| image:: https://img.shields.io/travis/legumeinfo/azulejo.svg
-    :target:  https://travis-ci.org/legumeinfo/azulejo
+.. |travis| image:: https://img.shields.io/travis/joelb123/azulejo.svg
+    :target:  https://travis-ci.org/joelb123/azulejo
     :alt: Travis CI
 
 .. |codacy| image:: https://api.codacy.com/project/badge/Grade/99549f0ed4e6409e9f5e80a2c4bd806b
-    :target: https://www.codacy.com/app/joelb123/azulejo?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=legumeinfo/azulejo&amp;utm_campaign=Badge_Grade
+    :target: https://www.codacy.com/app/joelb123/azulejo?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=joelb123/azulejo&amp;utm_campaign=Badge_Grade
     :alt: Codacy.io grade
 
-.. |coverage| image:: https://codecov.io/gh/legumeinfo/azulejo/branch/master/graph/badge.svg
-    :target: https://codecov.io/gh/legumeinfo/azulejo
+.. |coverage| image:: https://codecov.io/gh/joelb123/azulejo/branch/master/graph/badge.svg
+    :target: https://codecov.io/gh/joelb123/azulejo
     :alt: Codecov.io test coverage
 
 .. |issues| image:: https://img.shields.io/github/issues/LegumeFederation/lorax.svg
-    :target:  https://github.com/legumeinfo/azulejo/issues
+    :target:  https://github.com/joelb123/azulejo/issues
     :alt: Issues reported
 
-.. |requires| image:: https://requires.io/github/legumeinfo/azulejo/requirements.svg?branch=master
-     :target: https://requires.io/github/legumeinfo/azulejo/requirements/?branch=master
+.. |requires| image:: https://requires.io/github/joelb123/azulejo/requirements.svg?branch=master
+     :target: https://requires.io/github/joelb123/azulejo/requirements/?branch=master
      :alt: Requirements Status
 
 .. |dlrate| image:: https://img.shields.io/pypi/dm/azulejo

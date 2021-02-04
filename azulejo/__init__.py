@@ -33,7 +33,7 @@ from .taxonomy import rankname_to_number
 
 # global constants
 LOG_FILE_RETENTION = 3
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 MUSCLE_VER = "3.8.1551"
 USEARCH_VER = "11.0.667"
 DAGCHAINER_TOOL_VER = "1.2"
@@ -188,8 +188,8 @@ def cli(warnings_as_errors, parallel, **kwargs):
     \b
     For more information, see the homepage at https://github.com/legumeinfo/azulejo
 
-    Written by Joel Berendzen <joelb@ncgr.org>.
-    Copyright (C) 2020. National Center for Genome Resources. All rights reserved.
+    Written by Joel Berendzen <joel@generisbio.com>.
+    Copyright (C) 2021. GenerisBio, LLC. All rights reserved.
     License: BSD-3-Clause
     """
     options = click_loguru.get_global_options()

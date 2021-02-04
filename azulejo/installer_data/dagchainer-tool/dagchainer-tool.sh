@@ -5,7 +5,6 @@
 version="1.2"
 bindir=$(azulejo bindir)
 set -e # stop on errors
-[ -z "$NPROC" ] && NPROC=$(nproc)
 export PATH=${bindir}:${PATH}
 scriptstart=$(date +%s)
 pkg="dagchainer_tool"
@@ -39,13 +38,13 @@ Usage:
 Subommands (in order they are usually run):
             version - Get installed package version
                init - Initialize parameters required for run
-             config - View/set run parameters
+             config - View/set run parameters, '-h' for help
                 run - Run one or all analysis steps, '-h' to list
        clear_config - Clear all config variables
               clean - Delete work directory
 
 Variables (accessed by \"config\" subcommand):
-      blast_threads - threads to use in searches [default: ${NPROC}]
+      blast_threads - threads to use in searches [default: # of cpus)
     dagchainer_args - Argument for DAGchainer command
              dbtype - Database type, either 'nucl' or 'prot'
               e_val - Maximum BLAST score permitted in matches
@@ -60,9 +59,12 @@ Environmental variables (may be set externally):
                        \"${root_dir}\"
      ${PKG}_WORK_DIR - Location of working files, currently
                        \"${work_dir}\"
-               NPROC - Number of processes to use, currently
-                         $NPROC
-                       May be set by configure after init.
+               NPROC - Number of processors to use to set
+                       the blast_threads configuration variable.
+                       searches.  If not present, blast_threads
+                       is set to the number of processors on
+                       the system.
+
 Binaries directory:
   ${bindir}
 """
@@ -323,6 +325,7 @@ clear_config() {
 init() {
   echo "setting run configuration parameters"
   echo
+  [ -z "$NPROC" ] && NPROC=$(python -c 'import multiprocessing as mp; print(mp.cpu_count())')
   set_value e_val "1e-10"
   set_value blast_threads $NPROC
   set_value pct_identity 95

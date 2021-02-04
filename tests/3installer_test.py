@@ -49,19 +49,6 @@ def test_install_dagchainer_tool(tmp_path, capsys):
 
 
 @print_docstring()
-def test_install_mmseqs(tmp_path, capsys):
-    """Test install all required binaries."""
-    with capsys.disabled():
-        with working_directory(tmp_path):
-            try:
-                azulejo([SUBCOMMAND, "mmseqs"], _out=sys.stdout)
-            except sh.ErrorReturnCode as errors:
-                print(errors)
-                pytest.fail("Build failed")
-            assert "mmseqs at recommended" in azulejo(["install"])
-
-
-@print_docstring()
 def test_install_blast(tmp_path, capsys):
     """Test install all required binaries."""
     with capsys.disabled():

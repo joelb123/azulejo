@@ -1,11 +1,11 @@
 [tool.poetry]
 name = "azulejo"
-version = "0.10.0"
+version = "0.10.1"
 description = "tile phylogenetic space with subtrees"
-authors = ["Joel Berendzen <joelb@ncgr.org>"]
+authors = ["Joel Berendzen <joel@generisbio.com>"]
 license = "BSD-3-Clause"
 readme = "README.rst"
-homepage = "https://github.com/legumeinfo/azulejo"
+homepage = "https://github.com/joelb123/azulejo"
 documentation = "https://azulejo.readthedocs.org"
 keywords = [
     "science",
@@ -59,7 +59,7 @@ packaging = "^20.7"
 pyarrow = "^2.0.0"
 biopython = "^1.78"
 sh = "^1.14.1"
-gffpandas-ncgr = "^1.2.1"
+gffpandas-jb = "^1.2.1.1"
 beautifulsoup4 = "^4.9.3"
 fastaq = "^0.30"
 amas = "^1.0"
