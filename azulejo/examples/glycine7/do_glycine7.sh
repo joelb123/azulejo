@@ -7,8 +7,11 @@ azulejo install all
 echo "finding the files in the data store"
 azulejo find-files -po  -pr genus site://legfed/Glycine_max glycine7 glycine7.toml
 azulejo find-files site://legfed/Glycine_soja glycine7.glyso glycine7.toml
-azulejo find-files -e '*Wm82.gnm2.ann2*' -e '*Lee*' -e '*Zh13*' -pr strain -r minstrain \
-	-n "g4" -n "g2a1" -n "g1" site://legfed/Glycine_max glycine7.glyma.Wm82 glycine7.toml
+azulejo find-files -e '*Wm82*' -pr species site://legfed/Glycine_max \
+	glycine7.glyma glycine7.toml
+azulejo find-files -e '*Wm82.gnm2.ann2*' -e '*Lee*' -e '*Zh13*' \
+	-pr strain -r minstrain -n "g4" -n "g2a1" -n "g1" \
+	site://legfed/Glycine_max glycine7.glyma.Wm82 glycine7.toml
 echo "reading the data into local files"
 azulejo ingest glycine7.toml
 echo "calculating homology info, including alignments and crude trees"
