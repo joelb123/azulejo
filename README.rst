@@ -347,7 +347,7 @@ Project Status
     :target: http://azulejo.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Server
 
-.. |build| image:: https://github.com/joelb123/azulejo/workflows/test/badge.svg
+.. |build| image:: https://github.com/joelb123/azulejo/workflows/tests/badge.svg
     :target:  https://github.com/joelb123/azulejo/actions
     :alt: GitHub Actions
 

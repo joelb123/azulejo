@@ -1,4 +1,4 @@
-name: azulejo tests
+name: tests
 
 on: [push]
 
@@ -20,7 +20,7 @@ jobs:
       run: |
         pip install poetry
         poetry install -v --no-dev
-        poetry install -v coverage[toml] nox pytest pytest-cov pytest-datadir-mgr
+        poetry install -v --extras "coverage[toml] nox pytest pytest-cov pytest-datadir-mgr"
         free -m
         df -h
     - name: Test with pytest
