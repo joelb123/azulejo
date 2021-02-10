@@ -315,7 +315,7 @@ Project Status
 +-------------------+-------------+            +
 | Coverage          | |coverage|  |            |
 +-------------------+-------------+            +
-| Travis Build      | |travis|    |            |
+| Build             | |build|     |            |
 +-------------------+-------------+            +
 | Issues            | |issues|    |            |
 +-------------------+-------------+            +
@@ -347,19 +347,19 @@ Project Status
     :target: http://azulejo.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Server
 
-.. |travis| image:: https://img.shields.io/travis/joelb123/azulejo.svg
-    :target:  https://travis-ci.org/joelb123/azulejo
-    :alt: Travis CI
+.. |build| image:: https://github.com/joelb123/azulejo/workflows/test/badge.svg
+    :target:  https://github.com/joelb123/azulejo/actions
+    :alt: GitHub Actions
 
-.. |codacy| image:: https://api.codacy.com/project/badge/Grade/99549f0ed4e6409e9f5e80a2c4bd806b
-    :target: https://www.codacy.com/app/joelb123/azulejo?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=joelb123/azulejo&amp;utm_campaign=Badge_Grade
+.. |codacy| image:: https://app.codacy.com/project/badge/Grade/6688a0a9bb6149db90e9c26dc233f9f4
+    :target: https://www.codacy.com/gh/joelb123/azulejo/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=joelb123/azulejo&amp;utm_campaign=Badge_Grade
     :alt: Codacy.io grade
 
 .. |coverage| image:: https://codecov.io/gh/joelb123/azulejo/branch/master/graph/badge.svg
     :target: https://codecov.io/gh/joelb123/azulejo
     :alt: Codecov.io test coverage
 
-.. |issues| image:: https://img.shields.io/github/issues/LegumeFederation/lorax.svg
+.. |issues| image:: https://img.shields.io/github/issues/joelb123/azulejo.svg
     :target:  https://github.com/joelb123/azulejo/issues
     :alt: Issues reported
 

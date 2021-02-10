@@ -1,0 +1,10 @@
+label = "vigna - calculate homology and synteny for Vigna genomes"
+notes = """
+This script uses downloads genomes from the genus Vigna from three
+species represented in the Legume Federation Data Store.
+Genome data are downloaded on-the-fly.  
+
+To run this example execute the script "do_vigna.sh".
+On a modern workstation, this examples takes about 5 minutes
+including downloads.  Most of the time is spent calculating homology.
+"""
