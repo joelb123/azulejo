@@ -37,7 +37,7 @@ def test_install_all(tmp_path, capsys):
 
 @print_docstring()
 def test_install_dagchainer_tool(tmp_path, capsys):
-    """Test install all required binaries."""
+    """Test install dagchainer-tool."""
     with capsys.disabled():
         with working_directory(tmp_path):
             try:
@@ -48,14 +48,14 @@ def test_install_dagchainer_tool(tmp_path, capsys):
             assert "dagchainer-tool.sh at recommended" in azulejo(["install"])
 
 
-@print_docstring()
-def test_install_blast(tmp_path, capsys):
-    """Test install all required binaries."""
-    with capsys.disabled():
-        with working_directory(tmp_path):
-            try:
-                azulejo([SUBCOMMAND, "blast-longids"], _out=sys.stdout)
-            except sh.ErrorReturnCode as errors:
-                print(errors)
-                pytest.fail("Build failed")
-            assert "blastn at recommended" in azulejo(["install"])
+#@print_docstring()
+#def test_install_blast(tmp_path, capsys):
+#    """Test install BLAST with long ids."""
+#    with capsys.disabled():
+#        with working_directory(tmp_path):
+#            try:
+#                azulejo([SUBCOMMAND, "blast-longids"], _out=sys.stdout)
+#            except sh.ErrorReturnCode as errors:
+#                print(errors)
+#                pytest.fail("Build failed")
+#            assert "blastn at recommended" in azulejo(["install"])

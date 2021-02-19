@@ -16,13 +16,9 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
+    - name: Install nox and poetry
       run: |
-        pip install poetry
-        poetry install -v --no-dev
-        poetry install -v --extras "coverage[toml] nox pytest pytest-cov pytest-datadir-mgr"
-        free -m
-        df -h
+        pip install nox poetry
     - name: Test with pytest
       run: |
         export NCPUS=$(grep -c ^processor /proc/cpuinfo)
@@ -32,15 +28,16 @@ jobs:
         export LOG_TO_PRINT=info
         export SPINNER_UPDATE_PERIOD="5.0"
         export TEST_DIR=/dev/shm/pytest
-        poetry run pytest -s tests/0cli_test.py 
-        poetry run pytest -s tests/1file_test.py::test_setup_datadir 
-        mkdir $TEST_DIR
-        poetry run pytest -s --basetemp=$TEST_DIR tests/2ingest_test.py
-        rm -r $TEST_DIR; mkdir $TEST_DIR
-        poetry run pytest -s --basetemp=$TEST_DIR  tests/3installer_test.py::test_install_all
-        poetry run pytest -s tests/4homology_test.py
-        rm -r $TEST_DIR; mkdir $TEST_DIR
-        poetry run pytest -s --basetemp=$TEST_DIR  tests/5synteny_test.py
-        rm -r $TEST_DIR; mkdir $TEST_DIR
-        poetry run pytest -s --basetemp=$TEST_DIR  tests/6parquet_test.py
+        nox -s tests
+        #poetry run pytest -s tests/0cli_test.py 
+        #poetry run pytest -s tests/1file_test.py::test_setup_datadir 
+        #mkdir $TEST_DIR
+        #poetry run pytest -s --basetemp=$TEST_DIR tests/2ingest_test.py
+        #rm -r $TEST_DIR; mkdir $TEST_DIR
+        #poetry run pytest -s --basetemp=$TEST_DIR  tests/3installer_test.py::test_install_all
+        #poetry run pytest -s tests/4homology_test.py
+        #rm -r $TEST_DIR; mkdir $TEST_DIR
+        #poetry run pytest -s --basetemp=$TEST_DIR  tests/5synteny_test.py
+        #rm -r $TEST_DIR; mkdir $TEST_DIR
+        #poetry run pytest -s --basetemp=$TEST_DIR  tests/6parquet_test.py
 
